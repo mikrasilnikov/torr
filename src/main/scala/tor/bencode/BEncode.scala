@@ -1,8 +1,8 @@
 package tor.bencode
 
-import tor.channels.ByteChannel
 import zio._
 import zio.nio.core._
+import tor.channels.ByteChannel
 
 object BEncode {
 
@@ -15,27 +15,30 @@ object BEncode {
   }
 
   def read(channel: ByteChannel, buf: ByteBuffer): Task[BValue] = {
-    for {
-      _    <- readMore(channel, buf).unlessM(buf.hasRemaining)
-      next <- peek(buf)
-      res  <- next match {
-                case 'i' => buf.get *> readInt(channel, buf, 'e')
-                case 'l' => buf.get *> readList(channel, buf)
-                case 'd' => buf.get *> readDictionary(channel, buf)
-                case _   => readString(channel, buf)
-              }
+
+    val next = for {
+      _   <- readMore(channel, buf).unlessM(buf.hasRemaining)
+      res <- peek(buf)
     } yield res
+
+    next.flatMap {
+      case 'i' => buf.get *> readInt(channel, buf, 'e')
+      case 'l' => buf.get *> readList(channel, buf)
+      case 'd' => buf.get *> readDictionary(channel, buf)
+      case _   => readString(channel, buf)
+    }
   }
 
   private def readList(channel: ByteChannel, buf: ByteBuffer): Task[BList] = {
     //noinspection SimplifyZipRightToSucceedInspection
     def loop(acc: List[BValue]): Task[BList] = {
+
       val nextChar = for {
         _   <- readMore(channel, buf).unlessM(buf.hasRemaining)
         res <- peek(buf)
       } yield res
 
-      nextChar.flatMap { // makes it tail recursive in zio
+      nextChar.flatMap {
         case 'e' => buf.get *> ZIO.succeed(BList(acc.reverse))
         case _   => read(channel, buf).flatMap(bVal => loop(bVal :: acc))
       }
@@ -47,12 +50,12 @@ object BEncode {
   private def readDictionary(channel: ByteChannel, buf: ByteBuffer): Task[BDict] = {
     //noinspection SimplifyZipRightToSucceedInspection
     def loop(acc: List[(BStr, BValue)]): Task[BDict] = {
-      val nextChar = for {
+      val next = for {
         _   <- readMore(channel, buf).unlessM(buf.hasRemaining)
         res <- peek(buf)
       } yield res
 
-      nextChar.flatMap { // makes it tail recursive in zio
+      next.flatMap {
         case 'e' => buf.get *> ZIO.succeed(BDict(Map.from(acc)))
         case _   =>
           val readKvp = for {
@@ -60,7 +63,7 @@ object BEncode {
             value <- read(channel, buf)
           } yield (key, value)
 
-          readKvp.flatMap(kvp => loop(kvp :: acc)) // makes it tail recursive in zio
+          readKvp.flatMap(kvp => loop(kvp :: acc))
       }
     }
 
@@ -76,7 +79,7 @@ object BEncode {
         c <- buf.get
       } yield c.toChar
 
-      readChar.flatMap { // makes it tail recursive in zio
+      readChar.flatMap {
         case `endMark` => ZIO.succeed(builder.toString)
         case c         => ZIO(builder.append(c)) *> loop
       }
@@ -100,7 +103,7 @@ object BEncode {
             chunk <- buf.getChunk(math.min(rem, bytesToRead))
           } yield chunk
 
-          readChunk.flatMap(chunk => loop(acc ++ chunk, bytesToRead - chunk.size)) // makes it tail recursive in zio
+          readChunk.flatMap(chunk => loop(acc ++ chunk, bytesToRead - chunk.size))
       }
 
     for {
