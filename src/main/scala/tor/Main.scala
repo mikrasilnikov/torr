@@ -1,3 +1,5 @@
+package tor
+
 import zio._
 import zio.console.putStrLn
 
