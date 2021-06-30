@@ -6,7 +6,7 @@ import tor.channels.ByteChannel
 
 object BEncode {
 
-  def read(channel: ByteChannel, bufSize: Int = 1024): Task[BValue] = {
+  def read(channel: ByteChannel, bufSize: Int = 64 * 1024): Task[BValue] = {
     for {
       buf <- Buffer.byte(bufSize)
       _   <- readMore(channel, buf)

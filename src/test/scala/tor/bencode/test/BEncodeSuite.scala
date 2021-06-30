@@ -17,11 +17,27 @@ object BEncodeSuite extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(BInt(42)))
       },
       //
+      testM("Reads empty string") {
+        for {
+          channel <- TestReadableChannel.make("0:")
+          actual  <- BEncode.read(channel, 3)
+        } yield assert(actual)(equalTo(BValue.string("")))
+      },
+      //
       testM("Reads string") {
         for {
           channel <- TestReadableChannel.make("5:hello")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(BValue.string("hello")))
+      },
+      //
+      testM("Reads empty list") {
+        import BValue._
+        val expected = list()
+        for {
+          channel <- TestReadableChannel.make("le")
+          actual  <- BEncode.read(channel, 3)
+        } yield assert(actual)(equalTo(expected))
       },
       //
       testM("Reads singleton list") {
@@ -38,6 +54,15 @@ object BEncodeSuite extends DefaultRunnableSpec {
         val expected = list(string("hello"), int(123456))
         for {
           channel <- TestReadableChannel.make("l5:helloi123456ee")
+          actual  <- BEncode.read(channel, 3)
+        } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("Reads empty dictionary") {
+        import BValue._
+        val expected = dict()
+        for {
+          channel <- TestReadableChannel.make("de")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
