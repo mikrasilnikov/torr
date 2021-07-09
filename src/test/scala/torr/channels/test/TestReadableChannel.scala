@@ -19,4 +19,9 @@ object TestReadableChannel {
     for {
       data <- RefM.make(Chunk.fromArray(data.toArray.map(_.toByte)))
     } yield TestReadableChannel(data)
+
+  def make(data: Array[Byte]): UIO[TestReadableChannel] =
+    for {
+      data <- RefM.make(Chunk.fromArray(data))
+    } yield TestReadableChannel(data)
 }

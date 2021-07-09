@@ -14,7 +14,7 @@ import java.nio.file.StandardOpenOption
 object Main extends App {
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
-    val fileName = "c:\\!temp\\LINQPad.torrent"
+    val fileName = "c:\\!temp\\torrent2.torrent"
 
     val app = AsyncFileChannel.open(Path(fileName), StandardOpenOption.READ)
       .use { chan =>
@@ -22,7 +22,7 @@ object Main extends App {
           bval <- BEncode.read(chan)
           str  <- ZIO(bval.prettyPrint)
           _    <- Files.writeBytes(
-                    Path("c:\\!temp\\LINQPad.torrent.txt"),
+                    Path("c:\\!temp\\torrent2.torrent.txt"),
                     Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8))
                   )
         } yield ()

@@ -3,9 +3,7 @@ package torr
 import zio.Chunk
 import zio.nio.core.file.Path
 import torr.bencode.BValue
-import cats.Traverse
-import cats.instances.list._
-import cats.instances.option._
+import torr.misc.Traverse
 
 package object metainfo {
 
@@ -22,13 +20,12 @@ package object metainfo {
   object MetaInfo {
     def fromBValue(root: BValue): Option[MetaInfo] = {
       import BValue._
-
       for {
         announce    <- (root / "announce").asString
         pieceLength <- (root / "info" / "piece length").asLong
         pieces      <- (root / "info" / "pieces").asChunk
                          .map(ch => ch.grouped(20).map(PieceHash).toList)
-        entries     <- singleFile(root) orElse multiFile
+        entries     <- singleFile(root) orElse multiFile(root)
       } yield MetaInfo(announce, pieceLength, pieces, entries)
     }
 
@@ -49,7 +46,7 @@ package object metainfo {
       for {
         items  <- (root / "files").asList
         entries = items.map(makeEntry)
-        res    <- Traverse[List].sequence(entries)
+        res    <- Traverse.sequence(entries)
       } yield res
     }
 

@@ -1,12 +1,9 @@
 package torr.bencode
 
 import zio._
-
 import java.nio.charset.StandardCharsets
 import scala.language.implicitConversions
-import cats.Traverse
-import cats.instances.list._
-import cats.instances.option._
+import torr.misc.Traverse
 
 sealed trait BValue {
 
@@ -86,7 +83,7 @@ sealed trait BValue {
 
   def asStringList: Option[List[String]] =
     this match {
-      case BList(v) => Traverse[List].sequence(v.map(_.asString))
+      case BList(v) => Traverse.sequence(v.map(_.asString))
       case _        => None
     }
 }
