@@ -1,7 +1,7 @@
-package tor.bencode.test
+package torr.bencode.test
 
-import tor.bencode._
-import tor.channels.test.TestReadableChannel
+import torr.bencode._
+import torr.channels.test.TestReadableChannel
 import zio._
 import zio.test._
 import zio.test.Assertion._

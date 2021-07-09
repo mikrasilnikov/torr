@@ -1,9 +1,9 @@
-package tor
+package torr
 
 import zio._
-import tor.bencode._
+import torr.bencode._
 import zio.duration._
-import tor.channels.AsyncFileChannel
+import torr.channels.AsyncFileChannel
 import zio.console._
 import zio.nio.core.Buffer
 import zio.nio.core.file.Path
@@ -14,15 +14,15 @@ import java.nio.file.StandardOpenOption
 object Main extends App {
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
-    val fileName = """c:\!temp\[rutracker.org].t5118555.torrent"""
+    val fileName = "c:\\!temp\\LINQPad.torrent"
 
     val app = AsyncFileChannel.open(Path(fileName), StandardOpenOption.READ)
       .use { chan =>
         for {
-          bval <- BEncode.read(chan, 1024 * 100)
+          bval <- BEncode.read(chan)
           str  <- ZIO(bval.prettyPrint)
           _    <- Files.writeBytes(
-                    Path("""c:\!temp\[rutracker.org].t5118555.txt"""),
+                    Path("c:\\!temp\\LINQPad.torrent.txt"),
                     Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8))
                   )
         } yield ()

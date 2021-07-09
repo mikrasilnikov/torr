@@ -1,4 +1,4 @@
-package tor.channels
+package torr.channels
 
 import zio._
 import zio.nio.core.ByteBuffer

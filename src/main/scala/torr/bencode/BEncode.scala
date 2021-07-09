@@ -1,8 +1,8 @@
-package tor.bencode
+package torr.bencode
 
 import zio._
 import zio.nio.core._
-import tor.channels.ByteChannel
+import torr.channels.ByteChannel
 
 object BEncode {
 
@@ -47,16 +47,16 @@ object BEncode {
     loop(Nil)
   }
 
-  private def readDictionary(channel: ByteChannel, buf: ByteBuffer): Task[BDict] = {
+  private def readDictionary(channel: ByteChannel, buf: ByteBuffer): Task[BMap] = {
     //noinspection SimplifyZipRightToSucceedInspection
-    def loop(acc: List[(BStr, BValue)]): Task[BDict] = {
+    def loop(acc: List[(BStr, BValue)]): Task[BMap] = {
       val next = for {
         _   <- readMore(channel, buf).unlessM(buf.hasRemaining)
         res <- peek(buf)
       } yield res
 
       next.flatMap {
-        case 'e' => buf.get *> ZIO.succeed(BDict(Map.from(acc)))
+        case 'e' => buf.get *> ZIO.succeed(BMap(Map.from(acc)))
         case _   =>
           val readKvp = for {
             key   <- readString(channel, buf)
@@ -87,7 +87,7 @@ object BEncode {
 
     for {
       str <- loop
-      int <- ZIO(BigInt(str))
+      int <- ZIO(str.toLong)
     } yield BInt(int)
   }
 

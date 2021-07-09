@@ -1,4 +1,4 @@
-package tor.channels
+package torr.channels
 
 import zio.Task
 import zio.nio.channels.AsynchronousByteChannel

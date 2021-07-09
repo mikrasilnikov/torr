@@ -1,8 +1,8 @@
-package tor.channels.test
+package torr.channels.test
 
 import zio._
 import zio.nio.core._
-import tor.channels.ByteChannel
+import torr.channels.ByteChannel
 
 case class TestReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
   override def read(buf: ByteBuffer): Task[Int] =
