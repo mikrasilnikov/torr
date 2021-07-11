@@ -44,7 +44,7 @@ package object metainfo {
         } yield FileEntry(path, length)
 
       for {
-        items  <- (root / "files").asList
+        items  <- (root / "info" / "files").asList
         entries = items.map(makeEntry)
         res    <- Traverse.sequence(entries)
       } yield res

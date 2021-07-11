@@ -7,11 +7,11 @@ import zio._
 import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
-import java.math.BigInteger
 
 object MetaInfoSuite extends DefaultRunnableSpec {
   def spec =
     suite("MetaInfoSuite")(
+      //
       //
       testM("Single file torrent") {
         val data     = getClass.getResourceAsStream("/torrent1.torrent").readAllBytes()
@@ -27,8 +27,29 @@ object MetaInfoSuite extends DefaultRunnableSpec {
         for {
           channel <- TestReadableChannel.make(data)
           bval    <- BEncode.read(channel)
-          info     = MetaInfo.fromBValue(bval).get
-        } yield assert(info)(equalTo(expected))
+          actual   = MetaInfo.fromBValue(bval).get
+        } yield assert(actual)(equalTo(expected))
+      },
+      //
+      //
+      testM("Multi file torrent") {
+        val data     = getClass.getResourceAsStream("/torrent2.torrent").readAllBytes()
+        val expected = MetaInfo(
+          announce = "udp://tracker.openbittorrent.com:80/announce",
+          pieceLength = 262144,
+          entries = FileEntry(Path("file1.dat"), 524288) :: FileEntry(Path("subdir/file2.dat"), 524288) :: Nil,
+          pieces =
+            PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
+              PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
+              PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
+              PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
+              Nil
+        )
+        for {
+          channel <- TestReadableChannel.make(data)
+          bval    <- BEncode.read(channel)
+          actual   = MetaInfo.fromBValue(bval).get
+        } yield assert(actual)(equalTo(expected))
       }
     )
 
