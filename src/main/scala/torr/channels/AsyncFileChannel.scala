@@ -21,6 +21,14 @@ case class AsyncFileChannel(
     )
   }
 
+  override def write(buf: ByteBuffer): Task[Int] = {
+    position.modify(pos =>
+      for {
+        bytesWritten <- channel.write(buf, pos)
+      } yield (bytesWritten, pos + bytesWritten)
+    )
+  }
+
 }
 
 object AsyncFileChannel {

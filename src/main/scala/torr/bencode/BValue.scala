@@ -45,47 +45,54 @@ sealed trait BValue {
     builder.toString
   }
 
-  def /(key: String): Option[BValue] =
+  def /(key: String): Option[BValue] = {
     this match {
       case BMap(map) => map.get(key)
       case _         => None
     }
+  }
 
-  def asInt: Option[Long] =
+  def asInt: Option[Long] = {
     this match {
       case BInt(v) => Some(v)
       case _       => None
     }
+  }
 
-  def asString: Option[String] =
+  def asString: Option[String] = {
     this match {
       case BStr(v) => Some(new String(v.toArray, StandardCharsets.UTF_8))
       case _       => None
     }
+  }
 
-  def asChunk: Option[Chunk[Byte]] =
+  def asChunk: Option[Chunk[Byte]] = {
     this match {
       case BStr(v) => Some(v)
       case _       => None
     }
+  }
 
-  def asDictionary: Option[Map[BStr, BValue]] =
+  def asDictionary: Option[Map[BStr, BValue]] = {
     this match {
       case BMap(v) => Some(v)
       case _       => None
     }
+  }
 
-  def asList: Option[List[BValue]] =
+  def asList: Option[List[BValue]] = {
     this match {
       case BList(v) => Some(v)
       case _        => None
     }
+  }
 
-  def asStringList: Option[List[String]] =
+  def asStringList: Option[List[String]] = {
     this match {
       case BList(v) => Traverse.sequence(v.map(_.asString))
       case _        => None
     }
+  }
 }
 
 final case class BInt(value: Long)              extends BValue

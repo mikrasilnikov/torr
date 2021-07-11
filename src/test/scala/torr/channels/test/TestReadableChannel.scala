@@ -12,6 +12,9 @@ case class TestReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
         c1 <- buf.putChunk(c)
       } yield (c.size - c1.size, c1)
     )
+
+  override def write(buf: ByteBuffer): Task[Int] =
+    ZIO.fail(new Exception("TestReadableChannel does not support write operation"))
 }
 
 object TestReadableChannel {

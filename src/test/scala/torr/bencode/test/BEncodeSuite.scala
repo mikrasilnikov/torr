@@ -1,15 +1,18 @@
 package torr.bencode.test
 
 import torr.bencode._
-import torr.channels.test.TestReadableChannel
+import torr.channels.test.{TestReadableChannel, TestWritableChannel}
 import zio._
 import zio.test._
 import zio.test.Assertion._
 import zio.nio.core._
 
+import java.nio.charset.StandardCharsets
+
 object BEncodeSuite extends DefaultRunnableSpec {
   override def spec =
     suite("BEncodeSuite")(
+      //
       testM("Reads integer") {
         for {
           channel <- TestReadableChannel.make("i42e")
@@ -82,6 +85,17 @@ object BEncodeSuite extends DefaultRunnableSpec {
         for {
           channel <- TestReadableChannel.make("d 4:key1 6:value1 4:key2 i42e e".replace(" ", ""))
           actual  <- BEncode.read(channel, 3)
+        } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("Writes string") {
+        val expected = "5:hello"
+        for {
+          src     <- TestReadableChannel.make(expected)
+          dst     <- TestWritableChannel.make
+          decoded <- BEncode.read(src)
+          _       <- BEncode.write(decoded, dst)
+          actual  <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
       }
     )
