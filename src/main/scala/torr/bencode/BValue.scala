@@ -1,9 +1,12 @@
 package torr.bencode
 
+import torr.channels.InMemoryWritableChannel
 import zio._
+
 import java.nio.charset.StandardCharsets
 import scala.language.implicitConversions
 import torr.misc.Traverse
+import zio.nio.core.Buffer
 
 sealed trait BValue {
 
@@ -93,6 +96,16 @@ sealed trait BValue {
       case _        => None
     }
   }
+
+  def getSHA1: Task[Chunk[Byte]] = {
+    for {
+      channel <- InMemoryWritableChannel.make
+      _       <- BEncode.write(this, channel)
+      data    <- channel.data.get.map(_.toArray)
+      md       = java.security.MessageDigest.getInstance("SHA-1")
+      hash    <- ZIO(md.digest(data))
+    } yield Chunk.fromArray(hash)
+  }
 }
 
 final case class BInt(value: Long)              extends BValue
@@ -107,7 +120,7 @@ object BValue {
 
   def int(value: Long): BInt = BInt(value)
 
-  def dict(pairs: (BStr, BValue)*): BMap = BMap(pairs.toMap)
+  def map(pairs: (BStr, BValue)*): BMap = BMap(pairs.toMap)
 
   implicit def stringToBStr(s: String): BStr = string(s)
 
@@ -118,6 +131,22 @@ object BValue {
     def asLong: Option[Long]               = opt.flatMap(bv => bv.asInt)
     def asList: Option[List[BValue]]       = opt.flatMap(bv => bv.asList)
     def asStringList: Option[List[String]] = opt.flatMap(bv => bv.asStringList)
+  }
+
+  implicit val bStringOrdering: Ordering[BStr] = new Ordering[BStr] {
+
+    private def compareChunks(pos: Int, a1: Chunk[Byte], a2: Chunk[Byte]): Int =
+      if (pos < a1.length && pos < a2.length) {
+        val c1 = a1(pos)
+        val c2 = a2(pos)
+
+        if (c1 == c2) compareChunks(pos + 1, a1, a2)
+        else c1 - c2
+      } else {
+        a1.length - a2.length
+      }
+
+    override def compare(x: BStr, y: BStr): Int = compareChunks(0, x.value, y.value)
   }
 
 }

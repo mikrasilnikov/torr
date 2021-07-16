@@ -1,10 +1,9 @@
-package torr.channels.test
+package torr.channels
 
-import torr.channels.ByteChannel
 import zio._
 import zio.nio.core.ByteBuffer
 
-case class TestWritableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
+case class InMemoryWritableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
   override def read(buf: ByteBuffer): Task[Int] =
     ZIO.fail(new Exception("TestWritableChannel does not support reading"))
 
@@ -19,9 +18,9 @@ case class TestWritableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
   def getData: Task[Chunk[Byte]] = data.get
 }
 
-object TestWritableChannel {
-  def make: UIO[TestWritableChannel] =
+object InMemoryWritableChannel {
+  def make: UIO[InMemoryWritableChannel] =
     for {
       data <- RefM.make[Chunk[Byte]](Chunk.empty)
-    } yield TestWritableChannel(data)
+    } yield InMemoryWritableChannel(data)
 }

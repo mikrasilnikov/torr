@@ -1,6 +1,6 @@
 package torr
 
-import zio.Chunk
+import zio._
 import zio.nio.core.file.Path
 import torr.bencode.BValue
 import torr.misc.Traverse
@@ -11,22 +11,34 @@ package object metainfo {
       announce: String,
       pieceLength: Long,
       pieces: List[PieceHash],
-      entries: List[FileEntry]
+      entries: List[FileEntry],
+      infoHash: Chunk[Byte]
   )
 
   final case class PieceHash(value: Chunk[Byte])
   final case class FileEntry(path: Path, size: Long)
 
   object MetaInfo {
-    def fromBValue(root: BValue): Option[MetaInfo] = {
+    def fromBValue(root: BValue): Task[MetaInfo] = {
       import BValue._
-      for {
+      val createMetaInfoOption: Option[Chunk[Byte] => MetaInfo] = for {
         announce    <- (root / "announce").asString
         pieceLength <- (root / "info" / "piece length").asLong
         pieces      <- (root / "info" / "pieces").asChunk
                          .map(ch => ch.grouped(20).map(PieceHash).toList)
         entries     <- singleFile(root) orElse multiFile(root)
-      } yield MetaInfo(announce, pieceLength, pieces, entries)
+      } yield infoHash => MetaInfo(announce, pieceLength, pieces, entries, infoHash)
+
+      val res = for {
+        createMetaInfo <- ZIO.fromOption(createMetaInfoOption)
+        info           <- ZIO.fromOption(root / "info")
+        infoHash       <- info.getSHA1
+      } yield createMetaInfo(infoHash)
+
+      res.mapError {
+        case e: Throwable => e
+        case _            => new Exception(s"Could not create metainfo from ${root.toString}")
+      }
     }
 
     private def singleFile(root: BValue): Option[List[FileEntry]] =

@@ -4,6 +4,7 @@ import torr.bencode.BEncode
 import torr.channels.test.TestReadableChannel
 import torr.metainfo._
 import zio._
+import zio.console.putStrLn
 import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
@@ -22,12 +23,17 @@ object MetaInfoSuite extends DefaultRunnableSpec {
           pieces =
             PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
               PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
-              Nil
+              Nil,
+          infoHash = Chunk.fromArray(
+            Array[Byte](-81, -93, -38, -63, -123, 80, -128, -23, -44, 115, 25, 102, 115, 73, -8, -128, 1, -36, -23,
+              -127)
+          )
         )
+
         for {
           channel <- TestReadableChannel.make(data)
           bval    <- BEncode.read(channel)
-          actual   = MetaInfo.fromBValue(bval).get
+          actual  <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))
       },
       //
@@ -43,12 +49,16 @@ object MetaInfoSuite extends DefaultRunnableSpec {
               PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
               PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
               PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
-              Nil
+              Nil,
+          infoHash = Chunk.fromArray(
+            Array[Byte](-20, -4, 67, -91, 14, -110, -79, -102, 42, 35, -80, -78, -86, -100, 45, -95, -101, -117, 109,
+              -4)
+          )
         )
         for {
           channel <- TestReadableChannel.make(data)
           bval    <- BEncode.read(channel)
-          actual   = MetaInfo.fromBValue(bval).get
+          actual  <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))
       }
     )
