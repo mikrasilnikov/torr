@@ -4,7 +4,6 @@ import torr.bencode.BEncode
 import torr.channels.test.TestReadableChannel
 import torr.metainfo._
 import zio._
-import zio.console.putStrLn
 import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._

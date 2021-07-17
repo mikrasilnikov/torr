@@ -29,6 +29,7 @@ case class AsyncFileChannel(
     )
   }
 
+  override def isOpen: Task[Boolean] = channel.isOpen
 }
 
 object AsyncFileChannel {

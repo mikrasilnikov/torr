@@ -13,8 +13,9 @@ case class TestReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
       } yield (c.size - c1.size, c1)
     )
 
-  override def write(buf: ByteBuffer): Task[Int] =
-    ZIO.fail(new Exception("TestReadableChannel does not support write operation"))
+  override def write(buf: ByteBuffer): Task[Int] = ???
+
+  override def isOpen: Task[Boolean] = data.get.map(_.nonEmpty)
 }
 
 object TestReadableChannel {

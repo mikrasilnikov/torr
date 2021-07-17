@@ -15,6 +15,8 @@ case class InMemoryWritableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel 
     )
   }
 
+  override def isOpen: Task[Boolean] = ZIO(true)
+
   def getData: Task[Chunk[Byte]] = data.get
 }
 

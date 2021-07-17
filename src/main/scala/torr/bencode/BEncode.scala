@@ -8,15 +8,21 @@ import java.nio.charset.StandardCharsets
 
 object BEncode {
 
-  def read(channel: ByteChannel, bufSize: Int = 64 * 1024): Task[BValue] = {
+  def read(channel: ByteChannel, bufSize: Int = 4 * 1024): Task[BValue] = {
     for {
       buf <- Buffer.byte(bufSize)
       _   <- readMore(channel, buf)
-      res <- read(channel, buf)
+      res <- continueReading(channel, buf)
     } yield res
   }
 
-  def read(channel: ByteChannel, buf: ByteBuffer): Task[BValue] = {
+  def read(channel: ByteChannel, buf: ByteBuffer): Task[BValue] =
+    for {
+      _   <- readMore(channel, buf)
+      res <- continueReading(channel, buf)
+    } yield res
+
+  private def continueReading(channel: ByteChannel, buf: ByteBuffer): Task[BValue] = {
 
     val next = for {
       _   <- readMore(channel, buf).unlessM(buf.hasRemaining)
@@ -58,7 +64,7 @@ object BEncode {
 
       nextChar.flatMap {
         case 'e' => buf.get *> ZIO.succeed(BList(acc.reverse))
-        case _   => read(channel, buf).flatMap(bVal => loop(bVal :: acc))
+        case _   => continueReading(channel, buf).flatMap(bVal => loop(bVal :: acc))
       }
     }
 
@@ -74,9 +80,9 @@ object BEncode {
       }
 
     for {
-      _ <- writeString("l", channel, buf)
+      _ <- writeRawString("l", channel, buf)
       _ <- loop(bList.value)
-      _ <- writeString("e", channel, buf)
+      _ <- writeRawString("e", channel, buf)
     } yield ()
   }
 
@@ -93,7 +99,7 @@ object BEncode {
         case _   =>
           val readKvp = for {
             key   <- readString(channel, buf)
-            value <- read(channel, buf)
+            value <- continueReading(channel, buf)
           } yield (key, value)
 
           readKvp.flatMap(kvp => loop(kvp :: acc))
@@ -116,9 +122,9 @@ object BEncode {
     }
 
     for {
-      _ <- writeString("d", channel, buf)
+      _ <- writeRawString("d", channel, buf)
       _ <- loop(bMap.value.toList.sortBy { case (key, _) => key })
-      _ <- writeString("e", channel, buf)
+      _ <- writeRawString("e", channel, buf)
     } yield ()
 
   }
@@ -147,7 +153,7 @@ object BEncode {
   private def writeInt(int: BInt, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
     for {
       data <- ZIO(s"i${int.value.toString}e".getBytes(StandardCharsets.UTF_8))
-      _    <- writeChunk(Chunk.fromArray(data), channel, buf)
+      _    <- writeRawChunk(Chunk.fromArray(data), channel, buf)
     } yield ()
   }
 
@@ -176,7 +182,7 @@ object BEncode {
     for {
       _     <- buf.clear
       prefix = s"${str.value.size.toString}:".getBytes(StandardCharsets.UTF_8)
-      _     <- writeChunk(Chunk.fromArray(prefix) ++ str.value, channel, buf)
+      _     <- writeRawChunk(Chunk.fromArray(prefix) ++ str.value, channel, buf)
     } yield ()
 
   }
@@ -189,10 +195,10 @@ object BEncode {
     } yield ()
   }
 
-  def writeString(str: String, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
-    writeChunk(Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8)), channel, buf)
+  def writeRawString(str: String, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
+    writeRawChunk(Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8)), channel, buf)
 
-  def writeChunk(chunk: Chunk[Byte], channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
+  def writeRawChunk(chunk: Chunk[Byte], channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
     val rem1 = for {
       _   <- buf.clear
       res <- buf.putChunk(chunk)
@@ -201,7 +207,7 @@ object BEncode {
 
     rem1.flatMap {
       case Chunk.empty => ZIO.unit
-      case r           => writeChunk(r, channel, buf)
+      case r           => writeRawChunk(r, channel, buf)
     }
   }
 
