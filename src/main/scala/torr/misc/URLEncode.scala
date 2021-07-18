@@ -4,6 +4,8 @@ import scala.annotation.tailrec
 
 object URLEncode {
 
+  val extra = Array[Byte]('-', '_', '.', '~')
+
   def encode(data: Array[Byte]): String = {
 
     @tailrec
@@ -15,7 +17,7 @@ object URLEncode {
           (data(i) >= 'a' && data(i) <= 'z') ||
           (data(i) >= 'A' && data(i) <= 'Z') ||
           (data(i) >= '0' && data(i) <= '9') ||
-          Array('-', '_', '.', '~').contains(data(i).toChar)
+          extra.contains(data(i))
         ) {
           acc.append(data(i).toChar)
         } else {
