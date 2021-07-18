@@ -1,10 +1,9 @@
-package torr.channels.test
+package torr.channels
 
 import zio._
 import zio.nio.core._
-import torr.channels.ByteChannel
 
-case class TestReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
+case class InMemoryReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
   override def read(buf: ByteBuffer): Task[Int] =
     data.modify(c =>
       for {
@@ -18,14 +17,14 @@ case class TestReadableChannel(data: RefM[Chunk[Byte]]) extends ByteChannel {
   override def isOpen: Task[Boolean] = data.get.map(_.nonEmpty)
 }
 
-object TestReadableChannel {
-  def make(data: String): UIO[TestReadableChannel] =
+object InMemoryReadableChannel {
+  def make(data: String): UIO[InMemoryReadableChannel] =
     for {
       data <- RefM.make(Chunk.fromArray(data.toArray.map(_.toByte)))
-    } yield TestReadableChannel(data)
+    } yield InMemoryReadableChannel(data)
 
-  def make(data: Array[Byte]): UIO[TestReadableChannel] =
+  def make(data: Array[Byte]): UIO[InMemoryReadableChannel] =
     for {
       data <- RefM.make(Chunk.fromArray(data))
-    } yield TestReadableChannel(data)
+    } yield InMemoryReadableChannel(data)
 }

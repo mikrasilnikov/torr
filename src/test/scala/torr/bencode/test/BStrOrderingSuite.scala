@@ -1,10 +1,11 @@
 package torr.bencode.test
 
 import torr.bencode._
-import torr.channels.test.TestReadableChannel
+import torr.channels.InMemoryReadableChannel
 import zio._
 import zio.test.Assertion._
 import zio.test._
+
 import java.nio.charset.StandardCharsets
 
 object BStrOrderingSuite extends DefaultRunnableSpec {

@@ -1,7 +1,7 @@
 package torr.metainfo.test
 
 import torr.bencode.BEncode
-import torr.channels.test.TestReadableChannel
+import torr.channels.InMemoryReadableChannel
 import torr.metainfo._
 import zio._
 import zio.nio.core.file.Path
@@ -30,7 +30,7 @@ object MetaInfoSuite extends DefaultRunnableSpec {
         )
 
         for {
-          channel <- TestReadableChannel.make(data)
+          channel <- InMemoryReadableChannel.make(data)
           bval    <- BEncode.read(channel)
           actual  <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))
@@ -55,7 +55,7 @@ object MetaInfoSuite extends DefaultRunnableSpec {
           )
         )
         for {
-          channel <- TestReadableChannel.make(data)
+          channel <- InMemoryReadableChannel.make(data)
           bval    <- BEncode.read(channel)
           actual  <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))

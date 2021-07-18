@@ -1,0 +1,257 @@
+Map(
+  peers => List(
+    Map(
+      port => 6947
+      peer id => 2d6c74304438302d37bf1865b3440a49da1d9735
+      ip => 121.200.9.38
+    )
+    Map(
+      port => 54968
+      peer id => -TR3000-q7625caq3yls
+      ip => 185.242.6.198
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-fao5wj08bxe9
+      ip => 86.5.50.186
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-8qjxl0d5s2h8
+      ip => 161.97.215.35
+    )
+    Map(
+      port => 55016
+      peer id => 2d6c74304436302d03dbd22ed763d8fad243d9f9
+      ip => 185.21.217.78
+    )
+    Map(
+      port => 12020
+      peer id => TIX0281-g3j8f4h8j6d6
+      ip => 98.128.200.156
+    )
+    Map(
+      port => 20057
+      peer id => 2d6c74304436302d0ff46909d113c58b38623d0e
+      ip => 188.209.56.54
+    )
+    Map(
+      port => 6990
+      peer id => 2d6c74304438302dbce5b48c057354e5fb0c0e09
+      ip => 184.71.93.30
+    )
+    Map(
+      port => 63099
+      peer id => -TR2940-ui9b2sofdflu
+      ip => 68.134.9.58
+    )
+    Map(
+      port => 64959
+      peer id => -TR3000-9b02p02hee86
+      ip => 24.171.109.44
+    )
+    Map(
+      port => 60005
+      peer id => -TR3000-8cvv55hp42y6
+      ip => 80.114.112.32
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-96nsz8l1k1l7
+      ip => 77.215.169.65
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-jndorulm4zr7
+      ip => 93.142.50.128
+    )
+    Map(
+      port => 51419
+      peer id => -TR3000-s9tl7gmb6lbz
+      ip => 45.124.201.28
+    )
+    Map(
+      port => 52223
+      peer id => 2d6c74304436302dda6dcd7519bb6842bb961a15
+      ip => 185.148.3.185
+    )
+    Map(
+      port => 55126
+      peer id => -TR3000-epm5pbbu6m18
+      ip => 86.106.143.38
+    )
+    Map(
+      port => 50000
+      peer id => 2d6c74304437302d94703238f401fb4069daa760
+      ip => 5.188.88.22
+    )
+    Map(
+      port => 51414
+      peer id => -TR2940-mk0wqlxy9j7t
+      ip => 71.150.198.66
+    )
+    Map(
+      port => 57060
+      peer id => 2d6c74304436302d96e54a9d6e40db32c06d09b3
+      ip => 95.168.168.203
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-xkvde4998iur
+      ip => 31.42.194.102
+    )
+    Map(
+      port => 58777
+      peer id => 2d6c74304438302ddcfde332ecbbbe8d107b3758
+      ip => 72.21.17.56
+    )
+    Map(
+      port => 51413
+      peer id => 2d5452323737302d31ade5cfca73caa8bad17eec
+      ip => 58.18.120.161
+    )
+    Map(
+      port => 50509
+      peer id => 2d6c74304438302d13bef3e48044db749ad4c943
+      ip => 96.238.153.207
+    )
+    Map(
+      port => 55224
+      peer id => 2d6c74304438302dd4ac360be37d46a7b7c5c599
+      ip => 188.165.238.203
+    )
+    Map(
+      port => 20084
+      peer id => 2d6c74304436302d5d0b7e93882715f5f7d8ec06
+      ip => 188.209.56.26
+    )
+    Map(
+      port => 6881
+      peer id => -DE13D0-R-0fETSi04)-
+      ip => 104.245.79.213
+    )
+    Map(
+      port => 23994
+      peer id => -DE203s-RS)(Ek*Z3qFK
+      ip => 195.154.241.179
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-s64freos466i
+      ip => 185.115.131.74
+    )
+    Map(
+      port => 61247
+      peer id => -TR2940-tzm2j2pij0dw
+      ip => 198.27.64.129
+    )
+    Map(
+      port => 54356
+      peer id => -DE13F0-QkcYcBUyWHo-
+      ip => 185.21.217.55
+    )
+    Map(
+      port => 51413
+      peer id => -TR2920-mrrif3can29c
+      ip => 173.54.169.172
+    )
+    Map(
+      port => 16881
+      peer id => -TR2930-rt1dpmjhvljs
+      ip => 91.52.87.133
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-ff1czrkjuf6l
+      ip => 81.2.80.53
+    )
+    Map(
+      port => 51230
+      peer id => 2d6c74304438302df46da4b8baa1e3ee0a6a9896
+      ip => 195.154.164.249
+    )
+    Map(
+      port => 56935
+      peer id => 2d6c74304438302d731a6c3c155180c6690420b5
+      ip => 193.32.249.165
+    )
+    Map(
+      port => 62799
+      peer id => -TR3000-neub2isd0qix
+      ip => 58.158.0.86
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-m3y2h8h0uhvz
+      ip => 198.245.51.35
+    )
+    Map(
+      port => 52423
+      peer id => -TR3000-62c411rjh4vk
+      ip => 84.238.10.142
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-jfpz9eee4uv6
+      ip => 94.199.211.77
+    )
+    Map(
+      port => 44581
+      peer id => -TR3000-7yfpjzbu9f0g
+      ip => 195.78.54.62
+    )
+    Map(
+      port => 54413
+      peer id => -TR2940-691aj6tgaonr
+      ip => 77.11.182.242
+    )
+    Map(
+      port => 51413
+      peer id => -TR2940-0ck7xs6qaar1
+      ip => 31.220.5.85
+    )
+    Map(
+      port => 22422
+      peer id => 2d6c74304436302deb4eaaa85532b835a2108f01
+      ip => 193.163.71.77
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-3xhkydd0wk7o
+      ip => 65.28.145.134
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-d3u9yodssadb
+      ip => 80.109.14.181
+    )
+    Map(
+      port => 54956
+      peer id => 2d6c74304436302d7b6bc1b27c73cfb18aca9d3d
+      ip => 185.157.245.100
+    )
+    Map(
+      port => 23166
+      peer id => 2d6c74304438302d45f707e912191a784addcc7f
+      ip => 176.9.101.204
+    )
+    Map(
+      port => 51413
+      peer id => -TR3000-gtehmptbdrxg
+      ip => 185.208.47.27
+    )
+    Map(
+      port => 55902
+      peer id => 2d6c74304436302dd4875316181bde19917ac1d3
+      ip => 88.198.69.147
+    )
+    Map(
+      port => 49756
+      peer id => 2d6c74304436302db79a31a703f4849975408b9c
+      ip => 95.168.162.222
+    )
+  )
+  interval => 1800
+  incomplete => 34
+  complete => 1737
+)

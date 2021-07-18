@@ -10,7 +10,7 @@ import zio.nio.core.Buffer
 
 sealed trait BValue {
 
-  def prettyPrint: String = {
+  def prettyPrint(maxStringSize: Int = 256): String = {
 
     def print(node: BValue, builder: StringBuilder, indent: Int, indentFirst: Boolean = true): StringBuilder =
       node match {
@@ -19,8 +19,8 @@ sealed trait BValue {
           builder.append(s"$v")
         case BStr(v)   =>
           if (indentFirst) builder.append(" " * indent)
-          if (v.size <= 256)
-            builder.append(new String(v.toArray, StandardCharsets.UTF_8))
+          if (v.size <= maxStringSize)
+            builder.append(printBinaryString(v.toArray))
           else
             builder.append(s"(string size=${v.size})")
         case BList(vs) =>
@@ -105,6 +105,14 @@ sealed trait BValue {
       md       = java.security.MessageDigest.getInstance("SHA-1")
       hash    <- ZIO(md.digest(data))
     } yield Chunk.fromArray(hash)
+  }
+
+  private def printBinaryString(data: Array[Byte]): String = {
+    if (data.forall(b => b >= 32 && b <= 126)) {
+      new String(data, StandardCharsets.US_ASCII)
+    } else {
+      data.map("%02x".format(_)).mkString
+    }
   }
 }
 
