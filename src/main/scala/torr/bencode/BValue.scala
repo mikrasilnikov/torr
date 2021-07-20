@@ -1,12 +1,11 @@
 package torr.bencode
 
-import torr.channels.InMemoryWritableChannel
 import zio._
-
+import torr.channels.InMemoryWritableChannel
 import java.nio.charset.StandardCharsets
-import scala.language.implicitConversions
 import torr.misc.Traverse
-import zio.nio.core.Buffer
+import scala.language.implicitConversions
+import scala.annotation.tailrec
 
 sealed trait BValue {
 
@@ -143,6 +142,7 @@ object BValue {
 
   implicit val bStringOrdering: Ordering[BStr] = new Ordering[BStr] {
 
+    @tailrec
     private def compareChunks(pos: Int, a1: Chunk[Byte], a2: Chunk[Byte]): Int =
       if (pos < a1.length && pos < a2.length) {
         val c1 = a1(pos)

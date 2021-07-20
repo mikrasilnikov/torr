@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 object URLEncode {
 
-  val extra = Array[Byte]('-', '_', '.', '~')
+  private val extra = Array[Byte]('-', '_', '.', '~')
 
   def encode(data: Array[Byte]): String = {
 

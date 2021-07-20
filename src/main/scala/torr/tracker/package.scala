@@ -2,7 +2,7 @@ package torr
 
 import zio._
 
-package object trackers {
+package object tracker {
 
   case class TrackerRequest(
       announceUrl: String,
@@ -13,9 +13,9 @@ package object trackers {
       downloaded: Long
   )
 
-  type Trackers = Has[Trackers.Service]
+  type Tracker = Has[Tracker.Service]
 
-  object Trackers {
+  object Tracker {
 
     trait Service {
       def foo: Task[Unit]

@@ -80,9 +80,9 @@ object BEncode {
       }
 
     for {
-      _ <- writeRawString("l", channel, buf)
+      _ <- writeRaw("l", channel, buf)
       _ <- loop(bList.value)
-      _ <- writeRawString("e", channel, buf)
+      _ <- writeRaw("e", channel, buf)
     } yield ()
   }
 
@@ -122,9 +122,9 @@ object BEncode {
     }
 
     for {
-      _ <- writeRawString("d", channel, buf)
+      _ <- writeRaw("d", channel, buf)
       _ <- loop(bMap.value.toList.sortBy { case (key, _) => key })
-      _ <- writeRawString("e", channel, buf)
+      _ <- writeRaw("e", channel, buf)
     } yield ()
 
   }
@@ -153,7 +153,7 @@ object BEncode {
   private def writeInt(int: BInt, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
     for {
       data <- ZIO(s"i${int.value.toString}e".getBytes(StandardCharsets.UTF_8))
-      _    <- writeRawChunk(Chunk.fromArray(data), channel, buf)
+      _    <- writeRaw(Chunk.fromArray(data), channel, buf)
     } yield ()
   }
 
@@ -182,7 +182,7 @@ object BEncode {
     for {
       _     <- buf.clear
       prefix = s"${str.value.size.toString}:".getBytes(StandardCharsets.UTF_8)
-      _     <- writeRawChunk(Chunk.fromArray(prefix) ++ str.value, channel, buf)
+      _     <- writeRaw(Chunk.fromArray(prefix) ++ str.value, channel, buf)
     } yield ()
 
   }
@@ -195,10 +195,10 @@ object BEncode {
     } yield ()
   }
 
-  def writeRawString(str: String, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
-    writeRawChunk(Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8)), channel, buf)
+  def writeRaw(str: String, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
+    writeRaw(Chunk.fromArray(str.getBytes(StandardCharsets.UTF_8)), channel, buf)
 
-  def writeRawChunk(chunk: Chunk[Byte], channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
+  def writeRaw(chunk: Chunk[Byte], channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
     val rem1 = for {
       _   <- buf.clear
       res <- buf.putChunk(chunk)
@@ -207,7 +207,7 @@ object BEncode {
 
     rem1.flatMap {
       case Chunk.empty => ZIO.unit
-      case r           => writeRawChunk(r, channel, buf)
+      case r           => writeRaw(r, channel, buf)
     }
   }
 

@@ -1,13 +1,16 @@
-package torr.trackers
+package torr.tracker
 
 import torr.bencode._
 import torr.misc.Traverse
+import zio.Chunk
+
 import java.nio.ByteBuffer
 
-case class Peer(ip: String, port: Int, peerId: Option[Array[Byte]] = None)
+case class Peer(ip: String, port: Int, peerId: Option[Chunk[Byte]] = None)
 case class TrackerResponse(peers: List[Peer], interval: Int)
 
 object TrackerResponse {
+
   def interpret(bValue: BValue): Option[TrackerResponse] = {
     for {
       interval <- (bValue / "interval").asLong
@@ -25,7 +28,7 @@ object TrackerResponse {
             ip     <- (v / "ip").asString
             port   <- (v / "port").asLong
             peerId <- (v / "peer id").asChunk
-          } yield Peer(ip, port.toInt, Some(peerId.toArray))
+          } yield Peer(ip, port.toInt, Some(peerId))
         }
         Traverse.sequence(peerOptions)
 
@@ -35,12 +38,27 @@ object TrackerResponse {
           None
         else {
           val res = data.sliding(6, 6).map { item =>
-            val ip   = s"${item(0)}.${item(1)}.${item(2)}.${item(3)}"
-            val port = ByteBuffer.wrap(item.slice(4, 6).toArray).getShort
+            val ip   = s"${unsigned(item(0))}.${unsigned(item(1))}.${unsigned(item(2))}.${unsigned(item(3))}"
+            val port = unsigned(ByteBuffer.wrap(item.slice(4, 6).toArray).getShort)
             Peer(ip, port)
           }
           Some(res.toList)
         }
+
+      case _             => None
     }
   }
+
+  def unsigned(b: Byte): Int = {
+    val buf = ByteBuffer.allocate(4)
+    buf.put(3, b)
+    buf.getInt
+  }
+
+  def unsigned(s: Short): Int = {
+    val buf = ByteBuffer.allocate(4)
+    buf.putShort(2, s)
+    buf.getInt
+  }
+
 }

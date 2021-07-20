@@ -5,9 +5,11 @@ import torr.channels._
 import torr.metainfo.MetaInfo
 import torr.misc.URLEncode
 import zio._
+import zio.blocking.Blocking
 import zio.console._
 import zio.nio.core.file.Path
 import zio.nio.file.Files
+
 import java.net._
 import java.net.http._
 import java.net.http.HttpResponse.BodyHandlers
@@ -58,7 +60,8 @@ object Main extends App {
     url       = buildUrl(meta)
     request   = buildRequest(url)
     _        <- putStrLn(url)
-    response <- ZIO(client.send(request, BodyHandlers.ofByteArray())).map(_.body())
+    blocking <- ZIO.service[Blocking.Service]
+    response <- blocking.effectBlocking(client.send(request, BodyHandlers.ofByteArray())).map(_.body())
     _        <- Files.writeBytes(
                   Path(s"$fileName.tracker.bin"),
                   Chunk.fromArray(response),
