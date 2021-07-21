@@ -2,11 +2,18 @@ package torr.bencode
 
 import zio._
 import zio.nio.core._
-import torr.channels.ByteChannel
+import torr.channels.{ByteChannel, InMemoryReadableChannel}
 
 import java.nio.charset.StandardCharsets
 
 object BEncode {
+
+  def read(data: Array[Byte]): Task[BValue] = {
+    for {
+      channel <- InMemoryReadableChannel.make(data)
+      bVal    <- read(channel)
+    } yield bVal
+  }
 
   def read(channel: ByteChannel, bufSize: Int = 4 * 1024): Task[BValue] = {
     for {
