@@ -1,8 +1,8 @@
-package torr.tracker.test
+package torr.announce.test
 
 import torr.bencode.{BEncode, BValue}
 import torr.channels.InMemoryReadableChannel
-import torr.tracker._
+import torr.announce._
 import zio.test.Assertion._
 import zio.test._
 import torr.metainfo.test.MetaInfoSuite._

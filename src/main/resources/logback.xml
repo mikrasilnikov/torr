@@ -1,0 +1,17 @@
+<configuration>
+    <appender name="FILE1" class="ch.qos.logback.core.FileAppender">
+        <file>torr.log</file>
+
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="debug">
+        <appender-ref ref="FILE1" />
+    </root>
+</configuration>

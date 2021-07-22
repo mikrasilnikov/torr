@@ -15,6 +15,8 @@ import java.net.http._
 import java.net.http.HttpResponse.BodyHandlers
 import java.nio.file.StandardOpenOption
 import scala.util.Random
+import zio.logging._
+import zio.logging.slf4j.Slf4jLogger
 
 object Main extends App {
 
@@ -56,6 +58,7 @@ object Main extends App {
     .build()
 
   val effect = for {
+    _        <- log.error("Hello error")
     meta     <- getMetaInfo
     url       = buildUrl(meta)
     request   = buildRequest(url)
@@ -77,5 +80,8 @@ object Main extends App {
                 )
   } yield ()
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = { effect.exitCode }
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+    val logging = Slf4jLogger.make((_, message) => message)
+    effect.provideCustomLayer(logging).exitCode
+  }
 }

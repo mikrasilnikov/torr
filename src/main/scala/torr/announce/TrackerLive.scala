@@ -1,6 +1,7 @@
-package torr.tracker
+package torr.announce
 
 import zio._
+
 import java.net._
 import java.net.http.HttpResponse.BodyHandlers
 import java.net.http.{HttpClient, HttpRequest}
@@ -8,23 +9,35 @@ import torr.bencode.BEncode
 import torr.misc.URLEncode
 import zio.clock.Clock
 import zio.duration.durationInt
+import zio.logging._
 
 import java.io.IOException
 
-case class TrackerLive(client: HttpClient) extends Tracker.Service {
-  def update(request: TrackerRequest): ZIO[Clock, Throwable, TrackerResponse] = {
+case class TrackerLive(client: HttpClient) extends Announce.Service {
+
+  private val announceRetries = 10
+
+  def update(trackerRequest: TrackerRequest): ZIO[Clock with Logging, Throwable, TrackerResponse] = {
     for {
-      url      <- ZIO(buildUrl(request))
+      url      <- ZIO(buildUrl(trackerRequest))
       request  <- ZIO(HttpRequest.newBuilder(URI.create(url)).build())
-      data     <- ZIO.fromCompletableFuture(client.sendAsync(request, BodyHandlers.ofByteArray()))
-                    .timeoutFail(new IOException("Timeout"))(30.seconds)
-                    .refineToOrDie[IOException]
-                    .retry(Schedule.recurs(10) && Schedule.spaced(10.seconds))
-      bVal     <- BEncode.read(data.body())
+      data     <- fetchWithRetry(request)
+      bVal     <- BEncode.read(data)
       response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
                     .orElseFail(new Exception("Could not interpret response"))
     } yield response
   }
+
+  def fetchWithRetry(httpRequest: HttpRequest): ZIO[Clock with Logging, IOException, Array[Byte]] =
+    for {
+      _       <- ZIO.unit
+      schedule = (Schedule.recurs(announceRetries) && Schedule.spaced(10.seconds))
+                   .tapOutput { case (n, _) => log.warn(s"Retrying ${httpRequest.uri()}").when(n < announceRetries) }
+      data    <- ZIO.fromCompletableFuture(client.sendAsync(httpRequest, BodyHandlers.ofByteArray()))
+                   .timeoutFail(new IOException("Timeout"))(30.seconds)
+                   .refineToOrDie[IOException]
+                   .retry(schedule)
+    } yield data.body()
 
   def buildUrl(request: TrackerRequest): String = {
     val urlBuilder = new StringBuilder
@@ -47,7 +60,7 @@ case class TrackerLive(client: HttpClient) extends Tracker.Service {
 }
 
 object TrackerLive {
-  def make(proxy: Option[InetSocketAddress]): ZLayer[Any, Throwable, Tracker] = {
+  def make(proxy: Option[InetSocketAddress]): ZLayer[Any, Throwable, Announce] = {
     ZIO(buildClient(proxy)).map(client => TrackerLive(client)).toLayer
   }
 

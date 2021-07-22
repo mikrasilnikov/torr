@@ -1,4 +1,4 @@
-package torr.tracker
+package torr.announce
 
 import torr.bencode._
 import torr.misc.Traverse

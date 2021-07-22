@@ -2,8 +2,9 @@ package torr
 
 import zio._
 import zio.clock.Clock
+import zio.logging.Logging
 
-package object tracker {
+package object announce {
 
   case class TrackerRequest(
       announceUrl: String,
@@ -15,11 +16,11 @@ package object tracker {
       left: Long
   )
 
-  type Tracker = Has[Tracker.Service]
+  type Announce = Has[Announce.Service]
 
-  object Tracker {
+  object Announce {
     trait Service {
-      def update(request: TrackerRequest): ZIO[Clock, Throwable, TrackerResponse]
+      def update(request: TrackerRequest): ZIO[Clock with Logging, Throwable, TrackerResponse]
     }
   }
 
