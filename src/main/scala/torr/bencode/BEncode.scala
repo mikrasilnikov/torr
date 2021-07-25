@@ -2,8 +2,7 @@ package torr.bencode
 
 import zio._
 import zio.nio.core._
-import torr.channels.{ByteChannel, InMemoryReadableChannel}
-
+import torr.channels._
 import java.nio.charset.StandardCharsets
 
 object BEncode {
