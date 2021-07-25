@@ -1,83 +1,32 @@
 package torr
 
-import torr.bencode.BEncode
-import torr.channels._
-import torr.metainfo.MetaInfo
-import torr.misc.URLEncode
 import zio._
-import zio.blocking.Blocking
-import zio.console._
-import zio.nio.core.file.Path
-import zio.nio.file.Files
-
-import java.net._
-import java.net.http._
-import java.net.http.HttpResponse.BodyHandlers
-import java.nio.file.StandardOpenOption
-import scala.util.Random
-import zio.logging._
+import zio.actors.Actor.Stateful
+import zio.actors.{ActorSystem, Context}
+import zio.console.putStrLn
 import zio.logging.slf4j.Slf4jLogger
 
 object Main extends App {
 
-  val fileName = "c:\\!temp\\Ragdoll_Masters v3.1.torrent"
+  sealed trait Cmd[+_]
+  final case class Add(a: Int, B: Int) extends Cmd[Int]
+  final case class Mul(a: Int, B: Int) extends Cmd[Int]
 
-  val getMetaInfo = AsyncFileChannel.open(Path(fileName), StandardOpenOption.READ)
-    .use { channel =>
-      for {
-        data <- BEncode.read(channel)
-        meta <- MetaInfo.fromBValue(data)
-      } yield meta
+  val stateful = new Stateful[Any, Unit, Cmd] {
+    override def receive[A](state: Unit, msg: Cmd[A], context: Context): Task[(Unit, A)] = {
+      msg match {
+        case Add(a, b) => ZIO((), a + b)
+        case Mul(a, b) => ZIO((), a * b)
+      }
     }
-
-  val peerId = Random.nextBytes(20)
-
-  def buildUrl(metainfo: MetaInfo): String = {
-    val urlBuilder = new StringBuilder
-    urlBuilder.append(metainfo.announce)
-    urlBuilder.append("?info_hash=")
-    urlBuilder.append(URLEncode.encode(metainfo.infoHash.toArray))
-    urlBuilder.append("&peer_id=")
-    urlBuilder.append(URLEncode.encode(Random.nextBytes(20)))
-    urlBuilder.append("&port=6881")
-    urlBuilder.append("&uploaded=0")
-    urlBuilder.append("&downloaded=0")
-    urlBuilder.append("&left=2818738176")
-
-    urlBuilder.toString
   }
-
-  def buildRequest(url: String): HttpRequest = {
-    HttpRequest.newBuilder()
-      .uri(URI.create(url))
-      .build()
-  }
-
-  val client = HttpClient.newBuilder()
-    .proxy(ProxySelector.of(InetSocketAddress.createUnresolved("localhost", 8080)))
-    .build()
 
   val effect = for {
-    _        <- log.error("Hello error")
-    meta     <- getMetaInfo
-    url       = buildUrl(meta)
-    request   = buildRequest(url)
-    _        <- putStrLn(url)
-    blocking <- ZIO.service[Blocking.Service]
-    response <- blocking.effectBlocking(client.send(request, BodyHandlers.ofByteArray())).map(_.body())
-    _        <- Files.writeBytes(
-                  Path(s"$fileName.tracker.bin"),
-                  Chunk.fromArray(response),
-                  StandardOpenOption.CREATE,
-                  StandardOpenOption.TRUNCATE_EXISTING
-                )
-    channel  <- InMemoryReadableChannel.make(response)
-    decoded  <- BEncode.read(channel)
-    _        <- putStrLn(decoded.prettyPrint(Int.MaxValue))
-    _        <- Files.writeLines(
-                  Path(s"$fileName.tracker.txt"),
-                  List(decoded.prettyPrint(Int.MaxValue))
-                )
+    system <- ActorSystem("Test system")
+    actor  <- system.make("math1", actors.Supervisor.none, (), stateful)
+    res1   <- actor ? Add(1, 2)
+    res2   <- actor ? Mul(2, 3)
+    _      <- putStrLn(s"res1 = $res1, res2 = $res2")
   } yield ()
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {

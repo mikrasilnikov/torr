@@ -10,7 +10,7 @@ import zio.test.Assertion._
 import zio.test.TestAspect._
 import zio.test._
 
-object BEncodeOverSocketsSuite extends DefaultRunnableSpec {
+object BEncodeOverSocketsSpec extends DefaultRunnableSpec {
 
   def createServer(proc: AsyncSocketChannel => Task[Unit]): Task[Unit] =
     AsynchronousServerSocketChannel().mapM { socket =>

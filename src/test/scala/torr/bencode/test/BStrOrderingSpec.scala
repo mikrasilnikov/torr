@@ -8,7 +8,7 @@ import zio.test._
 
 import java.nio.charset.StandardCharsets
 
-object BStrOrderingSuite extends DefaultRunnableSpec {
+object BStrOrderingSpec extends DefaultRunnableSpec {
   override def spec =
     suite("BStrOrderingSuite")(
       //

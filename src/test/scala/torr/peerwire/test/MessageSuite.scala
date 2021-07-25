@@ -4,7 +4,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 import torr.channels._
-import torr.metainfo.test.MetaInfoSuite
+import torr.metainfo.test.MetaInfoSpec
 import torr.peerwire.{Message, TorrBitSet}
 import zio.nio.core.Buffer
 
@@ -13,7 +13,7 @@ object MessageSuite extends DefaultRunnableSpec {
     suite("MessageSuite")(
       //
       testM("send KeepAlive") {
-        val expected = MetaInfoSuite.toBytes("00000000")
+        val expected = MetaInfoSpec.toBytes("00000000")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.KeepAlive, channel, 16)
@@ -22,7 +22,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Choke") {
-        val expected = MetaInfoSuite.toBytes("0000000100")
+        val expected = MetaInfoSpec.toBytes("0000000100")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Choke, channel, 16)
@@ -31,7 +31,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Unchoke") {
-        val expected = MetaInfoSuite.toBytes("0000000101")
+        val expected = MetaInfoSpec.toBytes("0000000101")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Unchoke, channel, 16)
@@ -40,7 +40,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Interested") {
-        val expected = MetaInfoSuite.toBytes("0000000102")
+        val expected = MetaInfoSpec.toBytes("0000000102")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Interested, channel, 16)
@@ -49,7 +49,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send NotInterested") {
-        val expected = MetaInfoSuite.toBytes("0000000103")
+        val expected = MetaInfoSpec.toBytes("0000000103")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.NotInterested, channel, 16)
@@ -58,7 +58,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Have") {
-        val expected = MetaInfoSuite.toBytes("0000000504000000ff")
+        val expected = MetaInfoSpec.toBytes("0000000504000000ff")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Have(255), channel, 16)
@@ -67,7 +67,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send BitField") {
-        val expected = MetaInfoSuite.toBytes("0000000205a0")
+        val expected = MetaInfoSpec.toBytes("0000000205a0")
         val bitSet   = TorrBitSet.make(7)
         bitSet.set.add(0)
         bitSet.set.add(2)
@@ -79,7 +79,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Request") {
-        val expected = MetaInfoSuite.toBytes("0000000d06000000010000000200000003")
+        val expected = MetaInfoSpec.toBytes("0000000d06000000010000000200000003")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Request(1, 2, 3), channel, 32)
@@ -88,7 +88,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Cancel") {
-        val expected = MetaInfoSuite.toBytes("0000000d08000000010000000200000003")
+        val expected = MetaInfoSpec.toBytes("0000000d08000000010000000200000003")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Cancel(1, 2, 3), channel, 32)
@@ -97,7 +97,7 @@ object MessageSuite extends DefaultRunnableSpec {
       },
       //
       testM("send Port") {
-        val expected = MetaInfoSuite.toBytes("0000000309ffff")
+        val expected = MetaInfoSpec.toBytes("0000000309ffff")
         for {
           channel <- InMemoryWritableChannel.make
           _       <- Message.send(Message.Port(65535), channel, 32)
@@ -107,7 +107,7 @@ object MessageSuite extends DefaultRunnableSpec {
       //
       testM("send Piece") {
         val payload  = Chunk.fromArray(Array[Byte](1, 2, 3, 5, 7, 11, 13, 17, 19, 23))
-        val expected = MetaInfoSuite.toBytes("00000013 07 0a0b0c0d 1a1b1c1d".replace(" ", "")) ++ payload
+        val expected = MetaInfoSpec.toBytes("00000013 07 0a0b0c0d 1a1b1c1d".replace(" ", "")) ++ payload
         for {
           channel    <- InMemoryWritableChannel.make
           payloadBuf <- Buffer.byte(payload)

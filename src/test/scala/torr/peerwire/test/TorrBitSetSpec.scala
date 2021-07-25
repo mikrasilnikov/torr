@@ -4,7 +4,7 @@ import torr.peerwire.TorrBitSet
 import zio.test.Assertion._
 import zio.test._
 
-object TorrBitSetSuite extends DefaultRunnableSpec {
+object TorrBitSetSpec extends DefaultRunnableSpec {
   def spec =
     suite("BitFieldSuite")(
       //

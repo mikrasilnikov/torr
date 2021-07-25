@@ -9,7 +9,7 @@ import torr.channels._
 import torr.channels.test._
 import java.nio.charset.StandardCharsets
 
-object BEncodeSuite extends DefaultRunnableSpec {
+object BEncodeSpec extends DefaultRunnableSpec {
   override def spec =
     suite("BEncodeSuite")(
       //

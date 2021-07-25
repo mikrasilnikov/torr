@@ -5,12 +5,12 @@ import torr.channels.InMemoryReadableChannel
 import torr.announce._
 import zio.test.Assertion._
 import zio.test._
-import torr.metainfo.test.MetaInfoSuite._
+import torr.metainfo.test.MetaInfoSpec._
 import zio._
 
 import java.nio.charset.StandardCharsets
 
-object TrackerResponseSuite extends DefaultRunnableSpec {
+object TrackerResponseSpec extends DefaultRunnableSpec {
   def spec =
     suite("TrackerResponseSuite")(
       //

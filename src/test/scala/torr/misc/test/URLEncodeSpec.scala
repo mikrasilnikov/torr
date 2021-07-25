@@ -4,7 +4,7 @@ import torr.misc.URLEncode
 import zio.test._
 import zio.test.Assertion._
 
-object URLEncodeSuite extends DefaultRunnableSpec {
+object URLEncodeSpec extends DefaultRunnableSpec {
   def spec =
     suite("URLEncodeSuite")(
       //
