@@ -5,10 +5,9 @@ import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.logging._
 import zio.nio.core.ByteBuffer
-
 import scala.collection.mutable
 
-object DirectBufferPoolLiveActor {
+object Actor {
 
   sealed trait Command[+_]         extends Any
   case object Allocate             extends Command[Promise[Nothing, ByteBuffer]]

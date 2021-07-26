@@ -1,7 +1,7 @@
 package torr.bencode.test
 
 import torr.bencode._
-import torr.channels.InMemoryReadableChannel
+import torr.channels.InMemoryChannel
 import zio._
 import zio.test.Assertion._
 import zio.test._

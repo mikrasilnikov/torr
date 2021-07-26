@@ -3,7 +3,7 @@ package torr.directbuffers
 import zio._
 import zio.actors.ActorRef
 import zio.nio.core._
-import DirectBufferPoolLiveActor._
+import Actor._
 import torr.actorsystem.ActorSystem
 import zio.clock.Clock
 import zio.logging.Logging
@@ -32,8 +32,8 @@ object DirectBufferPoolLive {
       actor   <- system.system.make(
                    "DirectBufferPoolLive",
                    actors.Supervisor.none,
-                   DirectBufferPoolLiveActor.Available(buffers.toList),
-                   DirectBufferPoolLiveActor.stateful
+                   Actor.Available(buffers.toList),
+                   Actor.stateful
                  )
     } yield DirectBufferPoolLive(actor)
 

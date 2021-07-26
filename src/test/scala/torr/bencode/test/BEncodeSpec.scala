@@ -15,21 +15,21 @@ object BEncodeSpec extends DefaultRunnableSpec {
       //
       testM("Reads integer") {
         for {
-          channel <- InMemoryReadableChannel.make("i42e")
+          channel <- InMemoryChannel.make("i42e")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(BInt(42)))
       },
       //
       testM("Reads empty string") {
         for {
-          channel <- InMemoryReadableChannel.make("0:")
+          channel <- InMemoryChannel.make("0:")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(BValue.string("")))
       },
       //
       testM("Reads string") {
         for {
-          channel <- InMemoryReadableChannel.make("5:hello")
+          channel <- InMemoryChannel.make("5:hello")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(BValue.string("hello")))
       },
@@ -38,7 +38,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = list()
         for {
-          channel <- InMemoryReadableChannel.make("le")
+          channel <- InMemoryChannel.make("le")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -47,7 +47,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = list(string("hello"))
         for {
-          channel <- InMemoryReadableChannel.make("l5:helloe")
+          channel <- InMemoryChannel.make("l5:helloe")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -56,7 +56,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = list(string("hello"), int(123456))
         for {
-          channel <- InMemoryReadableChannel.make("l5:helloi123456ee")
+          channel <- InMemoryChannel.make("l5:helloi123456ee")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -65,7 +65,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = map()
         for {
-          channel <- InMemoryReadableChannel.make("de")
+          channel <- InMemoryChannel.make("de")
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -74,7 +74,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = map(string("key1") -> string("value1"))
         for {
-          channel <- InMemoryReadableChannel.make("d 4:key1 6:value1 e".replace(" ", ""))
+          channel <- InMemoryChannel.make("d 4:key1 6:value1 e".replace(" ", ""))
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -83,7 +83,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         import BValue._
         val expected = map(string("key1") -> string("value1"), string("key2") -> int(42))
         for {
-          channel <- InMemoryReadableChannel.make("d 4:key1 6:value1 4:key2 i42e e".replace(" ", ""))
+          channel <- InMemoryChannel.make("d 4:key1 6:value1 4:key2 i42e e".replace(" ", ""))
           actual  <- BEncode.read(channel, 3)
         } yield assert(actual)(equalTo(expected))
       },
@@ -92,7 +92,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val text     = ""
         val expected = "0:"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           data    = BStr(Chunk.fromArray(text.getBytes(StandardCharsets.UTF_8)))
           _      <- BEncode.write(data, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
@@ -103,7 +103,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val text     = "hello"
         val expected = "5:hello"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           data    = BStr(Chunk.fromArray(text.getBytes(StandardCharsets.UTF_8)))
           _      <- BEncode.write(data, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
@@ -114,7 +114,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val text     = "hello world"
         val expected = "11:hello world"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           data    = BStr(Chunk.fromArray(text.getBytes(StandardCharsets.UTF_8)))
           buf    <- Buffer.byte(3)
           _      <- BEncode.write(data, dst, buf)
@@ -126,7 +126,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val integer  = 0L
         val expected = "i0e"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           data    = BInt(integer)
           _      <- BEncode.write(data, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
@@ -137,7 +137,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val integer  = Long.MaxValue
         val expected = s"i${Long.MaxValue}e"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           data    = BInt(integer)
           _      <- BEncode.write(data, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
@@ -148,7 +148,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val list     = BList(Nil)
         val expected = "le"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(list, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
@@ -159,7 +159,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val lst      = list(int(42))
         val expected = "li42ee"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(lst, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
@@ -170,7 +170,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val lst      = list(int(42), string("hello"))
         val expected = "li42e5:helloe"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(lst, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
@@ -181,7 +181,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val bMap     = map()
         val expected = "de"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(bMap, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
@@ -192,7 +192,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val bMap     = map((string("key"), int(42)))
         val expected = "d3:keyi42ee"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(bMap, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))
@@ -203,7 +203,7 @@ object BEncodeSpec extends DefaultRunnableSpec {
         val bMap     = map((string("key2"), int(42)), (string("key1"), int(4242)))
         val expected = "d4:key1i4242e4:key2i42ee"
         for {
-          dst    <- InMemoryWritableChannel.make
+          dst    <- InMemoryChannel.make
           _      <- BEncode.write(bMap, dst)
           actual <- dst.getData.map(ch => new String(ch.toArray, StandardCharsets.UTF_8))
         } yield assert(actual)(equalTo(expected))

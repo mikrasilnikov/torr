@@ -1,7 +1,7 @@
 package torr.bencode
 
 import zio._
-import torr.channels.InMemoryWritableChannel
+import torr.channels.InMemoryChannel
 import java.nio.charset.StandardCharsets
 import torr.misc.Traverse
 import scala.language.implicitConversions
@@ -98,9 +98,9 @@ sealed trait BValue {
 
   def getSHA1: Task[Chunk[Byte]] = {
     for {
-      channel <- InMemoryWritableChannel.make
+      channel <- InMemoryChannel.make(Array[Byte]())
       _       <- BEncode.write(this, channel)
-      data    <- channel.data.get.map(_.toArray)
+      data    <- channel.getData.map(_.toArray)
       md       = java.security.MessageDigest.getInstance("SHA-1")
       hash    <- ZIO(md.digest(data))
     } yield Chunk.fromArray(hash)

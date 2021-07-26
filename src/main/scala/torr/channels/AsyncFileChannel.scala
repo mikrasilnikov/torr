@@ -10,26 +10,40 @@ import java.nio.file.OpenOption
 
 case class AsyncFileChannel(
     private val channel: AsynchronousFileChannel,
-    private val position: RefM[Long]
-) extends ByteChannel {
+    private val positionRef: RefM[Long]
+) extends SeekableByteChannel {
 
-  override def read(buf: ByteBuffer): Task[Int] = {
-    position.modify(pos =>
+  def read(buf: ByteBuffer): Task[Int] = {
+    positionRef.modify(pos =>
       for {
         bytesRead <- channel.read(buf, pos)
       } yield (bytesRead, pos + bytesRead)
     )
   }
 
-  override def write(buf: ByteBuffer): Task[Int] = {
-    position.modify(pos =>
+  def write(buf: ByteBuffer): Task[Int] = {
+    positionRef.modify(pos =>
       for {
         bytesWritten <- channel.write(buf, pos)
       } yield (bytesWritten, pos + bytesWritten)
     )
   }
 
-  override def isOpen: Task[Boolean] = channel.isOpen
+  def read(buf: ByteBuffer, requestedPosition: Long): Task[Int] =
+    positionRef.modify(_ =>
+      for {
+        bytesRead <- channel.read(buf, requestedPosition)
+      } yield (bytesRead, requestedPosition + bytesRead)
+    )
+
+  def write(buf: ByteBuffer, requestedPosition: Long): Task[Int] =
+    positionRef.modify(_ =>
+      for {
+        bytesWritten <- channel.write(buf, requestedPosition)
+      } yield (bytesWritten, requestedPosition + bytesWritten)
+    )
+
+  def isOpen: Task[Boolean] = channel.isOpen
 }
 
 object AsyncFileChannel {

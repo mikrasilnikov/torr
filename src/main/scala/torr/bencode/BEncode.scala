@@ -9,7 +9,7 @@ object BEncode {
 
   def read(data: Array[Byte]): Task[BValue] = {
     for {
-      channel <- InMemoryReadableChannel.make(data)
+      channel <- InMemoryChannel.make(data)
       bVal    <- read(channel)
     } yield bVal
   }

@@ -15,7 +15,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send KeepAlive") {
         val expected = MetaInfoSpec.toBytes("00000000")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.KeepAlive, channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -24,7 +24,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Choke") {
         val expected = MetaInfoSpec.toBytes("0000000100")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Choke, channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -33,7 +33,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Unchoke") {
         val expected = MetaInfoSpec.toBytes("0000000101")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Unchoke, channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -42,7 +42,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Interested") {
         val expected = MetaInfoSpec.toBytes("0000000102")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Interested, channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -51,7 +51,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send NotInterested") {
         val expected = MetaInfoSpec.toBytes("0000000103")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.NotInterested, channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -60,7 +60,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Have") {
         val expected = MetaInfoSpec.toBytes("0000000504000000ff")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Have(255), channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -72,7 +72,7 @@ object MessageSuite extends DefaultRunnableSpec {
         bitSet.set.add(0)
         bitSet.set.add(2)
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.BitField(bitSet), channel, 16)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -81,7 +81,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Request") {
         val expected = MetaInfoSpec.toBytes("0000000d06000000010000000200000003")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Request(1, 2, 3), channel, 32)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -90,7 +90,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Cancel") {
         val expected = MetaInfoSpec.toBytes("0000000d08000000010000000200000003")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Cancel(1, 2, 3), channel, 32)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -99,7 +99,7 @@ object MessageSuite extends DefaultRunnableSpec {
       testM("send Port") {
         val expected = MetaInfoSpec.toBytes("0000000309ffff")
         for {
-          channel <- InMemoryWritableChannel.make
+          channel <- InMemoryChannel.make
           _       <- Message.send(Message.Port(65535), channel, 32)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -109,7 +109,7 @@ object MessageSuite extends DefaultRunnableSpec {
         val payload  = Chunk.fromArray(Array[Byte](1, 2, 3, 5, 7, 11, 13, 17, 19, 23))
         val expected = MetaInfoSpec.toBytes("00000013 07 0a0b0c0d 1a1b1c1d".replace(" ", "")) ++ payload
         for {
-          channel    <- InMemoryWritableChannel.make
+          channel    <- InMemoryChannel.make
           payloadBuf <- Buffer.byte(payload)
           _          <- Message.send(Message.Piece(168496141, 437984285, payloadBuf), channel, 32)
           actual     <- channel.getData

@@ -1,7 +1,7 @@
 package torr.announce.test
 
 import torr.bencode.{BEncode, BValue}
-import torr.channels.InMemoryReadableChannel
+import torr.channels.InMemoryChannel
 import torr.announce._
 import zio.test.Assertion._
 import zio.test._
@@ -23,7 +23,7 @@ object TrackerResponseSpec extends DefaultRunnableSpec {
         val expectedInterval = 1800
 
         for {
-          channel  <- InMemoryReadableChannel.make(data)
+          channel  <- InMemoryChannel.make(data)
           bVal     <- BEncode.read(channel)
           response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
         } yield assert(())(anything) &&
@@ -40,7 +40,7 @@ object TrackerResponseSpec extends DefaultRunnableSpec {
         val expectedInterval = 3088
 
         for {
-          channel  <- InMemoryReadableChannel.make(data)
+          channel  <- InMemoryChannel.make(data)
           bVal     <- BEncode.read(channel)
           response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
         } yield assert(())(anything) &&

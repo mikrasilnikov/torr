@@ -10,6 +10,7 @@ import torr.directbuffers._
 import zio.Exit.Success
 import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
+import zio.test.TestAspect.flaky
 
 object DirectBuffersSpec extends DefaultRunnableSpec {
 
@@ -77,6 +78,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           buf1 <- DirectBufferPool.allocate
           buf2 <- DirectBufferPool.allocate
           f3   <- DirectBufferPool.allocate.fork
+          _    <- f3.status.repeatWhile { case Suspended(_, _, _, _, _) => false; case _ => true }
           f4   <- DirectBufferPool.allocate.fork
           _    <- DirectBufferPool.free(buf2)
           _    <- DirectBufferPool.free(buf1)
