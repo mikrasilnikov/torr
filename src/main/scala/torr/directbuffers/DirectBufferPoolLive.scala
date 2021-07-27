@@ -22,8 +22,6 @@ case class DirectBufferPoolLive(private val actor: ActorRef[Command]) extends Di
 
 object DirectBufferPoolLive {
 
-  private val bufferSize = 32 * 1024;
-
   def make(maxBuffers: Int): ZLayer[ActorSystem with Clock with Logging, Throwable, DirectBufferPool] = {
 
     val effect = for {
@@ -43,7 +41,7 @@ object DirectBufferPoolLive {
   // Putting buffer index at the beginning, for testing
   def createIndexedBuf(index: Int): UIO[ByteBuffer] =
     for {
-      res <- Buffer.byte(bufferSize)
+      res <- Buffer.byte(DirectBufferSize)
       _   <- res.putInt(index)
       _   <- res.flip
     } yield res

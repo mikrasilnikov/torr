@@ -4,6 +4,7 @@ import zio._
 import zio.nio.core._
 
 import java.io.EOFException
+import java.lang
 
 case class InMemoryChannelState(data: Chunk[Byte], position: Int)
 
@@ -41,6 +42,12 @@ case class InMemoryChannel(state: RefM[InMemoryChannelState]) extends SeekableBy
   ): Task[(Int, InMemoryChannelState)] =
     buf.getChunk().flatMap {
 
+      case _ if position < 0            =>
+        ZIO.fail(new lang.IllegalArgumentException("Negative position"))
+
+      case _ if position > s.data.size  =>
+        ZIO.fail(new lang.IllegalArgumentException("position > size"))
+
       case c if position == s.data.size => // append
         ZIO.succeed(c.size, InMemoryChannelState(s.data ++ c, position.toInt + c.size))
 
@@ -50,11 +57,6 @@ case class InMemoryChannel(state: RefM[InMemoryChannelState]) extends SeekableBy
         Array.copy(overlap.toArray, 0, current, position.toInt, overlap.length)
         val newChunk          = Chunk.fromArray(current) ++ append
         ZIO.succeed(c.size, InMemoryChannelState(newChunk, position.toInt + c.size))
-
-      case _                            =>
-        ZIO.fail(
-          new IllegalStateException(s"Could not write to InMemoryChannel. Size = ${s.data.size}, position = $position")
-        )
     }
 }
 

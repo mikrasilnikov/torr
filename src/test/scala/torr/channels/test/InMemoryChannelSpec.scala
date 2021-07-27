@@ -55,7 +55,7 @@ object InMemoryChannelSpec extends DefaultRunnableSpec {
         assertM(effect.run)(fails(isSubtype[IllegalArgumentException](anything)))
       },
       //
-      testM("fails when position is out of bounds 2") {
+      testM("fails to read when the position is out of bounds 2") {
         val effect = for {
           channel <- InMemoryChannel.make(Array[Byte](0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
           buf     <- Buffer.byte(3)
@@ -97,6 +97,26 @@ object InMemoryChannelSpec extends DefaultRunnableSpec {
           p       <- channel.state.get.map(_.position)
         } yield assert(actual)(equalTo(Chunk[Byte](0, 1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15))) &&
           assert(p)(equalTo(13))
+      },
+      //
+      testM("fails to write when the position < 0") {
+        val effect = for {
+          channel <- InMemoryChannel.make(Array[Byte](0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+          buf     <- Buffer.byte(3)
+          _       <- channel.write(buf, -1)
+        } yield ()
+
+        assertM(effect.run)(fails(isSubtype[IllegalArgumentException](anything)))
+      },
+      //
+      testM("fails to write when the position > size") {
+        val effect = for {
+          channel <- InMemoryChannel.make(Array[Byte](0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+          buf     <- Buffer.byte(3)
+          _       <- channel.write(buf, 11)
+        } yield ()
+
+        assertM(effect.run)(fails(isSubtype[IllegalArgumentException](anything)))
       }
     )
 }

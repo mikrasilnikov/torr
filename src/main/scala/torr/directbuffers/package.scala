@@ -5,6 +5,9 @@ import zio.macros.accessible
 import zio.nio.core.ByteBuffer
 
 package object directbuffers {
+
+  val DirectBufferSize = 32 * 1024;
+
   type DirectBufferPool = Has[DirectBufferPool.Service]
 
   @accessible

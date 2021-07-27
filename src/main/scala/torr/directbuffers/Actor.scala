@@ -58,6 +58,7 @@ object Actor {
       state match {
         case Available(b :: bs) => for {
             p <- Promise.make[Nothing, ByteBuffer]
+            _ <- b.clear
             _ <- p.succeed(b)
           } yield (Available(bs), p)
 
