@@ -57,7 +57,7 @@ object Actor {
 
   //noinspection SimplifyZipRightToSucceedInspection
   private[fileio] def read(
-      state: State,
+      files: IndexedSeq[File],
       fileIndex: Int,
       fileOffset: Int,
       amount: Int,
@@ -65,7 +65,7 @@ object Actor {
       acc: Chunk[ByteBuffer] = Chunk.empty
   ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
 
-    if (amount <= 0 || fileIndex >= state.files.length) {
+    if (amount <= 0 || fileIndex >= files.length) {
       curBuf match {
         case Some(buf) =>
           for {
@@ -77,24 +77,24 @@ object Actor {
     } else {
       for {
         buf       <- curBuf.fold(DirectBufferPool.allocate)(ZIO(_))
-        bytesRead <- state.files(fileIndex).channel.read(buf, fileOffset)
+        bytesRead <- files(fileIndex).channel.read(buf, fileOffset)
         remaining  = amount - bytesRead
-        fileSize   = state.files(fileIndex).size
+        fileSize   = files(fileIndex).size
         fileRem    = fileSize - (fileOffset + bytesRead)
         bufRem    <- buf.remaining
         res       <- (fileRem, bufRem) match {
                        // Buffer is filled, not EOF
                        case (fr, 0) if fr > 0            =>
-                         buf.flip *> read(state, fileIndex, fileOffset + bytesRead, remaining, None, acc :+ buf)
+                         buf.flip *> read(files, fileIndex, fileOffset + bytesRead, remaining, None, acc :+ buf)
                        // Buffer has free space, EOF
                        case (0, br) if br > 0            =>
-                         read(state, fileIndex + 1, 0, remaining, Some(buf), acc)
+                         read(files, fileIndex + 1, 0, remaining, Some(buf), acc)
                        // Buffer has remaining, not EOF
                        case (fr, br) if fr > 0 && br > 0 =>
-                         read(state, fileIndex, fileOffset + bytesRead, remaining, Some(buf), acc)
+                         read(files, fileIndex, fileOffset + bytesRead, remaining, Some(buf), acc)
                        // Buffer is filled, EOF
                        case (0, 0)                       =>
-                         buf.flip *> read(state, fileIndex + 1, 0, remaining, None, acc :+ buf)
+                         buf.flip *> read(files, fileIndex + 1, 0, remaining, None, acc :+ buf)
                      }
       } yield res
     }
