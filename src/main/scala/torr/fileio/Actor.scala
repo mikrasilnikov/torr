@@ -47,10 +47,10 @@ object Actor {
   ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
 
     val fileIndexOffset = for {
-      _        <- ZIO.fail(new IllegalArgumentException(s"Size must be divisible by ${DirectBufferSize}"))
-                    .unless(size % DirectBufferSize == 0)
-      (fi, fo) <- ZIO(fileIndexOffset(piece, pieceOffset, state))
-    } yield (fi, fo)
+      _ <- ZIO.fail(new IllegalArgumentException(s"Size must be divisible by ${DirectBufferSize}"))
+             .unless(size % DirectBufferSize == 0)
+      //(fi, fo) <- ZIO(fileIndexOffset(piece, pieceOffset, state))
+    } yield ???
 
     ???
   }
@@ -70,7 +70,8 @@ object Actor {
         case Some(buf) =>
           for {
             _ <- buf.flip
-            _ <- buf.moveLimit(amount) // We may have read more than requested
+            // We may have read more than requested. Amount would be negative in this case.
+            _ <- buf.moveLimit(amount)
           } yield acc :+ buf
         case None      => ZIO.succeed(acc)
       }
@@ -83,16 +84,16 @@ object Actor {
         fileRem    = fileSize - (fileOffset + bytesRead)
         bufRem    <- buf.remaining
         res       <- (fileRem, bufRem) match {
-                       // Buffer is filled, not EOF
+                       // Not EOF, buffer is full
                        case (fr, 0) if fr > 0            =>
                          buf.flip *> read(files, fileIndex, fileOffset + bytesRead, remaining, None, acc :+ buf)
-                       // Buffer has free space, EOF
+                       // EOF, buffer has free space
                        case (0, br) if br > 0            =>
                          read(files, fileIndex + 1, 0, remaining, Some(buf), acc)
-                       // Buffer has remaining, not EOF
+                       // Not EOF, buffer has free space
                        case (fr, br) if fr > 0 && br > 0 =>
                          read(files, fileIndex, fileOffset + bytesRead, remaining, Some(buf), acc)
-                       // Buffer is filled, EOF
+                       // EOF, Buffer is full
                        case (0, 0)                       =>
                          buf.flip *> read(files, fileIndex + 1, 0, remaining, None, acc :+ buf)
                      }
