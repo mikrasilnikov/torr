@@ -22,11 +22,14 @@ case class DirectBufferPoolLive(private val actor: ActorRef[Command]) extends Di
 
 object DirectBufferPoolLive {
 
-  def make(maxBuffers: Int): ZLayer[ActorSystem with Clock with Logging, Throwable, DirectBufferPool] = {
+  def make(
+      maxBuffers: Int,
+      bufSize: Int = DirectBufferSize
+  ): ZLayer[ActorSystem with Clock with Logging, Throwable, DirectBufferPool] = {
 
     val effect = for {
       system  <- ZIO.service[ActorSystem.Service]
-      buffers <- ZIO.foreach(1 to maxBuffers)(createIndexedBuf)
+      buffers <- ZIO.foreach(1 to maxBuffers)(i => createIndexedBuf(i, bufSize))
       actor   <- system.system.make(
                    "DirectBufferPoolLive",
                    actors.Supervisor.none,
@@ -39,9 +42,9 @@ object DirectBufferPoolLive {
   }
 
   // Putting buffer index at the beginning, for testing
-  def createIndexedBuf(index: Int): UIO[ByteBuffer] =
+  private def createIndexedBuf(index: Int, bufferSize: Int): UIO[ByteBuffer] =
     for {
-      res <- Buffer.byte(DirectBufferSize)
+      res <- Buffer.byte(bufferSize)
       _   <- res.putInt(index)
       _   <- res.flip
     } yield res

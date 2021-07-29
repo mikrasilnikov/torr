@@ -10,7 +10,7 @@ import torr.directbuffers._
 import zio.Exit.Success
 import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
-import zio.test.TestAspect.flaky
+import zio.test.TestAspect.{flaky, sequential}
 
 object DirectBuffersSpec extends DefaultRunnableSpec {
 
@@ -89,5 +89,5 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
         val env = env0 >>> DirectBufferPoolLive.make(2)
         assertM(effect.provideCustomLayer(env))(equalTo(2, 1))
       }
-    )
+    ) @@ sequential
 }

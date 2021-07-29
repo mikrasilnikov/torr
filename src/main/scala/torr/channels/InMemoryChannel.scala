@@ -78,4 +78,9 @@ object InMemoryChannel {
       data  <- ZIO.succeed(Chunk.fromArray(data))
       state <- RefM.make(InMemoryChannelState(data, 0))
     } yield InMemoryChannel(state)
+
+  def make(data: Chunk[Byte]): UIO[InMemoryChannel] =
+    for {
+      state <- RefM.make(InMemoryChannelState(data, 0))
+    } yield InMemoryChannel(state)
 }

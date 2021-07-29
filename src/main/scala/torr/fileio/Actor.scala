@@ -70,8 +70,6 @@ object Actor {
         case Some(buf) =>
           for {
             _ <- buf.flip
-            // We may have read more than requested. Amount would be negative in this case.
-            _ <- buf.moveLimit(amount)
           } yield acc :+ buf
         case None      => ZIO.succeed(acc)
       }
@@ -80,6 +78,7 @@ object Actor {
         buf       <- curBuf.fold(DirectBufferPool.allocate)(ZIO(_))
         bytesRead <- files(fileIndex).channel.read(buf, fileOffset)
         remaining  = amount - bytesRead
+        _         <- buf.moveLimit(remaining).when(remaining < 0) // We may have read more than requested
         fileSize   = files(fileIndex).size
         fileRem    = fileSize - (fileOffset + bytesRead)
         bufRem    <- buf.remaining
