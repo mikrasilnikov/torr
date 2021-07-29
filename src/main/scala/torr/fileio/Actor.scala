@@ -1,6 +1,6 @@
 package torr.fileio
 
-import zio._
+import zio.{ZIO, _}
 import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.nio.core._
@@ -55,6 +55,57 @@ object Actor {
     ???
   }
 
+  /** Writes `data` to torrent files starting at `files(fileIndex)` with specified `fileOffset`. */
+  private[fileio] def write(
+      files: IndexedSeq[File],
+      fileIndex: Int,
+      fileOffset: Int,
+      data: ByteBuffer
+  ): ZIO[DirectBufferPool, Throwable, Unit] = {
+    data.remaining.flatMap {
+      case 0       => ZIO.unit
+      case dataRem =>
+        for {
+          _      <- ensureNotWritingBeyondEOF(files(fileIndex), fileOffset, data).when(fileIndex == files.length - 1)
+          fileRem = files(fileIndex).size - fileOffset
+
+          written <- if (fileRem >= dataRem)
+                       files(fileIndex).channel.write(data, fileOffset)
+                     else
+                       for {
+                         buf   <- DirectBufferPool.allocate
+                         chunk <- data.getChunk(math.min(fileRem.toInt, buf.capacity))
+                         _     <- buf.putChunk(chunk) *> buf.flip
+                         res   <- files(fileIndex).channel.write(buf, fileOffset)
+                         _     <- DirectBufferPool.free(buf)
+                       } yield res
+
+          _       <- (fileRem - written, dataRem - written) match {
+                       // No more data available
+                       case (_, 0)            => ZIO.unit
+                       // EOF, more data available
+                       case (0, dr) if dr > 0 => write(files, fileIndex + 1, 0, data)
+                       // Not EOF, more data available
+                       case (_, dr) if dr > 0 => write(files, fileIndex, fileOffset + written, data)
+                     }
+        } yield ()
+    }
+  }
+
+  private def ensureNotWritingBeyondEOF(
+      file: File,
+      fileOffset: Int,
+      buf: ByteBuffer
+  ): Task[Unit] = {
+    for {
+      fileRem <- ZIO(file.size - fileOffset)
+      bufRem  <- buf.remaining
+      _       <- ZIO.fail(new IllegalStateException("Writing beyond EOF"))
+                   .when(bufRem > fileRem)
+    } yield ()
+  }
+
+  /** Reads up to `amount` bytes from `files` into a chunk of buffers. Buffers are allocated from `DirectBufferPool`. */
   //noinspection SimplifyZipRightToSucceedInspection
   private[fileio] def read(
       files: IndexedSeq[File],

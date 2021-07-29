@@ -9,6 +9,7 @@ import zio._
 import zio.clock.Clock
 import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
+import zio.nio.core.Buffer
 import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.sequential
@@ -17,9 +18,11 @@ import scala.util.Random
 
 object FileIOSpec extends DefaultRunnableSpec {
 
-  val env0 = Clock.live ++ ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
+  private val env0   = Clock.live ++ ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
+  private val random = new Random(42)
 
-  private val sampleData = Chunk.fromArray(Random.nextBytes(128 * 1024))
+  private val sampleData  = Chunk.fromArray(random.nextBytes(1024))
+  private val sampleData1 = Chunk.fromArray(random.nextBytes(1024))
 
   /** Creates a chunk of torr.fileio.Actor.File with given sizes from sample data. */
   private def createSampleFiles(sizes: Seq[Int]): ZIO[Any, Throwable, Chunk[File]] = {
@@ -207,6 +210,70 @@ object FileIOSpec extends DefaultRunnableSpec {
             assert(chunk0 ++ chunk1 ++ chunk2)(equalTo(sampleData.slice(96, 96 + 95)))
 
         val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - no overlaps") {
+        val effect =
+          for {
+            files     <- createSampleFiles(List(32, 32))
+            fileData1 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk      = sampleData1.slice(0, 16)
+            data      <- Buffer.byte(chunk)
+            _         <- Actor.write(files, 0, 0, data)
+            fileData2 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fileData2.head)(equalTo(sampleData1.slice(0, 16) ++ fileData1.head.slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - one overlap") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(32, 32))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk  = sampleData1.slice(0, 32)
+            data  <- Buffer.byte(chunk)
+            _     <- Actor.write(files, 0, 16, data)
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1))(equalTo(fd1(0).slice(0, 16) ++ chunk ++ fd1(1).slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - multiple overlaps 1") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(8, 8))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk  = sampleData1.slice(0, 14)
+            data  <- Buffer.byte(chunk)
+            _     <- Actor.write(files, 0, 0, data)
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1))(equalTo(chunk ++ fd1(1).slice(6, 8)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(4, 5)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - multiple overlaps 2") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(8, 8, 8, 8))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk  = sampleData1.slice(0, 30)
+            data  <- Buffer.byte(chunk)
+            _     <- Actor.write(files, 0, 0, data)
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1) ++ fd2(2) ++ fd2(3))(equalTo(chunk ++ fd1(3).slice(6, 8)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(4, 5)
 
         effect.provideCustomLayer(env)
       }
