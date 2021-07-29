@@ -71,14 +71,16 @@ object Actor {
 
           written <- if (fileRem >= dataRem)
                        files(fileIndex).channel.write(data, fileOffset)
-                     else
-                       for {
-                         buf   <- DirectBufferPool.allocate
-                         chunk <- data.getChunk(math.min(fileRem.toInt, buf.capacity))
-                         _     <- buf.putChunk(chunk) *> buf.flip
-                         res   <- files(fileIndex).channel.write(buf, fileOffset)
-                         _     <- DirectBufferPool.free(buf)
-                       } yield res
+                     else {
+                       val managedBuf = ZManaged.make(DirectBufferPool.allocate)(b => DirectBufferPool.free(b).ignore)
+                       managedBuf.use { buf =>
+                         for {
+                           chunk <- data.getChunk(math.min(fileRem.toInt, buf.capacity))
+                           _     <- buf.putChunk(chunk) *> buf.flip
+                           res   <- files(fileIndex).channel.write(buf, fileOffset)
+                         } yield res
+                       }
+                     }
 
           _       <- (fileRem - written, dataRem - written) match {
                        // No more data available
