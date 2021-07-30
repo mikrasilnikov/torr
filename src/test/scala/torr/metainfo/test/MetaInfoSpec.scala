@@ -17,7 +17,7 @@ object MetaInfoSpec extends DefaultRunnableSpec {
         val data     = getClass.getResourceAsStream("/torrent1.torrent").readAllBytes()
         val expected = MetaInfo(
           announce = "udp://tracker.openbittorrent.com:80/announce",
-          pieceLength = 262144,
+          pieceSize = 262144,
           entries = FileEntry(Path("file1.dat"), 524288) :: Nil,
           pieces =
             PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
@@ -41,7 +41,7 @@ object MetaInfoSpec extends DefaultRunnableSpec {
         val data     = getClass.getResourceAsStream("/torrent2.torrent").readAllBytes()
         val expected = MetaInfo(
           announce = "udp://tracker.openbittorrent.com:80/announce",
-          pieceLength = 262144,
+          pieceSize = 262144,
           entries = FileEntry(Path("file1.dat"), 524288) :: FileEntry(Path("subdir/file2.dat"), 524288) :: Nil,
           pieces =
             PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::

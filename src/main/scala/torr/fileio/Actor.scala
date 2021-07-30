@@ -40,7 +40,8 @@ object Actor {
       amount: Int
   ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
     val upTo = piece * state.pieceSize + offset + amount
-    if (upTo > state.torrentSize) ZIO.fail(new IllegalArgumentException("Must not read beyond end of torrent"))
+    if (upTo > state.torrentSize)
+      ZIO.fail(new IllegalArgumentException("Must not read beyond end of torrent"))
     else {
       val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
       read(state.files, fileIndex, fileOffset, amount)
@@ -57,16 +58,13 @@ object Actor {
     ZIO.foldLeft(data)(0)((acc, buf) => buf.remaining.map(acc + _))
       .flatMap { amount =>
         val upTo = piece * state.pieceSize + offset + amount
-        if (upTo > state.torrentSize) ZIO.fail(new IllegalArgumentException("Must not write beyond end of torrent"))
+        if (upTo > state.torrentSize)
+          ZIO.fail(new IllegalArgumentException("Must not write beyond end of torrent"))
         else {
           val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
           write(state.files, fileIndex, fileOffset, data)
         }
-
-        val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
-        write(state.files, fileIndex, fileOffset, data)
       }
-
   }
 
   /** Writes a chunk of buffers to torrent files starting at `files(fileIndex)` with specified `fileOffset`. */
@@ -100,13 +98,17 @@ object Actor {
 
           _       <- (fileRem - written, bufRem - written) match {
                        // Not EOF, buffer is empty
-                       case (fr, 0) if fr > 0            => write(files, fileIndex, fileOffset + written, data.tail)
+                       case (fr, 0) if fr > 0            =>
+                         DirectBufferPool.free(data.head) *>
+                           write(files, fileIndex, fileOffset + written, data.tail)
                        // EOF, more data available
                        case (0, dr) if dr > 0            => write(files, fileIndex + 1, 0, data)
                        // Not EOF, more data available
                        case (fr, dr) if fr > 0 && dr > 0 => write(files, fileIndex, fileOffset + written, data)
                        // EOF, buffer is empty
-                       case (0, 0)                       => write(files, fileIndex + 1, 0, data.tail)
+                       case (0, 0)                       =>
+                         DirectBufferPool.free(data.head) *>
+                           write(files, fileIndex + 1, 0, data.tail)
                      }
         } yield ()
     }

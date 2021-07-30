@@ -114,11 +114,11 @@ object BEncodeOverSocketsSpec extends DefaultRunnableSpec {
           for {
             buf  <- Buffer.byte(1024)
             _    <- BEncode.write(list(int(1), int(2), int(3)), channel, buf)
-            res1 <- BEncode.read(channel, buf).map(_.asInt.get)
+            res1 <- BEncode.read(channel, buf).map(_.asLong.get)
             _    <- BEncode.write(list(int(4), int(5), int(6)), channel, buf)
-            res2 <- BEncode.read(channel, buf).map(_.asInt.get)
+            res2 <- BEncode.read(channel, buf).map(_.asLong.get)
             _    <- BEncode.write(list(int(7), int(8), int(9)), channel, buf)
-            res3 <- BEncode.read(channel, buf).map(_.asInt.get)
+            res3 <- BEncode.read(channel, buf).map(_.asLong.get)
           } yield (res1, res2, res3)
         }
 

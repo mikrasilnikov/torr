@@ -54,7 +54,7 @@ sealed trait BValue {
     }
   }
 
-  def asInt: Option[Long] = {
+  def asLong: Option[Long] = {
     this match {
       case BInt(v) => Some(v)
       case _       => None
@@ -135,7 +135,8 @@ object BValue {
     def /(key: String): Option[BValue]     = opt.flatMap(bv => bv / key)
     def asChunk: Option[Chunk[Byte]]       = opt.flatMap(bv => bv.asChunk)
     def asString: Option[String]           = opt.flatMap(bv => bv.asString)
-    def asLong: Option[Long]               = opt.flatMap(bv => bv.asInt)
+    def asLong: Option[Long]               = opt.flatMap(bv => bv.asLong)
+    def asInt: Option[Int]                 = opt.flatMap(bv => bv.asLong).map(_.toInt)
     def asList: Option[List[BValue]]       = opt.flatMap(bv => bv.asList)
     def asStringList: Option[List[String]] = opt.flatMap(bv => bv.asStringList)
   }
