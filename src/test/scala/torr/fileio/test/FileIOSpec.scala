@@ -48,8 +48,8 @@ object FileIOSpec extends DefaultRunnableSpec {
         for {
           channel <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb")
           file     = File(0, 20, channel)
-          state    = State(10, Vector(file))
-          (i, o)   = Actor.fileIndexOffset(0, 0, state)
+          state    = State(10, 20L, Vector(file))
+          (i, o)   = Actor.fileIndexOffset(state, 0, 0)
         } yield assert(i, o)(equalTo(0, 0L))
       },
       //
@@ -57,8 +57,8 @@ object FileIOSpec extends DefaultRunnableSpec {
         for {
           channel <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb")
           file     = File(0, 20, channel)
-          state    = State(10, Vector(file))
-          (i, o)   = Actor.fileIndexOffset(1, 5, state)
+          state    = State(10, 20L, Vector(file))
+          (i, o)   = Actor.fileIndexOffset(state, 1, 5)
         } yield assert(i, o)(equalTo(0, 15L))
       },
       //
@@ -67,8 +67,8 @@ object FileIOSpec extends DefaultRunnableSpec {
           f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
           f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
           f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
-          state  = State(10, Vector(f1, f2, f3))
-          (i, o) = Actor.fileIndexOffset(0, 5, state)
+          state  = State(10, 60L, Vector(f1, f2, f3))
+          (i, o) = Actor.fileIndexOffset(state, 0, 5)
         } yield assert(i, o)(equalTo(0, 5L))
       },
       //
@@ -77,8 +77,8 @@ object FileIOSpec extends DefaultRunnableSpec {
           f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
           f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
           f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
-          state  = State(10, Vector(f1, f2, f3))
-          (i, o) = Actor.fileIndexOffset(2, 3, state)
+          state  = State(10, 60L, Vector(f1, f2, f3))
+          (i, o) = Actor.fileIndexOffset(state, 2, 3)
         } yield assert(i, o)(equalTo(1, 3L))
       },
       //
@@ -87,8 +87,8 @@ object FileIOSpec extends DefaultRunnableSpec {
           f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
           f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
           f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
-          state  = State(10, Vector(f1, f2, f3))
-          (i, o) = Actor.fileIndexOffset(5, 1, state)
+          state  = State(10, 60L, Vector(f1, f2, f3))
+          (i, o) = Actor.fileIndexOffset(state, 5, 1)
         } yield assert(i, o)(equalTo(2, 11L))
       },
       //
@@ -214,14 +214,14 @@ object FileIOSpec extends DefaultRunnableSpec {
         effect.provideCustomLayer(env)
       },
       //
-      testM("Writing - no overlaps") {
+      testM("Writing - no overlaps, 1 buf") {
         val effect =
           for {
             files     <- createSampleFiles(List(32, 32))
             fileData1 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
             chunk      = sampleData1.slice(0, 16)
             data      <- Buffer.byte(chunk)
-            _         <- Actor.write(files, 0, 0, data)
+            _         <- Actor.write(files, 0, 0, Chunk(data))
             fileData2 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
           } yield assert(fileData2.head)(equalTo(sampleData1.slice(0, 16) ++ fileData1.head.slice(16, 32)))
 
@@ -230,14 +230,32 @@ object FileIOSpec extends DefaultRunnableSpec {
         effect.provideCustomLayer(env)
       },
       //
-      testM("Writing - one overlap") {
+      testM("Writing - no overlaps, 2 bufs") {
+        val effect =
+          for {
+            files     <- createSampleFiles(List(32, 32))
+            fileData1 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk1     = sampleData1.slice(0, 8)
+            chunk2     = sampleData1.slice(8, 16)
+            data1     <- Buffer.byte(chunk1)
+            data2     <- Buffer.byte(chunk2)
+            _         <- Actor.write(files, 0, 0, Chunk(data1, data2))
+            fileData2 <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fileData2.head)(equalTo(sampleData1.slice(0, 16) ++ fileData1.head.slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - one overlap, 1 buf") {
         val effect =
           for {
             files <- createSampleFiles(List(32, 32))
             fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
             chunk  = sampleData1.slice(0, 32)
             data  <- Buffer.byte(chunk)
-            _     <- Actor.write(files, 0, 16, data)
+            _     <- Actor.write(files, 0, 16, Chunk(data))
             fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
           } yield assert(fd2(0) ++ fd2(1))(equalTo(fd1(0).slice(0, 16) ++ chunk ++ fd1(1).slice(16, 32)))
 
@@ -246,14 +264,68 @@ object FileIOSpec extends DefaultRunnableSpec {
         effect.provideCustomLayer(env)
       },
       //
-      testM("Writing - multiple overlaps 1") {
+      testM("Writing - one overlap, 2 bufs - overlap on first buf") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(32, 32))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk1 = sampleData1.slice(0, 18)
+            chunk2 = sampleData1.slice(18, 32)
+            data1 <- Buffer.byte(chunk1)
+            data2 <- Buffer.byte(chunk2)
+            _     <- Actor.write(files, 0, 16, Chunk(data1, data2))
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1))(equalTo(fd1(0).slice(0, 16) ++ chunk1 ++ chunk2 ++ fd1(1).slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - one overlap, 2 bufs - overlap between bufs") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(32, 32))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk1 = sampleData1.slice(0, 16)
+            chunk2 = sampleData1.slice(16, 32)
+            data1 <- Buffer.byte(chunk1)
+            data2 <- Buffer.byte(chunk2)
+            _     <- Actor.write(files, 0, 16, Chunk(data1, data2))
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1))(equalTo(fd1(0).slice(0, 16) ++ chunk1 ++ chunk2 ++ fd1(1).slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - one overlap, 2 bufs - overlap on second buf") {
+        val effect =
+          for {
+            files <- createSampleFiles(List(32, 32))
+            fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+            chunk1 = sampleData1.slice(0, 14)
+            chunk2 = sampleData1.slice(14, 32)
+            data1 <- Buffer.byte(chunk1)
+            data2 <- Buffer.byte(chunk2)
+            _     <- Actor.write(files, 0, 16, Chunk(data1, data2))
+            fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
+          } yield assert(fd2(0) ++ fd2(1))(equalTo(fd1(0).slice(0, 16) ++ chunk1 ++ chunk2 ++ fd1(1).slice(16, 32)))
+
+        val env = env0 >>> DirectBufferPoolLive.make(3, 32)
+
+        effect.provideCustomLayer(env)
+      },
+      //
+      testM("Writing - multiple overlaps 1, 1 buf") {
         val effect =
           for {
             files <- createSampleFiles(List(8, 8))
             fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
             chunk  = sampleData1.slice(0, 14)
             data  <- Buffer.byte(chunk)
-            _     <- Actor.write(files, 0, 0, data)
+            _     <- Actor.write(files, 0, 0, Chunk(data))
             fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
           } yield assert(fd2(0) ++ fd2(1))(equalTo(chunk ++ fd1(1).slice(6, 8)))
 
@@ -262,14 +334,14 @@ object FileIOSpec extends DefaultRunnableSpec {
         effect.provideCustomLayer(env)
       },
       //
-      testM("Writing - multiple overlaps 2") {
+      testM("Writing - multiple overlaps 2, 1 buf") {
         val effect =
           for {
             files <- createSampleFiles(List(8, 8, 8, 8))
             fd1   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
             chunk  = sampleData1.slice(0, 30)
             data  <- Buffer.byte(chunk)
-            _     <- Actor.write(files, 0, 0, data)
+            _     <- Actor.write(files, 0, 0, Chunk(data))
             fd2   <- ZIO.foreach(files)(_.channel.asInstanceOf[InMemoryChannel].getData)
           } yield assert(fd2(0) ++ fd2(1) ++ fd2(2) ++ fd2(3))(equalTo(chunk ++ fd1(3).slice(6, 8)))
 

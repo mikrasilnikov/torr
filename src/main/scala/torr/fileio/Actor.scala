@@ -12,99 +12,104 @@ import scala.annotation.tailrec
 
 object Actor {
 
+  val MinimumTorrentBlockSize: Int = 16 * 1024
+
   sealed trait Command[+_]
-  case object GetState                                       extends Command[State]
-  case class Fetch(piece: Int, offset: Int)                  extends Command[ByteBuffer]
-  case class Store(piece: Int, offset: Int, buf: ByteBuffer) extends Command[Unit]
-  case class PieceHash(piece: Int)                           extends Command[Array[Byte]]
-  case object GetNumAvailable                                extends Command[Int]
+  case object GetState                                               extends Command[State]
+  case class Fetch(piece: Int, offset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
+  case class Store(piece: Int, offset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
 
   // Multiple files in a torrent are treated like a single continuous file.
   case class File(offset: Long, size: Long, channel: SeekableByteChannel)
-  case class State(pieceSize: Int, files: Vector[File])
+  case class State(pieceSize: Int, torrentSize: Long, files: Vector[File])
 
-  val stateful = new Stateful[Any, State, Command] {
-    def receive[A](state: State, msg: Command[A], context: Context): RIO[Any, (State, A)] = {
+  val stateful = new Stateful[DirectBufferPool, State, Command] {
+    def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool, (State, A)] = {
       msg match {
-        case GetState     => ZIO.succeed(state, state)
-        case PieceHash(_) => ???
-        case _            => ???
+        case GetState                     => ZIO.succeed(state, state)
+        case Fetch(piece, offset, amount) => fetch(state, piece, offset, amount).map(b => (state, b))
+        case Store(piece, offset, data)   => store(state, piece, offset, data).as(state, ())
       }
     }
   }
 
-  def pieceHash(state: State, piece: Int): Task[Array[Byte]] = {
-    for {
-      file <- ZIO(fileIndexOffset(piece, 0, state))
-    } yield ???
-  }
-
-  private[fileio] def readMany(
+  private def fetch(
       state: State,
       piece: Int,
-      pieceOffset: Int,
-      size: Int
+      offset: Int,
+      amount: Int
   ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
-
-    val fileIndexOffset = for {
-      _ <- ZIO.fail(new IllegalArgumentException(s"Size must be divisible by ${DirectBufferSize}"))
-             .unless(size % DirectBufferSize == 0)
-      //(fi, fo) <- ZIO(fileIndexOffset(piece, pieceOffset, state))
-    } yield ???
-
-    ???
+    val upTo = piece * state.pieceSize + offset + amount
+    if (upTo > state.torrentSize) ZIO.fail(new IllegalArgumentException("Must not read beyond end of torrent"))
+    else {
+      val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
+      read(state.files, fileIndex, fileOffset, amount)
+    }
   }
 
-  /** Writes `data` to torrent files starting at `files(fileIndex)` with specified `fileOffset`. */
+  private def store(
+      state: State,
+      piece: Int,
+      offset: Int,
+      data: Chunk[ByteBuffer]
+  ): ZIO[DirectBufferPool, Throwable, Unit] = {
+
+    ZIO.foldLeft(data)(0)((acc, buf) => buf.remaining.map(acc + _))
+      .flatMap { amount =>
+        val upTo = piece * state.pieceSize + offset + amount
+        if (upTo > state.torrentSize) ZIO.fail(new IllegalArgumentException("Must not write beyond end of torrent"))
+        else {
+          val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
+          write(state.files, fileIndex, fileOffset, data)
+        }
+
+        val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
+        write(state.files, fileIndex, fileOffset, data)
+      }
+
+  }
+
+  /** Writes a chunk of buffers to torrent files starting at `files(fileIndex)` with specified `fileOffset`. */
   private[fileio] def write(
       files: IndexedSeq[File],
       fileIndex: Int,
-      fileOffset: Int,
-      data: ByteBuffer
+      fileOffset: Long,
+      data: Chunk[ByteBuffer]
   ): ZIO[DirectBufferPool, Throwable, Unit] = {
-    data.remaining.flatMap {
-      case 0       => ZIO.unit
-      case dataRem =>
+    data match {
+      case Chunk.empty => ZIO.unit
+      case _           =>
         for {
-          _      <- ensureNotWritingBeyondEOF(files(fileIndex), fileOffset, data).when(fileIndex == files.length - 1)
+          bufRem <- data.head.remaining
           fileRem = files(fileIndex).size - fileOffset
+          _      <- ZIO(assert(bufRem > 0))
+          _      <- ZIO(assert(fileRem > 0))
 
-          written <- if (fileRem >= dataRem)
-                       files(fileIndex).channel.write(data, fileOffset)
+          written <- if (fileRem >= bufRem)
+                       files(fileIndex).channel.write(data.head, fileOffset)
                      else {
                        val managedBuf = ZManaged.make(DirectBufferPool.allocate)(b => DirectBufferPool.free(b).ignore)
                        managedBuf.use { buf =>
                          for {
-                           chunk <- data.getChunk(math.min(fileRem.toInt, buf.capacity))
+                           chunk <- data.head.getChunk(math.min(fileRem.toInt, buf.capacity))
                            _     <- buf.putChunk(chunk) *> buf.flip
                            res   <- files(fileIndex).channel.write(buf, fileOffset)
                          } yield res
                        }
                      }
 
-          _       <- (fileRem - written, dataRem - written) match {
-                       // No more data available
-                       case (_, 0)            => ZIO.unit
+          _       <- (fileRem - written, bufRem - written) match {
+                       // Not EOF, buffer is empty
+                       case (fr, 0) if fr > 0            => write(files, fileIndex, fileOffset + written, data.tail)
                        // EOF, more data available
-                       case (0, dr) if dr > 0 => write(files, fileIndex + 1, 0, data)
+                       case (0, dr) if dr > 0            => write(files, fileIndex + 1, 0, data)
                        // Not EOF, more data available
-                       case (_, dr) if dr > 0 => write(files, fileIndex, fileOffset + written, data)
+                       case (fr, dr) if fr > 0 && dr > 0 => write(files, fileIndex, fileOffset + written, data)
+                       // EOF, buffer is empty
+                       case (0, 0)                       => write(files, fileIndex + 1, 0, data.tail)
                      }
         } yield ()
     }
-  }
-
-  private def ensureNotWritingBeyondEOF(
-      file: File,
-      fileOffset: Int,
-      buf: ByteBuffer
-  ): Task[Unit] = {
-    for {
-      fileRem <- ZIO(file.size - fileOffset)
-      bufRem  <- buf.remaining
-      _       <- ZIO.fail(new IllegalStateException("Writing beyond EOF"))
-                   .when(bufRem > fileRem)
-    } yield ()
   }
 
   /** Reads up to `amount` bytes from `files` into a chunk of buffers. Buffers are allocated from `DirectBufferPool`. */
@@ -112,7 +117,7 @@ object Actor {
   private[fileio] def read(
       files: IndexedSeq[File],
       fileIndex: Int,
-      fileOffset: Int,
+      fileOffset: Long,
       amount: Int,
       curBuf: Option[ByteBuffer] = None,
       acc: Chunk[ByteBuffer] = Chunk.empty
@@ -156,7 +161,7 @@ object Actor {
   /**
     * Translates piece index & piece offset into file index & file offset.
     */
-  private[fileio] def fileIndexOffset(piece: Int, pieceOffset: Int, state: State): (Int, Long) = {
+  private[fileio] def fileIndexOffset(state: State, piece: Int, pieceOffset: Int): (Int, Long) = {
 
     // Effective offset in bytes
     val e = piece * state.pieceSize + pieceOffset
