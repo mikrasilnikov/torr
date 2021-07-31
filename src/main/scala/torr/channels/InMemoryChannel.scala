@@ -57,6 +57,8 @@ case class InMemoryChannel(state: RefM[InMemoryChannelState]) extends SeekableBy
         Array.copy(overlap.toArray, 0, current, position.toInt, overlap.length)
         val newChunk          = Chunk.fromArray(current) ++ append
         ZIO.succeed(c.size, InMemoryChannelState(newChunk, position.toInt + c.size))
+
+      case _                            => ???
     }
 }
 
