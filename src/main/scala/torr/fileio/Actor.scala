@@ -7,6 +7,7 @@ import zio.nio.core._
 import torr.channels._
 import torr.directbuffers._
 import torr.directbuffers.DirectBufferPool
+import zio.clock.Clock
 
 import scala.annotation.tailrec
 
@@ -24,8 +25,8 @@ object Actor {
   case class File(offset: Long, size: Long, channel: SeekableByteChannel)
   case class State(pieceSize: Int, torrentSize: Long, files: Vector[File])
 
-  val stateful = new Stateful[DirectBufferPool, State, Command] {
-    def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool, (State, A)] = {
+  val stateful = new Stateful[DirectBufferPool with Clock, State, Command] {
+    def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
         case GetState                     => ZIO.succeed(state, state)
         case Fetch(piece, offset, amount) => fetch(state, piece, offset, amount).map(b => (state, b))
@@ -41,7 +42,7 @@ object Actor {
       piece: Int,
       offset: Int,
       amount: Int
-  ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
+  ): ZIO[DirectBufferPool with Clock, Throwable, Chunk[ByteBuffer]] = {
     val upTo = piece * state.pieceSize + offset + amount
     if (upTo > state.torrentSize)
       ZIO.fail(new IllegalArgumentException("Must not read beyond end of torrent"))
@@ -56,7 +57,7 @@ object Actor {
       piece: Int,
       offset: Int,
       data: Chunk[ByteBuffer]
-  ): ZIO[DirectBufferPool, Throwable, Unit] = {
+  ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
 
     ZIO.foldLeft(data)(0)((acc, buf) => buf.remaining.map(acc + _))
       .flatMap { amount =>
@@ -76,7 +77,7 @@ object Actor {
       fileIndex: Int,
       fileOffset: Long,
       data: Chunk[ByteBuffer]
-  ): ZIO[DirectBufferPool, Throwable, Unit] = {
+  ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
     data match {
       case Chunk.empty => ZIO.unit
       case _           =>
@@ -126,7 +127,7 @@ object Actor {
       amount: Int,
       curBuf: Option[ByteBuffer] = None,
       acc: Chunk[ByteBuffer] = Chunk.empty
-  ): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
+  ): ZIO[DirectBufferPool with Clock, Throwable, Chunk[ByteBuffer]] = {
 
     if (amount <= 0 || fileIndex >= files.length) {
       curBuf match {
