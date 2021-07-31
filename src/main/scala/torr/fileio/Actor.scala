@@ -15,6 +15,7 @@ object Actor {
   val MinimumTorrentBlockSize: Int = 16 * 1024
 
   sealed trait Command[+_]
+  case object Fail                                                   extends Command[Unit]
   case object GetState                                               extends Command[State]
   case class Fetch(piece: Int, offset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
   case class Store(piece: Int, offset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
@@ -29,6 +30,8 @@ object Actor {
         case GetState                     => ZIO.succeed(state, state)
         case Fetch(piece, offset, amount) => fetch(state, piece, offset, amount).map(b => (state, b))
         case Store(piece, offset, data)   => store(state, piece, offset, data).as(state, ())
+        case Fail                         =>
+          ZIO.fail(new Exception("Failed"))
       }
     }
   }
@@ -166,7 +169,7 @@ object Actor {
   private[fileio] def fileIndexOffset(state: State, piece: Int, pieceOffset: Int): (Int, Long) = {
 
     // Effective offset in bytes
-    val e = piece * state.pieceSize + pieceOffset
+    val e = piece.toLong * state.pieceSize + pieceOffset
 
     // Binary search for file
     @tailrec

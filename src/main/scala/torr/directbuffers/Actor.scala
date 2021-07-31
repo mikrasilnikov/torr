@@ -25,12 +25,12 @@ object Actor {
             case Available(buffers) => ZIO.succeed(state, buffers.length)
             case Starving(requests) => ZIO.succeed(state, -1 * requests.length)
           }
-        case Free(buf)       => free(buf, state).map((_, ()))
+        case Free(buf)       => free(state, buf).map((_, ()))
         case Allocate        => allocate(state)
       }
     }
 
-    def free(b: ByteBuffer, state: State): Task[State] = {
+    def free(state: State, b: ByteBuffer): Task[State] = {
       state match {
 
         case Available(bs)                =>
@@ -39,12 +39,14 @@ object Actor {
         case Starving(q) if q.length == 1 =>
           for {
             req <- ZIO(q.dequeue())
+            _   <- b.clear
             _   <- req.succeed(b)
           } yield Available(Nil)
 
         case Starving(q)                  =>
           for {
             req <- ZIO(q.dequeue())
+            _   <- b.clear
             _   <- req.succeed(b)
           } yield Starving(q)
 

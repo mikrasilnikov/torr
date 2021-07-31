@@ -6,14 +6,17 @@ import zio.nio.core._
 import Actor._
 import torr.actorsystem.ActorSystem
 import zio.clock.Clock
+import zio.duration.durationInt
 import zio.logging.Logging
 
 case class DirectBufferPoolLive(private val actor: ActorRef[Command]) extends DirectBufferPool.Service {
 
-  def allocate: Task[ByteBuffer] =
+  def allocate: ZIO[Clock, Throwable, ByteBuffer] =
     for {
       promise <- actor ? Allocate
-      buf     <- promise.await
+      buf     <- promise.await.timeoutFail(new IllegalStateException("No direct buffers available for 10 seconds"))(
+                   10.seconds
+                 )
     } yield buf
 
   def free(buf: ByteBuffer): Task[Unit] = actor ! Free(buf)

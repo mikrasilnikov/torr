@@ -3,12 +3,13 @@ package torr
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.AsyncFileChannel
 import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
-import torr.fileio.Actor.{Fetch, Store}
+import torr.fileio.Actor.{Fail, Fetch, GetState, Store}
 import zio._
 import torr.metainfo.MetaInfo
 import zio.actors.ActorRef
 import zio.blocking.Blocking
 import zio.clock.Clock
+import zio.console.{Console, putStrLn}
 import zio.logging.slf4j.Slf4jLogger
 import zio.nio.core.{Buffer, ByteBuffer}
 import zio.nio.core.channels.AsynchronousFileChannel
@@ -20,9 +21,9 @@ import java.nio.file.{OpenOption, StandardOpenOption}
 object CopyTorrentTest extends App {
 
   val metaInfoFile     = "d:\\Torrents\\!torrent\\The.Expanse.S01.1080p.WEB-DL.torrent"
-  val blockSize        = 16 * 1024
-  val srcDirectoryName = "d:\\Torrents\\The.Expanse.S01.1080p.WEB-DL\\"
-  val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
+  val blockSize        = 16 * 1024 * 1
+  val srcDirectoryName = "c:\\!temp\\CopyTest1\\"
+  val dstDirectoryName = "d:\\_temp\\CopyTest\\"
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val effect = for {
@@ -54,21 +55,24 @@ object CopyTorrentTest extends App {
     val actorSystem = ActorSystemLive.make("Test")
     val env         =
       (Clock.live ++ actorSystem ++ Slf4jLogger.make((_, message) => message)) >>>
-        DirectBufferPoolLive.make(128, blockSize) ++
+        DirectBufferPoolLive.make(2, blockSize) ++
           actorSystem
 
     effect.provideCustomLayer(env).exitCode
-
   }
 
   def createActor(
       name: String,
       state: fileio.Actor.State
-  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[fileio.Actor.Command]] = {
+  ): ZManaged[ActorSystem with DirectBufferPool with Clock with Console, Throwable, ActorRef[fileio.Actor.Command]] = {
     ZManaged.make {
       for {
-        sys <- ZIO.service[ActorSystem.Service].map(_.system)
-        res <- sys.make(name, actors.Supervisor.none, state, fileio.Actor.stateful)
+        sys       <- ZIO.service[ActorSystem.Service].map(_.system)
+        supervisor = actors.Supervisor.retryOrElse[DirectBufferPool, Unit](
+                       Schedule.once,
+                       (throwable, _: Unit) => putStrLn(s"$throwable").provideLayer(Console.live).ignore
+                     )
+        res       <- sys.make(name, supervisor, state, fileio.Actor.stateful)
       } yield res
     }(a => a.stop.ignore)
   }
@@ -132,18 +136,19 @@ object CopyTorrentTest extends App {
       torrentLength: Long,
       src: ActorRef[fileio.Actor.Command],
       dst: ActorRef[fileio.Actor.Command]
-  ): ZIO[DirectBufferPool, Throwable, Unit] = {
+  ): ZIO[Console with Clock with DirectBufferPool, Throwable, Unit] = {
 
     val effectiveOffset = piece.toLong * pieceLength + offset
 
     //noinspection SimplifyUnlessInspection
-    if (effectiveOffset >= torrentLength)
-      ZIO.unit
-    else {
+    if (effectiveOffset >= torrentLength) {
+      (dst ? GetState).as()
+    } else {
       val readAmount = math.min(blockSize, torrentLength - effectiveOffset).toInt
       for {
         data <- src ? Fetch(piece, offset, readAmount)
         _    <- dst ! Store(piece, offset, data)
+        _    <- printBuffersStats(effectiveOffset)
         _    <- (offset + readAmount) match {
                   case x if x == pieceLength =>
                     copy(piece + 1, 0, pieces, pieceLength, torrentLength, src, dst)
@@ -153,5 +158,16 @@ object CopyTorrentTest extends App {
       } yield ()
     }
   }
+
+  def printBuffersStats(position: Long): ZIO[Console with Clock with DirectBufferPool, Throwable, Unit] =
+    position % (64 * 1024 * 1024) match {
+      case 0 =>
+        for {
+          avail <- DirectBufferPool.numAvailable
+          _     <- putStrLn(s"${position / 1024 / 1024} - $avail")
+        } yield ()
+
+      case _ => ZIO.unit
+    }
 
 }
