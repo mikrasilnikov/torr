@@ -4,7 +4,7 @@ import torr.actorsystem.ActorSystemLive
 import torr.channels._
 import torr.directbuffers.DirectBufferPoolLive
 import torr.fileio.Actor
-import torr.fileio.Actor.{File, State}
+import torr.fileio.Actor.{OpenedFile, State}
 import zio._
 import zio.clock.Clock
 import zio.logging.Logging
@@ -25,7 +25,7 @@ object FileIOSpec extends DefaultRunnableSpec {
   private val sampleData1 = Chunk.fromArray(random.nextBytes(1024))
 
   /** Creates a chunk of torr.fileio.Actor.File with given sizes from sample data. */
-  private def createSampleFiles(sizes: Seq[Int]): ZIO[Any, Throwable, Chunk[File]] = {
+  private def createSampleFiles(sizes: Seq[Int]): ZIO[Any, Throwable, Chunk[OpenedFile]] = {
     case class State(remSizes: Seq[Int], remData: Chunk[Byte], dataOffset: Int)
 
     Chunk.unfoldM(State(sizes, sampleData, dataOffset = 0)) {
@@ -35,7 +35,7 @@ object FileIOSpec extends DefaultRunnableSpec {
         val (chunk, chunks) = data.splitAt(sizeHead)
         for {
           channel <- InMemoryChannel.make(chunk)
-          file     = torr.fileio.Actor.File(offset, sizeHead, channel)
+          file     = torr.fileio.Actor.OpenedFile(offset, sizeHead, channel)
         } yield Some(file, State(sizeTail, chunks, offset + sizeHead))
       case _                                             => ???
     }
@@ -47,7 +47,7 @@ object FileIOSpec extends DefaultRunnableSpec {
       testM("Search by offset - single file 1") {
         for {
           channel <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb")
-          file     = File(0, 20, channel)
+          file     = OpenedFile(0, 20, channel)
           state    = State(10, 20L, Vector(file))
           (i, o)   = Actor.fileIndexOffset(state, 0, 0)
         } yield assert(i, o)(equalTo(0, 0L))
@@ -56,7 +56,7 @@ object FileIOSpec extends DefaultRunnableSpec {
       testM("Search by offset - single file 2") {
         for {
           channel <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb")
-          file     = File(0, 20, channel)
+          file     = OpenedFile(0, 20, channel)
           state    = State(10, 20L, Vector(file))
           (i, o)   = Actor.fileIndexOffset(state, 1, 5)
         } yield assert(i, o)(equalTo(0, 15L))
@@ -64,9 +64,9 @@ object FileIOSpec extends DefaultRunnableSpec {
       //
       testM("Search by offset - multiple files x00") {
         for {
-          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
-          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
-          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
+          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(0, 20, c))
+          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(20, 20, c))
+          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(40, 20, c))
           state  = State(10, 60L, Vector(f1, f2, f3))
           (i, o) = Actor.fileIndexOffset(state, 0, 5)
         } yield assert(i, o)(equalTo(0, 5L))
@@ -74,9 +74,9 @@ object FileIOSpec extends DefaultRunnableSpec {
       //
       testM("Search by offset - multiple files 0x0") {
         for {
-          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
-          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
-          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
+          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(0, 20, c))
+          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(20, 20, c))
+          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(40, 20, c))
           state  = State(10, 60L, Vector(f1, f2, f3))
           (i, o) = Actor.fileIndexOffset(state, 2, 3)
         } yield assert(i, o)(equalTo(1, 3L))
@@ -84,9 +84,9 @@ object FileIOSpec extends DefaultRunnableSpec {
       //
       testM("Search by offset - multiple files 00x") {
         for {
-          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(0, 20, c))
-          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(20, 20, c))
-          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => File(40, 20, c))
+          f1    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(0, 20, c))
+          f2    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(20, 20, c))
+          f3    <- InMemoryChannel.make("aaaaaaaaaabbbbbbbbbb").map(c => OpenedFile(40, 20, c))
           state  = State(10, 60L, Vector(f1, f2, f3))
           (i, o) = Actor.fileIndexOffset(state, 5, 1)
         } yield assert(i, o)(equalTo(2, 11L))

@@ -20,10 +20,11 @@ import java.nio.file.{OpenOption, StandardOpenOption}
 
 object CopyTorrentTest extends App {
 
-  val metaInfoFile     = "d:\\Torrents\\!torrent\\The.Expanse.S01.1080p.WEB-DL.torrent"
-  val blockSize        = 16 * 1024 * 1
-  val srcDirectoryName = "c:\\!temp\\CopyTest1\\"
-  val dstDirectoryName = "d:\\_temp\\CopyTest\\"
+  val metaInfoFile     =
+    "c:\\!temp\\Transcendence.2014.BDRip.1080.HDTracker.mkv.torrent"
+  val blockSize        = 512 * 1024
+  val srcDirectoryName = "d:\\Torrents\\"
+  val dstDirectoryName = "c:\\!temp\\CopyTest\\"
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val effect = for {
@@ -55,7 +56,7 @@ object CopyTorrentTest extends App {
     val actorSystem = ActorSystemLive.make("Test")
     val env         =
       (Clock.live ++ actorSystem ++ Slf4jLogger.make((_, message) => message)) >>>
-        DirectBufferPoolLive.make(2, blockSize) ++
+        DirectBufferPoolLive.make(128) ++
           actorSystem
 
     effect.provideCustomLayer(env).exitCode
@@ -69,7 +70,7 @@ object CopyTorrentTest extends App {
       for {
         sys       <- ZIO.service[ActorSystem.Service].map(_.system)
         supervisor = actors.Supervisor.retryOrElse[DirectBufferPool, Unit](
-                       Schedule.once,
+                       Schedule.stop,
                        (throwable, _: Unit) => putStrLn(s"$throwable").provideLayer(Console.live).ignore
                      )
         res       <- sys.make(name, supervisor, state, fileio.Actor.stateful)
@@ -81,7 +82,7 @@ object CopyTorrentTest extends App {
       metaInfo: MetaInfo,
       directoryName: String,
       options: OpenOption*
-  ): ZManaged[Any, Throwable, List[fileio.Actor.File]] = {
+  ): ZManaged[Any, Throwable, List[fileio.Actor.OpenedFile]] = {
 
     def loop(
         entries: List[metainfo.FileEntry],
@@ -99,7 +100,7 @@ object CopyTorrentTest extends App {
     ZManaged.foreach(entriesOffsets) {
       case (entry, offset) =>
         AsyncFileChannel.open(Path(directoryName) / entry.path, options: _*)
-          .map(channel => fileio.Actor.File(offset, entry.size, channel))
+          .map(channel => fileio.Actor.OpenedFile(offset, entry.size, channel))
     }
   }
 
@@ -108,10 +109,23 @@ object CopyTorrentTest extends App {
       for {
         buf  <- Buffer.byte(64 * 1024)
         path <- ZIO(Path(directoryName) / entry.path)
+        _    <- createDirectory(path.parent.get)
         _    <- AsynchronousFileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
                   .use(channel => fill(channel, entry.size, buf))
                   .whenM(Files.notExists(path))
       } yield ()
+    }
+  }
+
+  def createDirectory(path: Path): ZIO[Blocking, Throwable, Unit] = {
+    Files.exists(path).flatMap {
+      case true  => ZIO.unit
+      case false =>
+        for {
+          parent <- ZIO.fromOption(path.parent)
+                      .orElseFail(new IllegalArgumentException("Path must be absolute"))
+          _      <- createDirectory(parent) *> Files.createDirectory(path)
+        } yield ()
     }
   }
 
@@ -147,8 +161,10 @@ object CopyTorrentTest extends App {
       val readAmount = math.min(blockSize, torrentLength - effectiveOffset).toInt
       for {
         data <- src ? Fetch(piece, offset, readAmount)
+        //data <- ZIO.foreach(Chunk.fill(4)())(_ => DirectBufferPool.allocate)
         _    <- dst ! Store(piece, offset, data)
-        _    <- printBuffersStats(effectiveOffset)
+        //_    <- ZIO.foreach_(data)(DirectBufferPool.free)
+        _    <- printBuffersStats(effectiveOffset).when(effectiveOffset % (64 * 1024 * 1024) == 0L).fork
         _    <- (offset + readAmount) match {
                   case x if x == pieceLength =>
                     copy(piece + 1, 0, pieces, pieceLength, torrentLength, src, dst)
@@ -160,14 +176,9 @@ object CopyTorrentTest extends App {
   }
 
   def printBuffersStats(position: Long): ZIO[Console with Clock with DirectBufferPool, Throwable, Unit] =
-    position % (64 * 1024 * 1024) match {
-      case 0 =>
-        for {
-          avail <- DirectBufferPool.numAvailable
-          _     <- putStrLn(s"${position / 1024 / 1024} - $avail")
-        } yield ()
-
-      case _ => ZIO.unit
-    }
+    for {
+      avail <- DirectBufferPool.numAvailable
+      _     <- putStrLn(s"${position / 1024 / 1024} - $avail")
+    } yield ()
 
 }

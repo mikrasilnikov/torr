@@ -13,17 +13,17 @@ import scala.annotation.tailrec
 
 object Actor {
 
-  val MinimumTorrentBlockSize: Int = 16 * 1024
-
   sealed trait Command[+_]
   case object Fail                                                   extends Command[Unit]
   case object GetState                                               extends Command[State]
   case class Fetch(piece: Int, offset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
   case class Store(piece: Int, offset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
 
+  //case class CacheEntry(fileIndex : Int, fileOffset : Int, buf : ByteBuffer, )
+
   // Multiple files in a torrent are treated like a single continuous file.
-  case class File(offset: Long, size: Long, channel: SeekableByteChannel)
-  case class State(pieceSize: Int, torrentSize: Long, files: Vector[File])
+  case class OpenedFile(offset: Long, size: Long, channel: SeekableByteChannel)
+  case class State(pieceSize: Int, torrentSize: Long, files: Vector[OpenedFile])
 
   val stateful = new Stateful[DirectBufferPool with Clock, State, Command] {
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
@@ -71,57 +71,60 @@ object Actor {
       }
   }
 
-  /** Writes a chunk of buffers to torrent files starting at `files(fileIndex)` with specified `fileOffset`. */
+  /** Writes a chunk of buffers to torrent files starting at `files(index)` with specified `offset`. */
   private[fileio] def write(
-      files: IndexedSeq[File],
+      files: IndexedSeq[OpenedFile],
       fileIndex: Int,
       fileOffset: Long,
       data: Chunk[ByteBuffer]
   ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
     data match {
       case Chunk.empty => ZIO.unit
-      case _           =>
+
+      case _ =>
         for {
-          bufRem <- data.head.remaining
-          fileRem = files(fileIndex).size - fileOffset
-          _      <- ZIO(assert(bufRem > 0))
-          _      <- ZIO(assert(fileRem > 0))
+          (fileRem, bufRem) <- writeWithoutOverflow(files(fileIndex), fileOffset, data.head)
 
-          written <- if (fileRem >= bufRem)
-                       files(fileIndex).channel.write(data.head, fileOffset)
-                     else {
-                       val managedBuf = ZManaged.make(DirectBufferPool.allocate)(b => DirectBufferPool.free(b).ignore)
-                       managedBuf.use { buf =>
-                         for {
-                           chunk <- data.head.getChunk(math.min(fileRem.toInt, buf.capacity))
-                           _     <- buf.putChunk(chunk) *> buf.flip
-                           res   <- files(fileIndex).channel.write(buf, fileOffset)
-                         } yield res
-                       }
-                     }
+          newOffset = files(fileIndex).size - fileRem
+          endOfFile = fileRem == 0
+          endOfBuf  = bufRem == 0
 
-          _       <- (fileRem - written, bufRem - written) match {
-                       // Not EOF, buffer is empty
-                       case (fr, 0) if fr > 0            =>
-                         DirectBufferPool.free(data.head) *>
-                           write(files, fileIndex, fileOffset + written, data.tail)
-                       // EOF, more data available
-                       case (0, dr) if dr > 0            => write(files, fileIndex + 1, 0, data)
-                       // Not EOF, more data available
-                       case (fr, dr) if fr > 0 && dr > 0 => write(files, fileIndex, fileOffset + written, data)
-                       // EOF, buffer is empty
-                       case (0, 0)                       =>
-                         DirectBufferPool.free(data.head) *>
-                           write(files, fileIndex + 1, 0, data.tail)
-                     }
+          _ <- (endOfFile, endOfBuf) match {
+                 case (false, true)  =>
+                   DirectBufferPool.free(data.head) *>
+                     write(files, fileIndex, newOffset, data.tail)
+                 case (true, false)  => write(files, fileIndex + 1, 0, data)
+                 case (false, false) => write(files, fileIndex, newOffset, data)
+                 case (true, true)   =>
+                   DirectBufferPool.free(data.head) *>
+                     write(files, fileIndex + 1, 0, data.tail)
+               }
         } yield ()
     }
   }
 
+  /** Writes up to `file.size - offset` bytes to `file` from `buf` */
+  private def writeWithoutOverflow(file: OpenedFile, offset: Long, buf: ByteBuffer): ZIO[Any, Throwable, (Long, Int)] =
+    for {
+      bufRem  <- buf.remaining
+      fileRem  = file.size - offset
+      dataFits = fileRem >= bufRem
+      written <- if (dataFits)
+                   file.channel.write(buf, offset)
+                 else
+                   for {
+                     oldLimit    <- buf.limit
+                     oldPosition <- buf.position
+                     _           <- buf.limit(oldPosition + fileRem.toInt)
+                     res         <- file.channel.write(buf, offset)
+                     _           <- buf.limit(oldLimit)
+                   } yield res
+    } yield (fileRem - written, bufRem - written)
+
   /** Reads up to `amount` bytes from `files` into a chunk of buffers. Buffers are allocated from `DirectBufferPool`. */
   //noinspection SimplifyZipRightToSucceedInspection
   private[fileio] def read(
-      files: IndexedSeq[File],
+      files: IndexedSeq[OpenedFile],
       fileIndex: Int,
       fileOffset: Long,
       amount: Int,
@@ -131,37 +134,50 @@ object Actor {
 
     if (amount <= 0 || fileIndex >= files.length) {
       curBuf match {
-        case Some(buf) =>
-          for {
-            _ <- buf.flip
-          } yield acc :+ buf
+        case Some(buf) => buf.flip *> ZIO.succeed(acc :+ buf)
         case None      => ZIO.succeed(acc)
       }
     } else {
       for {
-        buf       <- curBuf.fold(DirectBufferPool.allocate)(ZIO(_))
-        bytesRead <- files(fileIndex).channel.read(buf, fileOffset)
-        remaining  = amount - bytesRead
-        _         <- buf.moveLimit(remaining).when(remaining < 0) // We may have read more than requested
-        fileSize   = files(fileIndex).size
-        fileRem    = fileSize - (fileOffset + bytesRead)
-        bufRem    <- buf.remaining
-        res       <- (fileRem, bufRem) match {
-                       // Not EOF, buffer is full
-                       case (fr, 0) if fr > 0            =>
-                         buf.flip *> read(files, fileIndex, fileOffset + bytesRead, remaining, None, acc :+ buf)
-                       // EOF, buffer has free space
-                       case (0, br) if br > 0            =>
-                         read(files, fileIndex + 1, 0, remaining, Some(buf), acc)
-                       // Not EOF, buffer has free space
-                       case (fr, br) if fr > 0 && br > 0 =>
-                         read(files, fileIndex, fileOffset + bytesRead, remaining, Some(buf), acc)
-                       // EOF, Buffer is full
-                       case (0, 0)                       =>
-                         buf.flip *> read(files, fileIndex + 1, 0, remaining, None, acc :+ buf)
-                     }
+        buf <- curBuf.fold(DirectBufferPool.allocate)(ZIO.succeed(_))
+        rem <- readWithoutOverflow(files(fileIndex), fileOffset, amount, buf)
+
+        (fileRem, bufRem) = rem
+
+        newOffset = files(fileIndex).size - fileRem
+        newAmount = amount - (newOffset - fileOffset).toInt
+
+        endOfFile = fileRem == 0
+        endOfBuf  = bufRem == 0
+
+        res <- (endOfFile, endOfBuf) match {
+                 case (false, true)  =>
+                   buf.flip *> read(files, fileIndex, newOffset, newAmount, None, acc :+ buf)
+                 case (true, false)  =>
+                   read(files, fileIndex + 1, 0, newAmount, Some(buf), acc)
+                 case (false, false) =>
+                   read(files, fileIndex, newOffset, newAmount, Some(buf), acc)
+                 case (true, true)   =>
+                   buf.flip *> read(files, fileIndex + 1, 0, newAmount, None, acc :+ buf)
+               }
       } yield res
     }
+  }
+
+  private def readWithoutOverflow(
+      file: OpenedFile,
+      offset: Long,
+      amount: Int,
+      buf: ByteBuffer
+  ): ZIO[Any, Throwable, (Long, Int)] = {
+    for {
+      bytesRead <- file.channel.read(buf, offset)
+      remaining  = amount - bytesRead
+      _         <- buf.moveLimit(remaining).when(remaining < 0) // We may have read more than requested
+      fileSize   = file.size
+      fileRem    = fileSize - (offset + bytesRead)
+      bufRem    <- buf.remaining
+    } yield (fileRem, bufRem)
   }
 
   /**
@@ -177,10 +193,10 @@ object Actor {
     def loop(i1: Int, i2: Int): Int = {
       val i = (i1 + i2) / 2
       state.files(i) match {
-        case File(o, s, _) if o <= e && e < o + s => i
-        case File(o, _, _) if e < o               => loop(i1, i)
-        case File(o, s, _) if o + s <= e          => loop(i, i2)
-        case _                                    =>
+        case OpenedFile(o, s, _) if o <= e && e < o + s => i
+        case OpenedFile(o, _, _) if e < o               => loop(i1, i)
+        case OpenedFile(o, s, _) if o + s <= e          => loop(i, i2)
+        case _                                          =>
           throw new IllegalStateException(
             s"Could not find file by offset. Files: ${state.files.mkString(",")}; piece=$piece; offset=$pieceOffset"
           )
