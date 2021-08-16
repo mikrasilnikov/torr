@@ -124,7 +124,7 @@ object Actor {
       case Miss(addr, entryRange)                       =>
         for {
           _      <- ZIO(markCacheMiss(state))
-          entry  <- makeReadEntry(addr)
+          entry  <- makeReadEntry(state, addr)
           copied <- copyToBufAndMarkEntryUse(entry, entryRange, buf)
         } yield copied
     }
@@ -183,7 +183,7 @@ object Actor {
       case Miss(addr, entryRange)                       =>
         for {
           _      <- ZIO(markCacheMiss(state))
-          entry  <- makeWriteEntry(addr)
+          entry  <- makeWriteEntry(state, addr)
           copied <- copyToEntryAndScheduleWriteout(entry, entryRange, buf)
           _      <- DirectBufferPool.free(buf)
         } yield copied
@@ -192,26 +192,30 @@ object Actor {
   private def markCacheHit(state: State): Unit  = state.cacheHits = state.cacheHits + 1
   private def markCacheMiss(state: State): Unit = state.cacheMisses = state.cacheMisses + 1
 
-  private[fileio] def makeReadEntry(addr: EntryAddr): Task[ReadEntry] =
+  private[fileio] def makeReadEntry(state: State, addr: EntryAddr): Task[ReadEntry] =
     for {
-      cacheBuf <- allocateOrFreeCacheBuf
+      cacheBuf <- allocateOrFreeCacheBuf(state)
       _        <- readCacheEntry(addr, cacheBuf)
+      // TODO register entry
     } yield ReadEntry(addr, cacheBuf)
 
-  private[fileio] def makeWriteEntry(addr: EntryAddr): Task[WriteEntry] =
+  private[fileio] def makeWriteEntry(state: State, addr: EntryAddr): Task[WriteEntry] =
     for {
-      cacheBuf <- allocateOrFreeCacheBuf
+      cacheBuf <- allocateOrFreeCacheBuf(state)
+      // TODO register entry
     } yield WriteEntry(addr, cacheBuf)
 
   private[fileio] def makeReadEntryFromWriteEntry(entry: WriteEntry): Task[ReadEntry] =
     for {
       _ <- synchronizeAndWriteOut(entry)
       _ <- ZIO(entry.terminated = true)
+      // TODO register entry
     } yield ReadEntry(entry.addr, entry.data)
 
   private[fileio] def makeWriteEntryFromReadEntry(entry: ReadEntry): Task[WriteEntry] =
     for {
       _ <- ZIO(entry.terminated = true)
+      // TODO register entry
     } yield WriteEntry(entry.addr, entry.data)
 
   private[fileio] def allocateOrFreeCacheBuf(state: State): Task[ByteBuffer] = {
@@ -222,18 +226,18 @@ object Actor {
       state.cacheEntries.remove(entryToFree.addr)
 
       entryToFree match {
-        case ReadEntry(_, _, _)  =>
+        case e @ ReadEntry(_, _, _)  =>
           for {
-            _ <- ZIO(entryToFree.terminated = true)
-            _ <- entryToFree.data.clear
-          } yield entryToFree.data
+            _ <- ZIO(e.terminated = true)
+            _ <- e.data.clear
+          } yield e.data
 
-        case WriteEntry(_, _, _) =>
+        case e @ WriteEntry(_, _, _) =>
           for {
-            _ <- synchronizeAndWriteOut(entryToFree)
-            _  = entryToFree.terminated = true
-            _ <- entryToFree.data.clear
-          } yield entryToFree.data
+            _ <- synchronizeAndWriteOut(e)
+            _  = e.terminated = true
+            _ <- e.data.clear
+          } yield e.data
       }
     }
   }
