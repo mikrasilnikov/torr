@@ -1,6 +1,6 @@
 package torr.fileio
 
-import zio.{ZIO, _}
+import zio.{RIO, ZIO, _}
 import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.nio.core._
@@ -13,172 +13,212 @@ import scala.annotation.tailrec
 
 object Actor {
 
-  sealed trait Command[+_]
-  case object Fail                                                   extends Command[Unit]
-  case object GetState                                               extends Command[State]
-  case class Fetch(piece: Int, offset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
-  case class Store(piece: Int, offset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
+  private val CacheEntrySize: Long = 128 * 1024
 
-  //case class CacheEntry(fileIndex : Int, fileOffset : Int, buf : ByteBuffer, )
+  sealed trait Command[+_]
+  case object Fail                                                        extends Command[Unit]
+  case object GetState                                                    extends Command[State]
+  case class Fetch(piece: Int, pieceOffset: Int, amount: Long)            extends Command[Chunk[ByteBuffer]]
+  case class Store(piece: Int, pieceOffset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
+
+  case class EntryAddr(fileIndex: Int, entryIndex: Long) // offset = entryIndex * CacheEntrySize
+
+  case class Range(from: Long, until: Long) {
+    val length: Long = until - from
+  }
+
+  sealed trait CacheEntry { def addr: EntryAddr; def data: ByteBuffer }
+  case class ReadEntry(addr: EntryAddr, data: ByteBuffer)  extends CacheEntry
+  case class WriteEntry(addr: EntryAddr, data: ByteBuffer) extends CacheEntry {
+    def isFull: Boolean = ???
+  }
+
+  sealed trait LookupResult
+  case class Hit(entry: CacheEntry, entryRange: Range)     extends LookupResult
+  case class Miss(entryAddr: EntryAddr, entryRange: Range) extends LookupResult
 
   // Multiple files in a torrent are treated like a single continuous file.
   case class OpenedFile(offset: Long, size: Long, channel: SeekableByteChannel)
-  case class State(pieceSize: Int, torrentSize: Long, files: Vector[OpenedFile])
+
+  case class State(
+      pieceSize: Int,
+      torrentSize: Long,
+      files: Vector[OpenedFile],
+      var cacheHits: Long = 0,
+      var cacheMisses: Long = 0
+  )
 
   val stateful = new Stateful[DirectBufferPool with Clock, State, Command] {
+
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
-        case GetState                     => ZIO.succeed(state, state)
-        case Fetch(piece, offset, amount) => fetch(state, piece, offset, amount).map(b => (state, b))
-        case Store(piece, offset, data)   => store(state, piece, offset, data).as(state, ())
-        case Fail                         =>
-          ZIO.fail(new Exception("Failed"))
+
+        case Fetch(piece, pieceOffset, amount) =>
+          for {
+            absolute <- ZIO(absoluteOffset(state, piece, pieceOffset))
+            _        <- validateAmount(state, absolute, amount)
+            result   <- read(state, absolute, amount)
+          } yield (state, result)
+
+        case Store(piece, pieceOffset, data)   =>
+          for {
+            absolute <- ZIO(absoluteOffset(state, piece, pieceOffset))
+            amount   <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
+            _        <- validateAmount(state, absolute, amount)
+            _        <- write(state, absolute, data)
+          } yield (state, ())
+
+        case GetState                          => ZIO.succeed(state, state)
+        case Fail                              => ZIO.fail(new Exception("Failed"))
       }
     }
   }
 
-  private def fetch(
-      state: State,
-      piece: Int,
-      offset: Int,
-      amount: Int
-  ): ZIO[DirectBufferPool with Clock, Throwable, Chunk[ByteBuffer]] = {
-    val upTo = piece * state.pieceSize + offset + amount
-    if (upTo > state.torrentSize)
-      ZIO.fail(new IllegalArgumentException("Must not read beyond end of torrent"))
-    else {
-      val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
-      read(state.files, fileIndex, fileOffset, amount)
-    }
-  }
-
-  private def store(
-      state: State,
-      piece: Int,
-      offset: Int,
-      data: Chunk[ByteBuffer]
-  ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
-
-    ZIO.foldLeft(data)(0)((acc, buf) => buf.remaining.map(acc + _))
-      .flatMap { amount =>
-        val upTo = piece * state.pieceSize + offset + amount
-        if (upTo > state.torrentSize)
-          ZIO.fail(new IllegalArgumentException("Must not write beyond end of torrent"))
-        else {
-          val (fileIndex, fileOffset) = fileIndexOffset(state, piece, offset)
-          write(state.files, fileIndex, fileOffset, data)
-        }
-      }
-  }
-
-  /** Writes a chunk of buffers to torrent files starting at `files(index)` with specified `offset`. */
-  private[fileio] def write(
-      files: IndexedSeq[OpenedFile],
-      fileIndex: Int,
-      fileOffset: Long,
-      data: Chunk[ByteBuffer]
-  ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
-    data match {
-      case Chunk.empty => ZIO.unit
-
-      case _ =>
-        for {
-          (fileRem, bufRem) <- writeWithoutOverflow(files(fileIndex), fileOffset, data.head)
-
-          newOffset = files(fileIndex).size - fileRem
-          endOfFile = fileRem == 0
-          endOfBuf  = bufRem == 0
-
-          _ <- (endOfFile, endOfBuf) match {
-                 case (false, true)  =>
-                   DirectBufferPool.free(data.head) *>
-                     write(files, fileIndex, newOffset, data.tail)
-                 case (true, false)  => write(files, fileIndex + 1, 0, data)
-                 case (false, false) => write(files, fileIndex, newOffset, data)
-                 case (true, true)   =>
-                   DirectBufferPool.free(data.head) *>
-                     write(files, fileIndex + 1, 0, data.tail)
-               }
-        } yield ()
-    }
-  }
-
-  /** Writes up to `file.size - offset` bytes to `file` from `buf` */
-  private def writeWithoutOverflow(file: OpenedFile, offset: Long, buf: ByteBuffer): ZIO[Any, Throwable, (Long, Int)] =
-    for {
-      bufRem  <- buf.remaining
-      fileRem  = file.size - offset
-      dataFits = fileRem >= bufRem
-      written <- if (dataFits)
-                   file.channel.write(buf, offset)
-                 else
-                   for {
-                     oldLimit    <- buf.limit
-                     oldPosition <- buf.position
-                     _           <- buf.limit(oldPosition + fileRem.toInt)
-                     res         <- file.channel.write(buf, offset)
-                     _           <- buf.limit(oldLimit)
-                   } yield res
-    } yield (fileRem - written, bufRem - written)
-
-  /** Reads up to `amount` bytes from `files` into a chunk of buffers. Buffers are allocated from `DirectBufferPool`. */
-  //noinspection SimplifyZipRightToSucceedInspection
   private[fileio] def read(
-      files: IndexedSeq[OpenedFile],
-      fileIndex: Int,
-      fileOffset: Long,
-      amount: Int,
-      curBuf: Option[ByteBuffer] = None,
+      state: State,
+      offset: Long,
+      amount: Long,
       acc: Chunk[ByteBuffer] = Chunk.empty
-  ): ZIO[DirectBufferPool with Clock, Throwable, Chunk[ByteBuffer]] = {
-
-    if (amount <= 0 || fileIndex >= files.length) {
-      curBuf match {
-        case Some(buf) => buf.flip *> ZIO.succeed(acc :+ buf)
-        case None      => ZIO.succeed(acc)
-      }
-    } else {
+  ): RIO[DirectBufferPool with Clock, Chunk[ByteBuffer]] =
+    if (amount <= 0) ZIO.succeed(acc)
+    else
       for {
-        buf <- curBuf.fold(DirectBufferPool.allocate)(ZIO.succeed(_))
-        rem <- readWithoutOverflow(files(fileIndex), fileOffset, amount, buf)
-
-        (fileRem, bufRem) = rem
-
-        newOffset = files(fileIndex).size - fileRem
-        newAmount = amount - (newOffset - fileOffset).toInt
-
-        endOfFile = fileRem == 0
-        endOfBuf  = bufRem == 0
-
-        res <- (endOfFile, endOfBuf) match {
-                 case (false, true)  =>
-                   buf.flip *> read(files, fileIndex, newOffset, newAmount, None, acc :+ buf)
-                 case (true, false)  =>
-                   read(files, fileIndex + 1, 0, newAmount, Some(buf), acc)
-                 case (false, false) =>
-                   read(files, fileIndex, newOffset, newAmount, Some(buf), acc)
-                 case (true, true)   =>
-                   buf.flip *> read(files, fileIndex + 1, 0, newAmount, None, acc :+ buf)
-               }
+        buf           <- DirectBufferPool.allocate
+        lookupResults <- cacheLookup(state, offset, buf)
+        bytesRead     <- cachedReads(state, lookupResults, buf)
+        res           <- read(state, offset + bytesRead, amount - bytesRead, acc :+ buf)
       } yield res
+
+  private[fileio] def cachedReads(
+      state: State,
+      lookupResults: Chunk[LookupResult],
+      buf: ByteBuffer,
+      acc: Long = 0L
+  ): RIO[DirectBufferPool with Clock, Long] = {
+    if (lookupResults.isEmpty) ZIO.succeed(acc)
+    else
+      for {
+        bytesRead <- cachedRead(state, lookupResults.head, buf)
+        result    <- cachedReads(state, lookupResults.tail, buf, acc + bytesRead)
+      } yield result
+  }
+
+  private[fileio] def cachedRead(state: State, lookupResult: LookupResult, buf: ByteBuffer): Task[Long] = {
+    lookupResult match {
+      case Hit(entry @ ReadEntry(_, _), entryRange)  =>
+        for {
+          _      <- ZIO(markCacheHit(state))
+          copied <- copyToBufAndMarkEntryUse(entry, entryRange, buf)
+        } yield copied
+
+      case Hit(entry @ WriteEntry(_, _), entryRange) =>
+        for {
+          _         <- ZIO(markCacheHit(state))
+          readEntry <- makeReadEntryFromWriteEntry(entry)
+          copied    <- copyToBufAndMarkEntryUse(readEntry, entryRange, buf)
+        } yield copied
+
+      case Miss(addr, entryRange)                    =>
+        for {
+          _      <- ZIO(markCacheMiss(state))
+          entry  <- makeReadEntry(addr)
+          copied <- copyToBufAndMarkEntryUse(entry, entryRange, buf)
+        } yield copied
     }
   }
 
-  private def readWithoutOverflow(
-      file: OpenedFile,
+  //noinspection SimplifyUnlessInspection
+  private[fileio] def write(
+      state: State,
       offset: Long,
-      amount: Int,
-      buf: ByteBuffer
-  ): ZIO[Any, Throwable, (Long, Int)] = {
-    for {
-      bytesRead <- file.channel.read(buf, offset)
-      remaining  = amount - bytesRead
-      _         <- buf.moveLimit(remaining).when(remaining < 0) // We may have read more than requested
-      fileSize   = file.size
-      fileRem    = fileSize - (offset + bytesRead)
-      bufRem    <- buf.remaining
-    } yield (fileRem, bufRem)
+      data: Chunk[ByteBuffer]
+  ): RIO[DirectBufferPool, Unit] = {
+    if (data.isEmpty) ZIO.unit
+    else
+      for {
+        lookupResults <- cacheLookup(state, offset, data.head)
+        bytesWritten  <- cachedWrites(state, lookupResults, data.head)
+        _             <- write(state, offset + bytesWritten, data.tail)
+      } yield ()
   }
+
+  private[fileio] def cachedWrites(
+      state: State,
+      lookupResults: Chunk[LookupResult],
+      buf: ByteBuffer,
+      acc: Long = 0
+  ): RIO[DirectBufferPool, Long] = {
+    if (lookupResults.isEmpty) ZIO.succeed(acc)
+    else
+      for {
+        written <- cachedWrite(state, lookupResults.head, buf)
+        result  <- cachedWrites(state, lookupResults.tail, buf, acc + written)
+      } yield result
+  }
+
+  private[fileio] def cachedWrite(
+      state: State,
+      lookupResult: LookupResult,
+      buf: ByteBuffer
+  ): RIO[DirectBufferPool, Long] =
+    lookupResult match {
+      case Hit(entry @ ReadEntry(_, _), entryRange)  =>
+        for {
+          _        <- ZIO(markCacheHit(state))
+          newEntry <- makeWriteEntryFromReadEntry(entry)
+          copied   <- copyToEntryAndScheduleWriteout(newEntry, entryRange, buf)
+          _        <- DirectBufferPool.free(buf)
+        } yield copied
+
+      case Hit(entry @ WriteEntry(_, _), entryRange) =>
+        for {
+          _      <- ZIO(markCacheHit(state))
+          copied <- copyToEntryAndScheduleWriteout(entry, entryRange, buf)
+          _      <- DirectBufferPool.free(buf)
+        } yield copied
+
+      case Miss(addr, entryRange)                    =>
+        for {
+          _      <- ZIO(markCacheMiss(state))
+          entry  <- makeWriteEntry(addr)
+          copied <- copyToEntryAndScheduleWriteout(entry, entryRange, buf)
+          _      <- DirectBufferPool.free(buf)
+        } yield copied
+    }
+
+  private def markCacheHit(state: State): Unit  = state.cacheHits = state.cacheHits + 1
+  private def markCacheMiss(state: State): Unit = state.cacheMisses = state.cacheMisses + 1
+
+  private def makeReadEntry(addr: EntryAddr): Task[ReadEntry]        = ???
+  private def makeWriteEntry(entryAddr: EntryAddr): Task[WriteEntry] = ???
+
+  private[fileio] def makeReadEntryFromWriteEntry(entry: WriteEntry): Task[ReadEntry] = ???
+  private[fileio] def makeWriteEntryFromReadEntry(entry: ReadEntry): Task[WriteEntry] = ???
+
+  private def copyToEntryAndScheduleWriteout(
+      entry: WriteEntry,
+      entryRange: Range,
+      buf: ByteBuffer
+  ): Task[Long] = ???
+
+  private def copyToBufAndMarkEntryUse(
+      entry: ReadEntry,
+      entryRange: Range,
+      buf: ByteBuffer
+  ): Task[Long] = ???
+
+  private def scheduleWriteOut(entry: WriteEntry): Task[Unit] = ???
+
+  private def writeOut(entry: WriteEntry): Task[Unit] = ???
+
+  private[fileio] def cacheLookup(
+      state: State,
+      offset: Long,
+      buf: ByteBuffer
+  ): RIO[DirectBufferPool, Chunk[LookupResult]] = ???
+
+  private[fileio] def absoluteOffset(state: State, piece: Int, pieceOffset: Int): Long             = ???
+  private[fileio] def validateAmount(state: State, absoluteOffset: Long, amount: Long): Task[Unit] = ???
 
   /**
     * Translates piece index & piece offset into file index & file offset.
@@ -208,4 +248,7 @@ object Actor {
 
     (index, offset)
   }
+
+  def read(files: Chunk[OpenedFile], fileIndex: Int, fileOffset: Int, amount: Int): Task[Chunk[ByteBuffer]]  = ???
+  def write(files: Chunk[OpenedFile], fileIndex: Int, fileOffset: Int, value: Chunk[ByteBuffer]): Task[Unit] = ???
 }

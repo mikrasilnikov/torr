@@ -7,7 +7,7 @@ import torr.directbuffers.DirectBufferPool
 
 package object fileio {
 
-  val MinimumTorrentBlockSize: Int = 256 * 1024
+  val MinimumTorrentBlockSize: Int = 16 * 1024
 
   type FileIO = Has[FileIO.Service]
 
