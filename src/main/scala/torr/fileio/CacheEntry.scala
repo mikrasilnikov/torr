@@ -1,11 +1,10 @@
 package torr.fileio
 
-import torr.fileio
 import zio._
 import zio.nio.core.ByteBuffer
-
 import scala.annotation.tailrec
 import scala.collection.mutable
+import torr.fileio
 
 sealed trait CacheEntry {
   def addr: EntryAddr
@@ -39,17 +38,14 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends 
   def isFull: Boolean = freeRanges.isEmpty
 
   def freeRanges: List[IntRange] = {
-
     @tailrec
     def loop(used: List[IntRange], free: List[IntRange] = Nil, last: Int = 0): List[IntRange] =
       used match {
         case Nil                      =>
           if (last != dataSize) IntRange(last, dataSize) :: free
           else free
-
         case h :: t if h.from <= last => loop(t, free, math.max(last, h.until))
-
-        case h :: t => loop(t, IntRange(last, h.from) :: free, h.until)
+        case h :: t                   => loop(t, IntRange(last, h.from) :: free, h.until)
       }
 
     if (usedRanges.isEmpty) List(IntRange(0, dataSize))

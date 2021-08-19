@@ -7,16 +7,16 @@ import zio.nio.core._
 import torr.channels._
 import torr.directbuffers.DirectBufferPool
 import zio.clock.Clock
-import zio.duration.durationInt
+import zio.duration.{Duration, durationInt}
 
 import scala.collection.mutable
 import scala.annotation.tailrec
 
 object Actor {
 
-  val MaxCacheEntries: Int = 100
-  val CacheEntrySize: Int  = 128 * 1024
-  val WriteOutDelay        = 30.seconds
+  val MaxCacheEntries: Int    = 100
+  val CacheEntrySize: Int     = 128 * 1024
+  val WriteOutDelay: Duration = 30.seconds
 
   sealed trait Command[+_]
   case object Fail                                                        extends Command[Unit]
