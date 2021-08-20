@@ -71,9 +71,7 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends 
   private[fileio] var writeOutFiber: Option[Fiber[Throwable, Unit]] = None
 }
 
-case class EntryAddr(fileIndex: Int, entryIndex: Long) {
-  val fileOffset = entryIndex * fileio.Actor.CacheEntrySize
-}
+case class EntryAddr(fileIndex: Int, entryIndex: Long)
 
 case class LongRange(from: Long, until: Long) {
   val length: Long = until - from
