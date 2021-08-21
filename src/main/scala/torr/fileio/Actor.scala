@@ -294,6 +294,14 @@ object Actor {
     cacheState.relevances.enqueue(LRUEntry(cacheState.currentRelevance, entry))
   }
 
+  /**
+    * Writes out `entry` to disk.
+    * If `entry` is not full (some parts of it are out of sync) then
+    *
+    *  - reads whole part from disk
+    *  - merges data
+    *  - writes result
+    */
   private[fileio] def synchronizeAndWriteOut(state: State, entry: WriteEntry): Task[Unit] = {
 
     def synchronize: Task[Unit] =
@@ -303,8 +311,8 @@ object Actor {
         _         <- state.files(entry.addr.fileIndex).channel.read(buf, fileOffset)
         _         <- ZIO.foreach_(entry.freeRanges) { r =>
                        for {
-                         _ <- buf.position(r.from)
                          _ <- buf.limit(r.until)
+                         _ <- buf.position(r.from)
                          _ <- entry.write(buf, r.from, r.length)
                        } yield ()
                      }
@@ -339,6 +347,33 @@ object Actor {
     }
   }
 
+  /**
+    *                 ==Example1==
+    * {{{
+    *            cached
+    * ... |-----------------| ... <- file
+    *       |------------|        <- requested range (not aligned)
+    *             ^
+    *            hit
+    * }}}
+    *                == Example2 ==
+    * {{{
+    *            cached          not cached
+    * ... |-----------------|-----------------| ... <- file
+    *                  |----+--------|              <- requested range (not aligned)
+    *                     ^      ^
+    *                    hit    miss
+    * }}}
+    *                == Example3 ==
+    * {{{
+    *                      not cached    cached
+    * ... |-----------------|-----| eof                    <- file1
+    *                             |-----------------| ...  <- file2
+    *                        |----+--------|               <- requested range
+    *                          ^      ^
+    *                         miss   hit
+    * }}}
+    */
   private[fileio] def cacheLookup(
       state: State,
       torrentOffset: Long,
@@ -387,7 +422,7 @@ object Actor {
   private[fileio] def validateAmount(state: State, absoluteOffset: Long, amount: Long): Task[Unit] = ???
 
   /**
-    * Translates piece index & piece offset into file index & file offset.
+    * Translates global torrent offset into file index & file offset.
     */
   private[fileio] def fileIndexOffset(state: State, torrentOffset: Long): (Int, Long) = {
 

@@ -1,6 +1,5 @@
 package torr.fileio.test
 
-import torr.channels.InMemoryChannel
 import torr.fileio.{Actor, EntryAddr, IntRange, ReadEntry}
 import zio._
 import zio.test._
@@ -8,7 +7,7 @@ import zio.test.Assertion._
 import zio.test.DefaultRunnableSpec
 import torr.fileio.Actor._
 import zio.nio.core.Buffer
-
+import torr.fileio.test.Helpers._
 import scala.util.Random
 
 object CacheLookupSpec extends DefaultRunnableSpec {
@@ -16,48 +15,54 @@ object CacheLookupSpec extends DefaultRunnableSpec {
     suite("CacheLookupSpec")(
       //
       testM("1 file, 1 entry, 1 miss") {
+        val rnd = new java.util.Random(42)
         for {
-          state   <- createState(32 :: Nil, 32, 32, 1)
+          state   <- createState(rnd, 32 :: Nil, 32, 32, 1)
           lookup  <- Actor.cacheLookup(state, 0, 32)
           expected = Chunk(Miss(EntryAddr(0, 0), IntRange(0, 32)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
       testM("1 file, 2 entries, 2 misses") {
+        val rnd = new java.util.Random(42)
         for {
-          state   <- createState(32 :: Nil, 32, 16, 2)
+          state   <- createState(rnd, 32 :: Nil, 32, 16, 2)
           lookup  <- Actor.cacheLookup(state, 0, 32)
           expected = Chunk(Miss(EntryAddr(0, 0), IntRange(0, 16)), Miss(EntryAddr(0, 1), IntRange(0, 16)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
       testM("1 file, 1 entry, 1 unaligned miss") {
+        val rnd = new java.util.Random(42)
         for {
-          state   <- createState(32 :: Nil, 32, 32, 2)
+          state   <- createState(rnd, 32 :: Nil, 32, 32, 2)
           lookup  <- Actor.cacheLookup(state, 8, 16)
           expected = Chunk(Miss(EntryAddr(0, 0), IntRange(8, 24)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
       testM("2 files, overlapping miss") {
+        val rnd = new java.util.Random(42)
         for {
-          state   <- createState(32 :: 32 :: Nil, 32, 32, 2)
+          state   <- createState(rnd, 32 :: 32 :: Nil, 32, 32, 2)
           lookup  <- Actor.cacheLookup(state, 24, 16)
           expected = Chunk(Miss(EntryAddr(0, 0), IntRange(24, 32)), Miss(EntryAddr(1, 0), IntRange(0, 8)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
       testM("3 files, overlapping miss") {
+        val rnd = new java.util.Random(42)
         for {
-          state   <- createState(32 :: 32 :: 32 :: Nil, 32, 32, 2)
+          state   <- createState(rnd, 32 :: 32 :: 32 :: Nil, 32, 32, 2)
           lookup  <- Actor.cacheLookup(state, 32 + 24, 16)
           expected = Chunk(Miss(EntryAddr(1, 0), IntRange(24, 32)), Miss(EntryAddr(2, 0), IntRange(0, 8)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
       testM("1 file, 1 entry, 1 hit") {
+        val rnd = new java.util.Random(42)
         for {
-          state    <- createState(32 :: Nil, 32, 32, 1)
+          state    <- createState(rnd, 32 :: Nil, 32, 32, 1)
           entryBuf <- Buffer.byte(32)
           entry     = ReadEntry(EntryAddr(0, 0), entryBuf, 32)
           _         = state.cacheState.cacheEntries.put(entry.addr, entry)
@@ -67,8 +72,9 @@ object CacheLookupSpec extends DefaultRunnableSpec {
       },
       //
       testM("1 file, 2 entries, 2 hits") {
+        val rnd = new java.util.Random(42)
         for {
-          state <- createState(32 :: Nil, 32, 16, 2)
+          state <- createState(rnd, 32 :: Nil, 32, 16, 2)
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
@@ -84,8 +90,9 @@ object CacheLookupSpec extends DefaultRunnableSpec {
       },
       //
       testM("1 file, 1 entry, 1 unaligned hit") {
+        val rnd = new java.util.Random(42)
         for {
-          state <- createState(32 :: Nil, 32, 32, 2)
+          state <- createState(rnd, 32 :: Nil, 32, 32, 2)
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
@@ -97,8 +104,9 @@ object CacheLookupSpec extends DefaultRunnableSpec {
       },
       //
       testM("2 files, overlapping hit") {
+        val rnd = new java.util.Random(42)
         for {
-          state <- createState(32 :: 32 :: Nil, 32, 32, 2)
+          state <- createState(rnd, 32 :: 32 :: Nil, 32, 32, 2)
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
@@ -114,8 +122,9 @@ object CacheLookupSpec extends DefaultRunnableSpec {
       },
       //
       testM("3 files, overlapping hit") {
+        val rnd = new java.util.Random(42)
         for {
-          state <- createState(32 :: 32 :: 32 :: Nil, 32, 32, 2)
+          state <- createState(rnd, 32 :: 32 :: 32 :: Nil, 32, 32, 2)
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(1, 0), b1, 32)
@@ -131,18 +140,4 @@ object CacheLookupSpec extends DefaultRunnableSpec {
       }
     )
 
-  def createState(sizes: List[Int], pieceSize: Int, cacheEntrySize: Int, cacheEntriesNum: Int): Task[State] =
-    for {
-      files     <- createFiles(sizes)
-      cacheState = CacheState(cacheEntrySize, cacheEntriesNum)
-    } yield State(pieceSize, sizes.sum, files, cacheState)
-
-  def createFiles(sizes: List[Int], offset: Int = 0, res: Vector[OpenedFile] = Vector.empty): Task[Vector[OpenedFile]] =
-    sizes match {
-      case Nil           => ZIO.succeed(res)
-      case size :: sizes =>
-        InMemoryChannel.make(Random.nextBytes(size)).flatMap { channel =>
-          createFiles(sizes, offset + size, res :+ OpenedFile(offset, size, channel))
-        }
-    }
 }
