@@ -10,12 +10,12 @@ sealed trait CacheEntry {
   def addr: EntryAddr
   def data: ByteBuffer
   def dataSize: Int
-  def terminated: Boolean
+  def invalid: Boolean
 }
 
 case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends CacheEntry {
-  var relevance: Long     = 0
-  var terminated: Boolean = false
+  var relevance: Long  = 0
+  var invalid: Boolean = false
 
   def read(buf: ByteBuffer, entryOffset: Int, amount: Int): Task[Int] =
     for {
@@ -27,7 +27,7 @@ case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends C
 
 case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends CacheEntry {
 
-  var terminated: Boolean = false
+  var invalid: Boolean = false
 
   private val usedRanges: mutable.TreeSet[IntRange] = new mutable.TreeSet[IntRange]()(
     new Ordering[IntRange] {
