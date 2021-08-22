@@ -1,17 +1,15 @@
 package torr.fileio.test
 
+import zio._
+import zio.clock.Clock
+import zio.logging.slf4j.Slf4jLogger
+import zio.test._
+import zio.test.Assertion._
+import zio.test.TestAspect.sequential
 import torr.actorsystem.ActorSystemLive
 import torr.channels.InMemoryChannel
 import torr.directbuffers.DirectBufferPoolLive
 import torr.fileio.{Actor, EntryAddr, ReadEntry}
-import zio._
-import zio.clock.Clock
-import zio.logging.slf4j.Slf4jLogger
-import zio.nio.core.Buffer
-import zio.test._
-import zio.test.Assertion._
-import zio.test.TestAspect.sequential
-
 import java.util.Random
 
 object ReadWriteSpec extends DefaultRunnableSpec {
@@ -111,8 +109,7 @@ object ReadWriteSpec extends DefaultRunnableSpec {
         effect.provideCustomLayer(env)
       },
       //
-      //
-      testM("read - hit boundary miss, buf recycling") {
+      testM("read - hit boundary miss, with buf recycling") {
         val rnd    = new Random(42)
         val effect =
           for {
