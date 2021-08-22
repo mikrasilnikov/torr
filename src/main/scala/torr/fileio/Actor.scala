@@ -9,7 +9,6 @@ import torr.directbuffers.DirectBufferPool
 import zio.clock.Clock
 import zio.duration.{Duration, durationInt}
 import torr.fileio.CacheEntry._
-
 import scala.collection.mutable
 import scala.annotation.tailrec
 
@@ -18,7 +17,7 @@ object Actor {
   sealed trait Command[+_]
   case object Fail                                                        extends Command[Unit]
   case object GetState                                                    extends Command[State]
-  case class Fetch(piece: Int, pieceOffset: Int, amount: Long)            extends Command[Chunk[ByteBuffer]]
+  case class Fetch(piece: Int, pieceOffset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
   case class Store(piece: Int, pieceOffset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
 
   private[fileio] case class SynchronizeAndWriteOut(writeEntry: WriteEntry) extends Command[Unit]
@@ -72,14 +71,14 @@ object Actor {
   private[fileio] def read(
       state: State,
       offset: Long,
-      amount: Long,
+      amount: Int,
       acc: Chunk[ByteBuffer] = Chunk.empty
   ): RIO[DirectBufferPool with Clock, Chunk[ByteBuffer]] =
     if (amount <= 0) ZIO.succeed(acc)
     else
       for {
         buf           <- DirectBufferPool.allocate
-        lookupResults <- cacheLookup(state, offset, buf.capacity)
+        lookupResults <- cacheLookup(state, offset, amount) //.debug
         // TODO What if amount < buf.capacity ?
         bytesRead     <- cachedReads(state, lookupResults, buf)
         res           <- read(state, offset + bytesRead, amount - bytesRead, acc :+ buf)
@@ -89,8 +88,8 @@ object Actor {
       state: State,
       lookupResults: Chunk[LookupResult],
       buf: ByteBuffer,
-      acc: Long = 0L
-  ): RIO[DirectBufferPool with Clock, Long] = {
+      acc: Int = 0
+  ): RIO[DirectBufferPool with Clock, Int] = {
     if (lookupResults.isEmpty) ZIO.succeed(acc)
     else
       for {
@@ -99,18 +98,18 @@ object Actor {
       } yield result
   }
 
-  private[fileio] def cachedRead(state: State, lookupResult: LookupResult, buf: ByteBuffer): Task[Long] = {
+  private[fileio] def cachedRead(state: State, lookupResult: LookupResult, buf: ByteBuffer): Task[Int] = {
     lookupResult match {
       case Hit(entry @ ReadEntry(_, _, _), entryRange)  =>
         for {
-          _      <- ZIO(state.cache.markHit)
+          _      <- ZIO(state.cache.markHit())
           copied <- entry.read(buf, entryRange.from, entryRange.length)
           _       = state.cache.markUse(entry)
         } yield copied
 
       case Hit(entry @ WriteEntry(_, _, _), entryRange) =>
         for {
-          _         <- ZIO(state.cache.markHit)
+          _         <- ZIO(state.cache.markHit())
           readEntry <- makeReadEntryFromWriteEntry(state, entry)
           copied    <- readEntry.read(buf, entryRange.from, entryRange.length)
           _          = state.cache.markUse(readEntry)
@@ -118,7 +117,7 @@ object Actor {
 
       case Miss(addr, entryRange)                       =>
         for {
-          _      <- ZIO(state.cache.markMiss)
+          _      <- ZIO(state.cache.markMiss())
           entry  <- makeReadEntry(state, addr)
           copied <- entry.read(buf, entryRange.from, entryRange.length)
           _       = state.cache.markUse(entry)
@@ -167,7 +166,7 @@ object Actor {
     lookupResult match {
       case Hit(entry @ ReadEntry(_, _, _), entryRange)  =>
         for {
-          _        <- ZIO(state.cache.markHit)
+          _        <- ZIO(state.cache.markHit())
           newEntry <- makeWriteEntryFromReadEntry(state, entry)
           copied   <- newEntry.write(buf, entryRange.from, entryRange.length)
           _        <- scheduleWriteOut(self, state.cache, newEntry)
@@ -176,7 +175,7 @@ object Actor {
 
       case Hit(entry @ WriteEntry(_, _, _), entryRange) =>
         for {
-          _      <- ZIO(state.cache.markHit)
+          _      <- ZIO(state.cache.markHit())
           copied <- entry.write(buf, entryRange.from, entryRange.length)
           _      <- scheduleWriteOut(self, state.cache, entry)
           _      <- DirectBufferPool.free(buf)
@@ -184,7 +183,7 @@ object Actor {
 
       case Miss(addr, entryRange)                       =>
         for {
-          _      <- ZIO(state.cache.markMiss)
+          _      <- ZIO(state.cache.markMiss())
           entry  <- makeWriteEntry(state, addr)
           copied <- entry.write(buf, entryRange.from, entryRange.length)
           _      <- scheduleWriteOut(self, state.cache, entry)
@@ -337,7 +336,8 @@ object Actor {
     if (amount <= 0) ZIO.succeed(acc)
     else {
       val (entryAddr, entryOffset) = locateEntryPart(state, torrentOffset)
-      val amountFromEntry          = math.min(amount, state.cache.entrySize - entryOffset)
+      val entrySize                = entrySizeForAddr(state, entryAddr)
+      val amountFromEntry          = math.min(amount, entrySize - entryOffset)
 
       state.cache.addrToEntry.get(entryAddr) match {
         case None    =>
@@ -405,9 +405,10 @@ object Actor {
 
   /** Returns amount of bytes read for given `addr` */
   def readAddr(state: State, addr: EntryAddr, buf: ByteBuffer): Task[Int] = {
-    val size = entrySizeForAddr(state, addr)
+    val position = addr.entryIndex * state.cache.entrySize
     for {
-      _ <- state.files(addr.fileIndex).channel.read(buf, size)
+      _    <- buf.clear
+      size <- state.files(addr.fileIndex).channel.read(buf, position)
     } yield size
   }
 

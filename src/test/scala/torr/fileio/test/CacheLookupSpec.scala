@@ -103,7 +103,7 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         } yield assert(lookup)(equalTo(expected))
       },
       //
-      testM("2 files, overlapping hit") {
+      testM("2 files, overlapping hit - 1") {
         val rnd = new java.util.Random(42)
         for {
           state <- createState(rnd, 32 :: 32 :: Nil, 32, 32, 2)
@@ -118,6 +118,24 @@ object CacheLookupSpec extends DefaultRunnableSpec {
 
           lookup  <- Actor.cacheLookup(state, 24, 16)
           expected = Chunk(Hit(e1, IntRange(24, 32)), Hit(e2, IntRange(0, 8)))
+        } yield assert(lookup)(equalTo(expected))
+      },
+      //
+      testM("2 files, overlapping hit - 2") {
+        val rnd = new java.util.Random(42)
+        for {
+          state <- createState(rnd, 24 :: 24 :: Nil, 16, 16, 2)
+
+          b1 <- Buffer.byte(16)
+          e1  = ReadEntry(EntryAddr(0, 1), b1, 8)
+          _   = state.cache.addrToEntry.put(e1.addr, e1)
+
+          b2 <- Buffer.byte(16)
+          e2  = ReadEntry(EntryAddr(1, 0), b2, 16)
+          _   = state.cache.addrToEntry.put(e2.addr, e2)
+
+          lookup  <- Actor.cacheLookup(state, 16, 16)
+          expected = Chunk(Hit(e1, IntRange(0, 8)), Hit(e2, IntRange(0, 8)))
         } yield assert(lookup)(equalTo(expected))
       },
       //
