@@ -3,7 +3,8 @@ package torr.fileio.test
 import zio._
 import zio.nio.core._
 import torr.channels.InMemoryChannel
-import torr.fileio.Actor.{CacheState, OpenedFile, State}
+import torr.fileio.Actor.{OpenedFile, State}
+import torr.fileio.Cache
 import scala.util.Random
 
 object Helpers {
@@ -36,7 +37,7 @@ object Helpers {
   ): Task[State] =
     for {
       files     <- createFiles(rnd, sizes)
-      cacheState = CacheState(cacheEntrySize, cacheEntriesNum)
+      cacheState = Cache(cacheEntrySize, cacheEntriesNum)
     } yield State(pieceSize, sizes.sum, files, cacheState)
 
   def createState(
@@ -47,7 +48,7 @@ object Helpers {
   ): Task[State] =
     for {
       files     <- createFiles(fileContents)
-      cacheState = CacheState(cacheEntrySize, cacheEntriesNum)
+      cacheState = Cache(cacheEntrySize, cacheEntriesNum)
     } yield State(pieceSize, fileContents.map(_.size).sum, files, cacheState)
 
   def createFiles(

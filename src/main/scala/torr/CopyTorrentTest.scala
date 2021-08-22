@@ -3,7 +3,8 @@ package torr
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.AsyncFileChannel
 import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
-import torr.fileio.Actor.{CacheState, Fail, Fetch, GetState, Store}
+import torr.fileio.Actor.{Fail, Fetch, GetState, Store}
+import torr.fileio.Cache
 import zio._
 import torr.metainfo.MetaInfo
 import zio.actors.ActorRef
@@ -38,11 +39,11 @@ object CopyTorrentTest extends App {
                  dstFiles <- openFiles(metaInfo, dstDirectoryName, StandardOpenOption.WRITE)
                  srcActor <- createActor(
                                "Source",
-                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(srcFiles), CacheState())
+                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(srcFiles), Cache())
                              )
                  dstActor <- createActor(
                                "Destination",
-                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(dstFiles), CacheState())
+                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(dstFiles), Cache())
                              )
                } yield (srcActor, dstActor)
 

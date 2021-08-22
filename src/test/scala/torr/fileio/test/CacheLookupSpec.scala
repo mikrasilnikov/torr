@@ -65,7 +65,7 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           state    <- createState(rnd, 32 :: Nil, 32, 32, 1)
           entryBuf <- Buffer.byte(32)
           entry     = ReadEntry(EntryAddr(0, 0), entryBuf, 32)
-          _         = state.cacheState.cacheEntries.put(entry.addr, entry)
+          _         = state.cache.addrToEntry.put(entry.addr, entry)
           lookup   <- Actor.cacheLookup(state, 0, 32)
           expected  = Chunk(Hit(entry, IntRange(0, 32)))
         } yield assert(lookup)(equalTo(expected))
@@ -78,11 +78,11 @@ object CacheLookupSpec extends DefaultRunnableSpec {
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
-          _   = state.cacheState.cacheEntries.put(e1.addr, e1)
+          _   = state.cache.addrToEntry.put(e1.addr, e1)
 
           b2 <- Buffer.byte(32)
           e2  = ReadEntry(EntryAddr(0, 1), b2, 32)
-          _   = state.cacheState.cacheEntries.put(e2.addr, e2)
+          _   = state.cache.addrToEntry.put(e2.addr, e2)
 
           lookup  <- Actor.cacheLookup(state, 0, 32)
           expected = Chunk(Hit(e1, IntRange(0, 16)), Hit(e2, IntRange(0, 16)))
@@ -96,7 +96,7 @@ object CacheLookupSpec extends DefaultRunnableSpec {
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
-          _   = state.cacheState.cacheEntries.put(e1.addr, e1)
+          _   = state.cache.addrToEntry.put(e1.addr, e1)
 
           lookup  <- Actor.cacheLookup(state, 8, 16)
           expected = Chunk(Hit(e1, IntRange(8, 24)))
@@ -110,11 +110,11 @@ object CacheLookupSpec extends DefaultRunnableSpec {
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
-          _   = state.cacheState.cacheEntries.put(e1.addr, e1)
+          _   = state.cache.addrToEntry.put(e1.addr, e1)
 
           b2 <- Buffer.byte(32)
           e2  = ReadEntry(EntryAddr(1, 0), b2, 32)
-          _   = state.cacheState.cacheEntries.put(e2.addr, e2)
+          _   = state.cache.addrToEntry.put(e2.addr, e2)
 
           lookup  <- Actor.cacheLookup(state, 24, 16)
           expected = Chunk(Hit(e1, IntRange(24, 32)), Hit(e2, IntRange(0, 8)))
@@ -128,11 +128,11 @@ object CacheLookupSpec extends DefaultRunnableSpec {
 
           b1 <- Buffer.byte(32)
           e1  = ReadEntry(EntryAddr(1, 0), b1, 32)
-          _   = state.cacheState.cacheEntries.put(e1.addr, e1)
+          _   = state.cache.addrToEntry.put(e1.addr, e1)
 
           b2 <- Buffer.byte(32)
           e2  = ReadEntry(EntryAddr(2, 0), b2, 32)
-          _   = state.cacheState.cacheEntries.put(e2.addr, e2)
+          _   = state.cache.addrToEntry.put(e2.addr, e2)
 
           lookup  <- Actor.cacheLookup(state, 32 + 24, 16)
           expected = Chunk(Hit(e1, IntRange(24, 32)), Hit(e2, IntRange(0, 8)))

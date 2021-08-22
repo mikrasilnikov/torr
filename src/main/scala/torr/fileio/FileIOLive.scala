@@ -9,7 +9,7 @@ import torr.actorsystem.ActorSystem
 import torr.channels.AsyncFileChannel
 import torr.directbuffers.DirectBufferPool
 import torr.{fileio, metainfo}
-import torr.fileio.Actor.{CacheState, Command, Fetch, GetState, State, Store}
+import torr.fileio.Actor.{Command, Fetch, GetState, State, Store}
 import torr.metainfo.MetaInfo
 
 import java.nio.file.{OpenOption, StandardOpenOption}
@@ -36,7 +36,7 @@ object FileIOLive {
     val managed = for {
       files      <- openFiles(metaInfo, baseDirectoryName, StandardOpenOption.READ, StandardOpenOption.WRITE)
       torrentSize = metaInfo.entries.map(_.size).sum
-      state       = State(metaInfo.pieceSize, torrentSize, files.toVector, CacheState())
+      state       = State(metaInfo.pieceSize, torrentSize, files.toVector, Cache())
       actor      <- createActor("FileIO", state)
     } yield FileIOLive(actor)
 

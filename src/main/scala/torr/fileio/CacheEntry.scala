@@ -10,12 +10,9 @@ sealed trait CacheEntry {
   def addr: EntryAddr
   def data: ByteBuffer
   def dataSize: Int
-  def invalid: Boolean
 }
 
 case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends CacheEntry {
-  var relevance: Long  = 0
-  var invalid: Boolean = false
 
   def read(buf: ByteBuffer, entryOffset: Int, amount: Int): Task[Int] =
     for {
@@ -26,8 +23,6 @@ case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends C
 }
 
 case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends CacheEntry {
-
-  var invalid: Boolean = false
 
   private val usedRanges: mutable.TreeSet[IntRange] = new mutable.TreeSet[IntRange]()(
     new Ordering[IntRange] {
@@ -79,4 +74,14 @@ case class LongRange(from: Long, until: Long) {
 
 case class IntRange(from: Int, until: Int) {
   val length: Int = until - from
+}
+
+object CacheEntry {
+  implicit val entryAddrOrdering: Ordering[EntryAddr] = new Ordering[EntryAddr] {
+    override def compare(x: EntryAddr, y: EntryAddr): Int =
+      x.fileIndex compare y.fileIndex match {
+        case 0 => x.entryIndex compare y.entryIndex
+        case x => x
+      }
+  }
 }
