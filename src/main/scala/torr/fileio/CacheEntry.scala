@@ -18,7 +18,9 @@ case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends C
     for {
       _ <- data.limit(entryOffset + amount)
       _ <- data.position(entryOffset)
+      _ <- buf.clear
       _ <- buf.putByteBuffer(data)
+      _ <- buf.flip
     } yield amount
 }
 

@@ -48,7 +48,7 @@ object DirectBufferPoolLive {
   // Putting buffer index at the beginning, for testing
   private def createIndexedBuf(index: Int, bufferSize: Int): UIO[ByteBuffer] =
     for {
-      res <- Buffer.byteDirect(bufferSize)
+      res <- Buffer.byte(bufferSize)
       _   <- res.putInt(index)
       _   <- res.flip
     } yield res

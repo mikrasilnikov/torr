@@ -22,10 +22,10 @@ import java.nio.file.{OpenOption, StandardOpenOption}
 object CopyTorrentTest extends App {
 
   val metaInfoFile     =
-    "c:\\!temp\\Transcendence.2014.BDRip.1080.HDTracker.mkv.torrent"
-  val blockSize        = 512 * 1024
-  val srcDirectoryName = "d:\\Torrents\\"
-  val dstDirectoryName = "c:\\!temp\\CopyTest\\"
+    "d:\\Torrents\\!torrent\\The.Mandalorian.2019.S01.1080p.WEB-DL.H.264.RUS.LF.DDP5.1-EniaHD[tvslf].torrent"
+  val blockSize        = 32 * 1024
+  val dstDirectoryName = "d:\\Torrents\\The.Mandalorian.2019.S01.1080p.WEB-DL.H.264.RUS.LF.DDP5.1-EniaHD[tvslf]"
+  val srcDirectoryName = "c:\\!temp\\CopyTest\\"
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val effect = for {
@@ -39,11 +39,21 @@ object CopyTorrentTest extends App {
                  dstFiles <- openFiles(metaInfo, dstDirectoryName, StandardOpenOption.WRITE)
                  srcActor <- createActor(
                                "Source",
-                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(srcFiles), Cache())
+                               fileio.Actor.State(
+                                 metaInfo.pieceSize,
+                                 torrentSize,
+                                 Vector.from(srcFiles),
+                                 Cache(entrySize = 256 * 1024)
+                               )
                              )
                  dstActor <- createActor(
                                "Destination",
-                               fileio.Actor.State(metaInfo.pieceSize, torrentSize, Vector.from(dstFiles), Cache())
+                               fileio.Actor.State(
+                                 metaInfo.pieceSize,
+                                 torrentSize,
+                                 Vector.from(dstFiles),
+                                 Cache(entrySize = 256 * 1024)
+                               )
                              )
                } yield (srcActor, dstActor)
 
@@ -57,7 +67,7 @@ object CopyTorrentTest extends App {
     val actorSystem = ActorSystemLive.make("Test")
     val env         =
       (Clock.live ++ actorSystem ++ Slf4jLogger.make((_, message) => message)) >>>
-        DirectBufferPoolLive.make(128) ++
+        DirectBufferPoolLive.make(128, 32 * 1024) ++
           actorSystem
 
     effect.provideCustomLayer(env).exitCode
@@ -162,8 +172,8 @@ object CopyTorrentTest extends App {
       val readAmount = math.min(blockSize, torrentLength - effectiveOffset).toInt
       for {
         data <- src ? Fetch(piece, offset, readAmount)
-        //data <- ZIO.foreach(Chunk.fill(4)())(_ => DirectBufferPool.allocate)
         _    <- dst ! Store(piece, offset, data)
+        //_    <- dst ? GetState
         //_    <- ZIO.foreach_(data)(DirectBufferPool.free)
         _    <- printBuffersStats(effectiveOffset).when(effectiveOffset % (64 * 1024 * 1024) == 0L).fork
         _    <- (offset + readAmount) match {

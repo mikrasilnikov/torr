@@ -7,9 +7,6 @@ import zio.nio.core._
 import torr.channels._
 import torr.directbuffers.DirectBufferPool
 import zio.clock.Clock
-import zio.duration.{Duration, durationInt}
-import torr.fileio.CacheEntry._
-import scala.collection.mutable
 import scala.annotation.tailrec
 
 object Actor {
@@ -78,7 +75,7 @@ object Actor {
     else
       for {
         buf           <- DirectBufferPool.allocate
-        lookupResults <- cacheLookup(state, offset, amount) //.debug
+        lookupResults <- cacheLookup(state, offset, math.min(amount, buf.capacity)) //.debug
         // TODO What if amount < buf.capacity ?
         bytesRead     <- cachedReads(state, lookupResults, buf)
         res           <- read(state, offset + bytesRead, amount - bytesRead, acc :+ buf)
@@ -132,7 +129,8 @@ object Actor {
       offset: Long,
       data: Chunk[ByteBuffer]
   ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
-    if (data.isEmpty) ZIO.unit
+    if (data.isEmpty)
+      ZIO.unit
     else
       for {
         amount        <- data.head.remaining
@@ -195,7 +193,7 @@ object Actor {
     for {
       buf  <- state.cache.pullEntryToRecycle match {
                 case Some(e) => recycleEntry(state, e)
-                case None    => Buffer.byteDirect(state.cache.entrySize)
+                case None    => Buffer.byte(state.cache.entrySize)
               }
       size <- readAddr(state, addr, buf)
       res   = ReadEntry(addr, buf, size)
@@ -207,7 +205,7 @@ object Actor {
     for {
       buf <- state.cache.pullEntryToRecycle match {
                case Some(e) => recycleEntry(state, e)
-               case None    => Buffer.byteDirect(state.cache.entrySize)
+               case None    => Buffer.byte(state.cache.entrySize)
              }
       size = entrySizeForAddr(state, addr)
       res  = WriteEntry(addr, buf, size)
@@ -372,8 +370,13 @@ object Actor {
     (EntryAddr(fileIndex, entryIndex), entryOffset.toInt)
   }
 
-  private[fileio] def absoluteOffset(state: State, piece: Int, pieceOffset: Int): Long             = ???
-  private[fileio] def validateAmount(state: State, absoluteOffset: Long, amount: Long): Task[Unit] = ???
+  private[fileio] def absoluteOffset(state: State, piece: Int, pieceOffset: Int): Long =
+    piece.toLong * state.pieceSize + pieceOffset
+
+  private[fileio] def validateAmount(state: State, absoluteOffset: Long, amount: Long): Task[Unit] =
+    ZIO.fail(new IllegalArgumentException("Access beyond torrent size")).when(
+      absoluteOffset + amount > state.torrentSize
+    )
 
   /**
     * Translates global torrent offset into file index & file offset.
