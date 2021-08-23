@@ -75,8 +75,7 @@ object Actor {
     else
       for {
         buf           <- DirectBufferPool.allocate
-        lookupResults <- cacheLookup(state, offset, math.min(amount, buf.capacity)) //.debug
-        // TODO What if amount < buf.capacity ?
+        lookupResults <- cacheLookup(state, offset, math.min(amount, buf.capacity))
         bytesRead     <- cachedReads(state, lookupResults, buf)
         res           <- read(state, offset + bytesRead, amount - bytesRead, acc :+ buf)
       } yield res
@@ -87,7 +86,8 @@ object Actor {
       buf: ByteBuffer,
       acc: Int = 0
   ): RIO[DirectBufferPool with Clock, Int] = {
-    if (lookupResults.isEmpty) ZIO.succeed(acc)
+    if (lookupResults.isEmpty)
+      buf.flip *> ZIO.succeed(acc)
     else
       for {
         bytesRead <- cachedRead(state, lookupResults.head, buf)
