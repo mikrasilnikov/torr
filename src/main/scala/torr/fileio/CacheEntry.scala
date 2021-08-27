@@ -49,18 +49,17 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends 
 
   def write(buf: ByteBuffer, entryOffset: Int, amount: Int): Task[Int] =
     for {
-      oldPos <- buf.position
-      oldLim <- buf.limit
+      bufPos <- buf.position
+      bufLim <- buf.limit
+      _      <- buf.limit(bufPos + amount)
 
-      _ <- buf.limit(oldPos + amount)
       _ <- data.limit(entryOffset + amount)
       _ <- data.position(entryOffset)
       _ <- data.putByteBuffer(buf)
 
       _ = usedRanges += IntRange(entryOffset, entryOffset + amount)
 
-      _ <- buf.position(oldPos)
-      _ <- buf.limit(oldLim)
+      _ <- buf.limit(bufLim)
     } yield amount
 
   private[fileio] var writeOutFiber: Option[Fiber[Throwable, Unit]] = None

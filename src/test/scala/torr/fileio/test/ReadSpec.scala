@@ -13,11 +13,11 @@ import torr.fileio.{Actor, EntryAddr, ReadEntry}
 
 import java.util.Random
 
-object ReadWriteSpec extends DefaultRunnableSpec {
+object ReadSpec extends DefaultRunnableSpec {
   val env0 = Clock.live ++ ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
 
   override def spec =
-    suite("ReadWriteSpec")(
+    suite("ReadSpec")(
       //
       testM("makeReadEntry") {
         val rnd = new Random(42)

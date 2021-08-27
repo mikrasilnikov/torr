@@ -134,6 +134,7 @@ object Actor {
     else
       for {
         amount        <- data.head.remaining
+        _             <- ZIO.fail(new IllegalArgumentException("amount == 0")).when(amount == 0)
         lookupResults <- cacheLookup(state, offset, amount)
         bytesWritten  <- cachedWrites(self, state, lookupResults, data.head)
         _             <- write(self, state, offset + bytesWritten, data.tail)
@@ -248,7 +249,7 @@ object Actor {
 
   private def scheduleWriteOut(
       self: ActorRef[Command],
-      cacheState: Cache,
+      cache: Cache,
       entry: WriteEntry
   ): ZIO[Clock, Throwable, Unit] =
     for {
@@ -256,7 +257,11 @@ object Actor {
                  case Some(fiber) => fiber.interrupt
                  case None        => ZIO.unit
                }
-      fiber <- (self ! SynchronizeAndWriteOut(entry)).delay(cacheState.writeOutDelay).fork
+      fiber <- (for {
+                 // This does not make any sense but fiber is not interruptible otherwise.
+                 _ <- ZIO.sleep(cache.writeOutDelay).interruptible
+                 _ <- self ! SynchronizeAndWriteOut(entry)
+               } yield ()).fork
       _      = entry.writeOutFiber = Some(fiber)
     } yield ()
 

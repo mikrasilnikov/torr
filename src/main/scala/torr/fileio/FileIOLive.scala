@@ -37,7 +37,7 @@ object FileIOLive {
       files      <- openFiles(metaInfo, baseDirectoryName, StandardOpenOption.READ, StandardOpenOption.WRITE)
       torrentSize = metaInfo.entries.map(_.size).sum
       state       = State(metaInfo.pieceSize, torrentSize, files.toVector, Cache())
-      actor      <- createActor("FileIO", state)
+      actor      <- createActorManaged("FileIO", state)
     } yield FileIOLive(actor)
 
     managed.toLayer
@@ -72,9 +72,8 @@ object FileIOLive {
   def createActor(
       name: String,
       state: fileio.Actor.State
-  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {
-
-    val make = for {
+  ): ZIO[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {
+    for {
       sys       <- ZIO.service[ActorSystem.Service].map(_.system)
       supervisor = actors.Supervisor.retryOrElse[DirectBufferPool, Unit](
                      Schedule.stop,
@@ -82,8 +81,14 @@ object FileIOLive {
                    )
       res       <- sys.make(name, supervisor, state, fileio.Actor.stateful)
     } yield res
+  }
 
-    make.toManaged { actorRef =>
+  def createActorManaged(
+      name: String,
+      state: fileio.Actor.State
+  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {
+
+    createActor(name, state).toManaged { actorRef =>
       val stop = for {
         _ <- actorRef ? GetState
         _ <- actorRef.stop.ignore
