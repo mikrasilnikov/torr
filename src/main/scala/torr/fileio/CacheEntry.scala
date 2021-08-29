@@ -1,10 +1,14 @@
 package torr.fileio
 
 import zio._
+import zio.clock._
 import zio.nio.core.ByteBuffer
+
 import scala.annotation.tailrec
 import scala.collection.mutable
 import torr.fileio
+
+import java.time.OffsetDateTime
 
 sealed trait CacheEntry {
   def addr: EntryAddr
@@ -22,7 +26,10 @@ case class ReadEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends C
     } yield amount
 }
 
-case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends CacheEntry {
+case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int, var expirationDateTime: OffsetDateTime)
+    extends CacheEntry {
+
+  private[fileio] var writeOutFiber: Option[Fiber[Throwable, Unit]] = None
 
   private val usedRanges: mutable.TreeSet[IntRange] = new mutable.TreeSet[IntRange]()(
     new Ordering[IntRange] {
@@ -61,8 +68,6 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int) extends 
 
       _ <- buf.limit(bufLim)
     } yield amount
-
-  private[fileio] var writeOutFiber: Option[Fiber[Throwable, Unit]] = None
 }
 
 case class EntryAddr(fileIndex: Int, entryIndex: Long)

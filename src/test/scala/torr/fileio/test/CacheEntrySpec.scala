@@ -5,6 +5,8 @@ import zio.test._
 import zio.test.Assertion._
 import torr.fileio.{EntryAddr, IntRange, WriteEntry}
 import torr.fileio.test.Helpers._
+import zio.test.environment.TestClock
+
 import scala.util.Random
 
 object CacheEntrySpec extends DefaultRunnableSpec {
@@ -15,14 +17,16 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, _) <- randomBuf(rnd, 16)
-          entry    = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now     <- clock.currentDateTime
+          entry    = WriteEntry(EntryAddr(0, 0), b0, 16, now)
         } yield assert(entry.freeRanges)(equalTo(List(IntRange(0, 16))))
       },
       testM("WriteEntry.freeRanges - first half used") {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 0, 8)
           resData  <- bufToChunk(b0)
@@ -33,7 +37,8 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 8, 8)
           resData  <- bufToChunk(b0)
@@ -44,7 +49,8 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 4, 8)
           resData  <- bufToChunk(b0)
@@ -55,7 +61,8 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 0, 4)
           _        <- entry.write(b1, 12, 4)
@@ -67,7 +74,8 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 0, 8)
           _        <- entry.write(b1, 4, 8)
@@ -79,7 +87,8 @@ object CacheEntrySpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           (b0, d0) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 16)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 4, 8)
           _        <- entry.write(b1, 8, 8)

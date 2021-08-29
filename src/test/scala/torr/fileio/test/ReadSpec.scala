@@ -10,11 +10,13 @@ import torr.actorsystem.ActorSystemLive
 import torr.channels.{InMemoryChannel, SeekableByteChannel}
 import torr.directbuffers.DirectBufferPoolLive
 import torr.fileio.{Actor, EntryAddr, ReadEntry}
+import zio.magic.ZioProvideMagicOps
+import zio.test.environment.TestClock
 
 import java.util.Random
 
 object ReadSpec extends DefaultRunnableSpec {
-  val env0 = Clock.live ++ ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
+  val env0 = ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
 
   override def spec =
     suite("ReadSpec")(
@@ -50,9 +52,11 @@ object ReadSpec extends DefaultRunnableSpec {
         } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
           assert(actual)(equalTo(Chunk(expected)))
 
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       },
       //
       testM("read - hit part of read entry") {
@@ -66,9 +70,11 @@ object ReadSpec extends DefaultRunnableSpec {
         } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
           assert(actual)(equalTo(Chunk(expected)))
 
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       },
       //
       testM("read - hit eof") {
@@ -82,9 +88,11 @@ object ReadSpec extends DefaultRunnableSpec {
         } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
           assert(actual)(equalTo(Chunk(expected)))
 
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       },
       //
       testM("read - hit eof hit") {
@@ -105,9 +113,11 @@ object ReadSpec extends DefaultRunnableSpec {
           } yield assert(state.cache.cacheHits)(equalTo(2L)) &&
             assert(actual)(equalTo(Chunk(expected1 ++ expected2)))
 
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       },
       //
       testM("read - hit boundary miss, with buf recycling") {
@@ -128,34 +138,11 @@ object ReadSpec extends DefaultRunnableSpec {
           } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
             assert(actual)(equalTo(Chunk(expected1 ++ expected2)))
 
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
-      },
-      //
-      testM("read - hits dirty WriteEntry") {
-        val rnd    = new Random(42)
-        val effect =
-          for {
-            state <- Helpers.createState(rnd, 32 :: Nil, 32, 16, 2)
-
-            fileData0 <- channelToChunk(state.files(0).channel)
-
-            writeEntry <- Actor.makeWriteEntry(state, EntryAddr(0, 0))
-            (b0, d0)   <- Helpers.randomBuf(rnd, 8)
-            _          <- writeEntry.write(b0, 4, 8)
-
-            readResult <- Actor.read(state, 0, 16)
-            actual     <- ZIO.foreach(readResult)(b => b.getChunk())
-
-            expected = fileData0.take(4) ++ d0 ++ fileData0.drop(12).take(4)
-
-          } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
-            assert(actual)(equalTo(Chunk(expected)))
-
-        val env = env0 >>> DirectBufferPoolLive.make(8)
-
-        effect.provideCustomLayer(env)
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       }
     ) @@ sequential
 

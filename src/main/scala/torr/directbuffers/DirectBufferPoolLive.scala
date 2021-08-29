@@ -29,7 +29,7 @@ object DirectBufferPoolLive {
   def make(
       maxBuffers: Int,
       bufSize: Int = torr.fileio.MinimumTorrentBlockSize
-  ): ZLayer[ActorSystem with Clock with Logging, Throwable, DirectBufferPool] = {
+  ): ZLayer[ActorSystem with Logging with Clock, Throwable, DirectBufferPool] = {
 
     val effect = for {
       system  <- ZIO.service[ActorSystem.Service]

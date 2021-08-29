@@ -18,7 +18,8 @@ object WriteOutSpec extends DefaultRunnableSpec {
           state    <- createState(rnd, 32 :: Nil, 32, 32, 1)
           (b0, _)  <- randomBuf(rnd, 32)
           (b1, d1) <- randomBuf(rnd, 32)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 32)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 32, now)
           _        <- entry.write(b1, 0, 32)
           _        <- torr.fileio.Actor.synchronizeAndWriteOut(state, entry)
           actual   <- state.files(0).channel.asInstanceOf[InMemoryChannel].getData
@@ -32,7 +33,8 @@ object WriteOutSpec extends DefaultRunnableSpec {
           (b0, _)  <- randomBuf(rnd, 32)
           (b1, d1) <- randomBuf(rnd, 16)
           (b2, d2) <- randomBuf(rnd, 16)
-          entry     = WriteEntry(EntryAddr(0, 0), b0, 32)
+          now      <- clock.currentDateTime
+          entry     = WriteEntry(EntryAddr(0, 0), b0, 32, now)
           _        <- entry.write(b1, 0, 16)
           _        <- entry.write(b2, 16, 16)
           _        <- torr.fileio.Actor.synchronizeAndWriteOut(state, entry)
@@ -46,7 +48,8 @@ object WriteOutSpec extends DefaultRunnableSpec {
           fd0   <- ZIO(randomChunk(rnd, 8))
           state <- createState(fd0 :: Nil, 8, 8, 1)
 
-          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8))
+          now   <- clock.currentDateTime
+          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8, now))
 
           (b1, d1) <- randomBuf(rnd, 4)
 
@@ -62,7 +65,8 @@ object WriteOutSpec extends DefaultRunnableSpec {
           fd0   <- ZIO(randomChunk(rnd, 8))
           state <- createState(fd0 :: Nil, 8, 8, 1)
 
-          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8))
+          now   <- clock.currentDateTime
+          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8, now))
 
           (b1, d1) <- randomBuf(rnd, 4)
           _        <- entry.write(b1, 4, 4)
@@ -78,7 +82,8 @@ object WriteOutSpec extends DefaultRunnableSpec {
           fd0   <- ZIO(randomChunk(rnd, 8))
           state <- createState(fd0 :: Nil, 8, 8, 1)
 
-          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8))
+          now   <- clock.currentDateTime
+          entry <- Buffer.byte(8).map(b => WriteEntry(EntryAddr(0, 0), b, 8, now))
 
           (b1, d1) <- randomBuf(rnd, 4)
           _        <- entry.write(b1, 2, 4)

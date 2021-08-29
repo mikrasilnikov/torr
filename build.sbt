@@ -7,16 +7,16 @@ lazy val root = (project in file("."))
   .settings(
     name := "torr",
     libraryDependencies ++= Seq(
-      "dev.zio"       %% "zio"               % "1.0.9",
-      "dev.zio"       %% "zio-nio-core"      % "1.0.0-RC11",
-      "dev.zio"       %% "zio-nio"           % "1.0.0-RC11",
-      "dev.zio"       %% "zio-macros"        % "1.0.9",
-      "dev.zio"       %% "zio-logging-slf4j" % "0.5.10",
-      "ch.qos.logback" % "logback-classic"   % "1.2.3",
-      "dev.zio"       %% "zio-actors"        % "0.0.9",
-      // "io.github.kitlangton" %% "zio-magic"         % "0.3.8",
-      "dev.zio"       %% "zio-test-sbt"      % "1.0.9" % "test",
-      "dev.zio"       %% "zio-test"          % "1.0.9" % Test
+      "dev.zio"              %% "zio"               % "1.0.11",
+      "dev.zio"              %% "zio-nio-core"      % "1.0.0-RC11",
+      "dev.zio"              %% "zio-nio"           % "1.0.0-RC11",
+      "dev.zio"              %% "zio-macros"        % "1.0.11",
+      "dev.zio"              %% "zio-logging-slf4j" % "0.5.10",
+      "ch.qos.logback"        % "logback-classic"   % "1.2.3",
+      "dev.zio"              %% "zio-actors"        % "0.0.9",
+      "io.github.kitlangton" %% "zio-magic"         % "0.3.8",
+      "dev.zio"              %% "zio-test-sbt"      % "1.0.11" % "test",
+      "dev.zio"              %% "zio-test"          % "1.0.11" % Test
     )
   )
 

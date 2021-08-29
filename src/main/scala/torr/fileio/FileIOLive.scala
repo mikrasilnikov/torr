@@ -75,7 +75,7 @@ object FileIOLive {
   ): ZIO[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {
     for {
       sys       <- ZIO.service[ActorSystem.Service].map(_.system)
-      supervisor = actors.Supervisor.retryOrElse[DirectBufferPool, Unit](
+      supervisor = actors.Supervisor.retryOrElse[Any, Unit](
                      Schedule.stop,
                      (throwable, _: Unit) => ZIO.die(throwable)
                    )
