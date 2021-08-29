@@ -41,19 +41,19 @@ object Actor {
       msg match {
 
         case Fetch(piece, pieceOffset, amount) =>
+          val absolute = absoluteOffset(state, piece, pieceOffset)
           for {
-            absolute <- ZIO(absoluteOffset(state, piece, pieceOffset))
-            _        <- validateAmount(state, absolute, amount)
-            result   <- read(state, absolute, amount)
+            _      <- validateAmount(state, absolute, amount)
+            result <- read(state, absolute, amount)
           } yield (state, result)
 
         case Store(piece, pieceOffset, data)   =>
+          val absolute = absoluteOffset(state, piece, pieceOffset)
           for {
-            absolute <- ZIO(absoluteOffset(state, piece, pieceOffset))
-            amount   <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
-            self     <- context.self[Command]
-            _        <- validateAmount(state, absolute, amount)
-            _        <- write(self, state, absolute, data)
+            amount <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
+            self   <- context.self[Command]
+            _      <- validateAmount(state, absolute, amount)
+            _      <- write(self, state, absolute, data)
           } yield (state, ())
 
         case GetState                          => ZIO.succeed(state, state)
@@ -100,23 +100,23 @@ object Actor {
   private[fileio] def cachedRead(state: State, lookupResult: LookupResult, buf: ByteBuffer): Task[Int] = {
     lookupResult match {
       case Hit(entry @ ReadEntry(_, _, _), entryRange)     =>
+        state.cache.markHit()
         for {
-          _      <- ZIO(state.cache.markHit())
           copied <- entry.read(buf, entryRange.from, entryRange.length)
           _       = state.cache.markUse(entry)
         } yield copied
 
       case Hit(entry @ WriteEntry(_, _, _, _), entryRange) =>
+        state.cache.markHit()
         for {
-          _         <- ZIO(state.cache.markHit())
           readEntry <- makeReadEntryFromWriteEntry(state, entry)
           copied    <- readEntry.read(buf, entryRange.from, entryRange.length)
           _          = state.cache.markUse(readEntry)
         } yield copied
 
       case Miss(addr, entryRange)                          =>
+        state.cache.markMiss()
         for {
-          _      <- ZIO(state.cache.markMiss())
           entry  <- makeReadEntry(state, addr)
           copied <- entry.read(buf, entryRange.from, entryRange.length)
           _       = state.cache.markUse(entry)
@@ -139,6 +139,8 @@ object Actor {
         _             <- ZIO.fail(new IllegalArgumentException("amount == 0")).when(amount == 0)
         lookupResults <- cacheLookup(state, offset, amount)
         bytesWritten  <- cachedWrites(self, state, lookupResults, data.head)
+        _             <- ZIO.fail(new IllegalStateException("bytesWritten == 0")).when(bytesWritten == 0)
+        _             <- DirectBufferPool.free(data.head)
         _             <- write(self, state, offset + bytesWritten, data.tail)
       } yield ()
   }
@@ -166,29 +168,26 @@ object Actor {
   ): ZIO[DirectBufferPool with Clock, Throwable, Int] =
     lookupResult match {
       case Hit(entry @ ReadEntry(_, _, _), entryRange)     =>
+        state.cache.markHit()
         for {
-          _        <- ZIO(state.cache.markHit())
           newEntry <- makeWriteEntryFromReadEntry(self, state, entry)
           copied   <- newEntry.write(buf, entryRange.from, entryRange.length)
           _        <- scheduleWriteOut(state, newEntry)
-          _        <- DirectBufferPool.free(buf)
         } yield copied
 
       case Hit(entry @ WriteEntry(_, _, _, _), entryRange) =>
+        state.cache.markHit()
         for {
-          _      <- ZIO(state.cache.markHit())
           copied <- entry.write(buf, entryRange.from, entryRange.length)
           _      <- scheduleWriteOut(state, entry)
-          _      <- DirectBufferPool.free(buf)
         } yield copied
 
       case Miss(addr, entryRange)                          =>
+        state.cache.markMiss()
         for {
-          _      <- ZIO(state.cache.markMiss())
           entry  <- makeWriteEntry(self, state, addr)
           copied <- entry.write(buf, entryRange.from, entryRange.length)
           _      <- scheduleWriteOut(state, entry)
-          _      <- DirectBufferPool.free(buf)
         } yield copied
     }
 
@@ -204,13 +203,14 @@ object Actor {
     } yield res
   }
 
-  private[fileio] def makeReadEntryFromWriteEntry(state: State, entry: WriteEntry): Task[ReadEntry] =
+  private[fileio] def makeReadEntryFromWriteEntry(state: State, entry: WriteEntry): Task[ReadEntry] = {
+    state.cache.remove(entry)
     for {
-      _  <- ZIO(state.cache.remove(entry))
       _  <- recycleEntry(state, entry)
       res = ReadEntry(entry.addr, entry.data, entry.dataSize)
       _   = state.cache.add(res)
     } yield res
+  }
 
   private[fileio] def makeWriteEntry(
       self: ActorRef[Command],
@@ -238,9 +238,9 @@ object Actor {
       self: ActorRef[Command],
       state: State,
       entry: ReadEntry
-  ): ZIO[Clock, Throwable, WriteEntry] =
+  ): ZIO[Clock, Throwable, WriteEntry] = {
+    state.cache.remove(entry)
     for {
-      _          <- ZIO(state.cache.remove(entry))
       _          <- recycleEntry(state, entry)
       expiration <- clock.currentDateTime.map(_.plus(state.cache.writeOutDelay))
       res         = WriteEntry(entry.addr, entry.data, entry.dataSize, expiration)
@@ -250,6 +250,7 @@ object Actor {
       fiber <- performScheduledWriteOut(self, res).fork
       _      = res.writeOutFiber = Some(fiber)
     } yield res
+  }
 
   private[fileio] def performScheduledWriteOut(
       self: ActorRef[Command],

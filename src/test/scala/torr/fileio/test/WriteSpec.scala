@@ -7,7 +7,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.sequential
-import torr.fileio.Actor.{GetState, Store}
+import torr.fileio.Actor.{Fetch, GetState, Store}
 import torr.fileio.test.ReadSpec.channelToChunk
 import torr.fileio.{Actor, EntryAddr, FileIOLive, ReadEntry}
 import zio.actors.ActorRef
@@ -132,6 +132,54 @@ object WriteSpec extends DefaultRunnableSpec {
           Slf4jLogger.make((_, message) => message),
           DirectBufferPoolLive.make(2, 8)
         )
+      },
+      //
+      testM("Copy torrent test") {
+        val rnd = new Random(42)
+
+        val sizes       = 17 :: 71 :: 43 :: 1 :: 11 :: 37 :: Nil
+        val pieceSize   = 16
+        val torrentSize = sizes.sum
+        val copySize    = 8
+
+        val effect =
+          (createActorManaged(rnd, sizes, pieceSize, 8, 4, actorName = "FileIO1") <*>
+            createActorManaged(rnd, sizes, pieceSize, 8, 4, actorName = "FileIO2"))
+            .use {
+              case ((actor0, files0), (actor1, files1)) =>
+                //noinspection SimplifyUnlessInspection
+                def copy(offset: Int): Task[Unit] = {
+                  val remaining = torrentSize - offset
+                  if (remaining <= 0) ZIO.unit
+                  else {
+                    val piece       = offset / pieceSize
+                    val pieceOffset = offset % pieceSize
+                    val amount      = math.min(copySize, remaining)
+                    for {
+                      fetch <- ZIO(Fetch(piece, pieceOffset, amount)) //.debug
+                      data  <- actor0 ? fetch
+                      store <- ZIO(Store(piece, pieceOffset, data))   //.debug
+                      _     <- actor1 ! store
+                      _     <- copy(offset + amount)
+                    } yield ()
+                  }
+                }
+
+                for {
+                  _       <- copy(0)
+                  state1  <- actor1 ? GetState
+                  expected = files0.reduceLeft(_ ++ _)
+                  actual  <- ZIO.foldLeft(state1.files)(Chunk[Byte]())((c, f) =>
+                               f.channel.asInstanceOf[InMemoryChannel].getData.map(d => c ++ d)
+                             )
+                } yield assert(actual)(equalTo(expected))
+            }
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(1, 8)
+        )
       }
     ) @@ sequential
 
@@ -151,7 +199,8 @@ object WriteSpec extends DefaultRunnableSpec {
       sizes: List[Int],
       pieceSize: Int,
       cacheEntrySize: Int,
-      cacheEntriesNum: Int
+      cacheEntriesNum: Int,
+      actorName: String = "FileIO"
   ): ZManaged[
     ActorSystem with DirectBufferPool with Clock,
     Throwable,
@@ -160,7 +209,7 @@ object WriteSpec extends DefaultRunnableSpec {
     for {
       state <- Helpers.createState(rnd, sizes, pieceSize, cacheEntrySize, cacheEntriesNum).toManaged_
       data  <- ZIO.foreach(state.files)(f => f.channel.asInstanceOf[InMemoryChannel].getData).toManaged_
-      actor <- FileIOLive.createActorManaged("FileIO", state)
+      actor <- FileIOLive.createActorManaged(actorName, state)
     } yield (actor, data)
   }
 
