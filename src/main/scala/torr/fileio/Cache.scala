@@ -28,6 +28,9 @@ case class Cache(
       val (relevance, addr) = relevanceToAddr.head
       val entry             = addrToEntry(addr)
 
+      if (entry.addr == EntryAddr(2, 8181))
+        println(s"pullEntryToRecycle $entry")
+
       addrToEntry.remove(addr)
       addrToRelevance.remove(addr)
       relevanceToAddr.remove(relevance)
@@ -37,6 +40,10 @@ case class Cache(
   }
 
   def add(entry: CacheEntry): Unit = {
+
+    if (entry.addr == EntryAddr(2, 8181))
+      println(s"adding $entry")
+
     val relevance = currentRelevance; currentRelevance += 1
 
     addrToEntry.put(entry.addr, entry)
@@ -45,6 +52,10 @@ case class Cache(
   }
 
   def remove(entry: CacheEntry): Unit = {
+
+    if (entry.addr == EntryAddr(2, 8181))
+      println(s"remove $entry")
+
     val addr      = entry.addr
     val relevance = addrToRelevance(addr)
 

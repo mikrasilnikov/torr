@@ -143,6 +143,37 @@ object ReadSpec extends DefaultRunnableSpec {
           Slf4jLogger.make((_, message) => message),
           DirectBufferPoolLive.make(8)
         )
+      },
+      //
+      testM("read - lookup results entry recycling") {
+
+        /*
+          1. read(...) produces two lookup results: Miss and Hit(entry0)
+          2. When Miss is processed a new ReadEntry (entry1) is created
+          3. To create entry1, entry0 is recycled and removed from cache
+          4. When Hit(entry0) is processed, entry0 is no longer valid
+         */
+
+        val rnd    = new Random(42)
+        val effect =
+          for {
+            state <- Helpers.createState(rnd, 32 :: Nil, 16, 16, 1)
+
+            _ <- Actor.makeReadEntry(state, EntryAddr(0, 1))
+
+            readResult <- Actor.read(state, 8, 16)
+            actual     <- ZIO.foreach(readResult)(b => b.getChunk())
+
+            expected <- state.files(0).channel.asInstanceOf[InMemoryChannel].getData.map(_.drop(8).take(16))
+
+          } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
+            assert(actual)(equalTo(Chunk(expected)))
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
       }
     ) @@ sequential
 
