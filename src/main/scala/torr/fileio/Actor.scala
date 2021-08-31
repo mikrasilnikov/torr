@@ -7,9 +7,7 @@ import zio.nio.core._
 import torr.channels._
 import torr.directbuffers.DirectBufferPool
 import zio.clock.Clock
-
-import java.time.{Duration, OffsetDateTime, Period}
-import java.time.temporal.TemporalAmount
+import java.time.{Duration, OffsetDateTime}
 import scala.annotation.tailrec
 
 object Actor {
@@ -19,6 +17,7 @@ object Actor {
   case object GetState                                                    extends Command[State]
   case class Fetch(piece: Int, pieceOffset: Int, amount: Int)             extends Command[Chunk[ByteBuffer]]
   case class Store(piece: Int, pieceOffset: Int, data: Chunk[ByteBuffer]) extends Command[Unit]
+  case object Flush                                                       extends Command[Unit]
 
   private[fileio] case class CheckWriteOutConditions(writeEntry: WriteEntry) extends Command[Unit]
 
@@ -279,7 +278,8 @@ object Actor {
           } yield ()
         }
       }
-    } else ZIO.unit
+    } else
+      ZIO.unit
   }
 
   private[fileio] def recycleEntry(state: State, entry: CacheEntry): Task[ByteBuffer] = {

@@ -11,19 +11,21 @@ import zio.actors.ActorRef
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.console.{Console, putStrLn}
+import zio.duration.durationInt
 import zio.logging.slf4j.Slf4jLogger
 import zio.nio.core.{Buffer, ByteBuffer}
 import zio.nio.core.channels.AsynchronousFileChannel
 import zio.nio.core.file.Path
 import zio.nio.file.Files
+
 import java.nio.file.{OpenOption, StandardOpenOption}
 
 object CopyTorrentTest extends App {
 
   val metaInfoFile     =
-    "d:\\Torrents\\!torrent\\Black Mirror - The Complete 4th Season - whip93.torrent"
-  val dstDirectoryName = "d:\\Torrents\\Black Mirror - The Complete 4th Season - whip93\\"
+    "d:\\Torrents\\!torrent\\Ragdoll_Masters v3.1.torrent"
   val srcDirectoryName = "c:\\!temp\\CopyTest\\"
+  val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
 
   val blockSize = 32 * 1024
 
@@ -60,7 +62,7 @@ object CopyTorrentTest extends App {
       _     <- actors.use {
                  case (src, dst) =>
                    //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
-                   copyRandom(32 * 1024, metaInfo.pieceSize, torrentSize, src, dst)
+                   copyRandom(metaInfo.pieceSize, torrentSize, src, dst)
                }
 
     } yield ()
@@ -173,7 +175,7 @@ object CopyTorrentTest extends App {
       val readAmount = math.min(blockSize, torrentLength - effectiveOffset).toInt
       for {
         data <- src ? Fetch(piece, offset, readAmount)
-        _    <- dst ? Store(piece, offset, data)
+        _    <- dst ! Store(piece, offset, data)
         _    <- printBuffersStats(effectiveOffset).when(effectiveOffset % (64 * 1024 * 1024) == 0L).fork
         _    <- (offset + readAmount) match {
                   case x if x == pieceLength =>
@@ -186,15 +188,14 @@ object CopyTorrentTest extends App {
   }
 
   def copyRandom(
-      bufSize: Int,
       pieceSize: Int,
       torrentLength: Long,
       src: ActorRef[Actor.Command],
       dst: ActorRef[Actor.Command]
   ): ZIO[Console with Clock with DirectBufferPool, Throwable, Unit] = {
     val rnd      = new java.util.Random(43)
-    val bufCount = (torrentLength / bufSize).toInt
-    val bufOrder = (0 until bufCount).sortBy(_ => rnd.nextInt()).toList
+    val bufCount = (torrentLength / blockSize).toInt
+    val bufOrder = (0 to bufCount).sortBy(_ => rnd.nextInt()).toList
 
     // Хранить x последних смещений и попробовать найти минимальное количество, для которого проблема воспроизводится.
     // При 43 ошибка проявляется на markUse
@@ -207,25 +208,20 @@ object CopyTorrentTest extends App {
       bufNums match {
         case Nil     => ZIO.unit
         case n :: ns =>
-          val offset      = n.toLong * bufSize
+          val offset      = n.toLong * blockSize
           val piece       = (offset / pieceSize).toInt
           val pieceOffset = (offset % pieceSize).toInt
-          val amount      = math.min(bufSize, torrentLength - offset).toInt
+          val amount      = math.min(blockSize, torrentLength - offset).toInt
 
           for {
-            //data <- src ? Fetch(piece, pieceOffset, amount)
-            _    <- n match {
-                      case 580532 =>
-                        putStrLn(s"${srcState.cache}")
-                      case _      => ZIO.unit
-                    }
-            data <- Actor.read(srcState, offset, amount)
+            data <- src ? Fetch(piece, pieceOffset, amount)
+            //data <- Actor.read(srcState, offset, amount)
             rem  <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
             _    <- putStrLn(s"before Store rem = $rem").when(rem != 32768)
-            //_    <- dst ? Store(piece, pieceOffset, data)
+            _    <- dst ! Store(piece, pieceOffset, data)
             //_    <- Actor.write(dst, dstState, offset, data)
-            _    <- ZIO.foreach_(data)(DirectBufferPool.free)
-            _    <- putStrLn(s"$bufsWritten of $bufCount completed").when(bufsWritten % 1 == 0)
+            //_    <- ZIO.foreach_(data)(DirectBufferPool.free)
+            _    <- putStrLn(s"$bufsWritten of $bufCount completed").when(bufsWritten % 1000 == 0)
             _    <- copy(ns, srcState, dstState, bufsWritten + 1)
           } yield ()
       }
@@ -233,9 +229,10 @@ object CopyTorrentTest extends App {
     for {
       srcState <- src ? GetState
       dstState <- dst ? GetState
-      drop      = 38445
-      _        <- putStrLn(s"${bufOrder.drop(drop).take(16).mkString(", ")}")
-      _        <- copy(bufOrder.drop(drop).take(16), srcState, dstState, drop)
+      _        <- copy(bufOrder, srcState, dstState)
+      _        <- (dst ? GetState).debug
+      _        <- ZIO.sleep(40.seconds)
+      _        <- (dst ? GetState).debug
     } yield ()
 
   }
