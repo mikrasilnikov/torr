@@ -58,7 +58,7 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int, var expi
     for {
       bufPos <- buf.position
       bufLim <- buf.limit
-      _      <- buf.limit(bufPos + amount)
+      _      <- buf.limit(math.min(bufLim, bufPos + amount))
 
       _ <- data.limit(entryOffset + amount)
       _ <- data.position(entryOffset)

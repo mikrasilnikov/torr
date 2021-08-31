@@ -65,6 +65,7 @@ object CacheEntrySpec extends DefaultRunnableSpec {
           entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 0, 4)
+          _        <- b1.position(0)
           _        <- entry.write(b1, 12, 4)
           resData  <- bufToChunk(b0)
         } yield assert(entry.freeRanges)(equalTo(List(IntRange(4, 12)))) &&
@@ -78,6 +79,7 @@ object CacheEntrySpec extends DefaultRunnableSpec {
           entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 0, 8)
+          _        <- b1.position(0)
           _        <- entry.write(b1, 4, 8)
           resData  <- bufToChunk(b0)
         } yield assert(entry.freeRanges)(equalTo(List(IntRange(12, 16)))) &&
@@ -91,6 +93,7 @@ object CacheEntrySpec extends DefaultRunnableSpec {
           entry     = WriteEntry(EntryAddr(0, 0), b0, 16, now)
           (b1, d1) <- randomBuf(rnd, 8)
           _        <- entry.write(b1, 4, 8)
+          _        <- b1.position(0)
           _        <- entry.write(b1, 8, 8)
           resData  <- bufToChunk(b0)
         } yield assert(entry.freeRanges)(equalTo(List(IntRange(0, 4)))) &&

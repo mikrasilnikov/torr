@@ -18,7 +18,6 @@ object Helpers {
     for {
       chunk <- ZIO(randomChunk(rnd, size))
       buf   <- Buffer.byte(chunk)
-      _     <- buf.flip
     } yield (buf, chunk)
 
   def bufToChunk(buf: ByteBuffer): Task[Chunk[Byte]] =

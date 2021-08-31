@@ -166,7 +166,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
             expected <- state.files(0).channel.asInstanceOf[InMemoryChannel].getData.map(_.drop(8).take(16))
 
-          } yield assert(state.cache.cacheHits)(equalTo(1L)) &&
+          } yield assert(state.cache.cacheHits)(equalTo(0L)) &&
             assert(actual)(equalTo(Chunk(expected)))
 
         effect.injectCustom(

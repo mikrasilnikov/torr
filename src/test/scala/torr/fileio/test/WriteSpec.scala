@@ -134,6 +134,42 @@ object WriteSpec extends DefaultRunnableSpec {
         )
       },
       //
+      testM("write - lookup results entry recycling") {
+
+        /*
+          1. write(...) produces two lookup results: Miss and Hit(entry0)
+          2. When Miss is processed a new WriteEntry (entry1) is created
+          3. To create entry1, entry0 is recycled and removed from cache
+          4. When Hit(entry0) is processed, entry0 is no longer valid
+         */
+
+        val rnd = new Random(42)
+
+        val effect = createActorManaged(rnd, 32 :: Nil, 16, 16, 1)
+          .use {
+            case (actor, files0) =>
+              for {
+                state <- actor ? GetState
+                _     <- Actor.makeWriteEntry(actor, state, EntryAddr(0, 1))
+
+                (b0, d0) <- Helpers.randomBuf(rnd, 16)
+                expected <- state.files(0).channel.asInstanceOf[InMemoryChannel].getData.map(fileData =>
+                              fileData.take(8) ++ d0 ++ fileData.drop(24).take(8)
+                            )
+
+                _        <- Actor.write(actor, state, 8, Chunk(b0))
+                _        <- TestClock.adjust(state.cache.writeOutDelay)
+
+                actual <- state.files(0).channel.asInstanceOf[InMemoryChannel].getData
+
+              } yield assert(state.cache.cacheHits)(equalTo(0L)) &&
+                assert(actual)(equalTo(expected))
+          }
+
+        val env = createEnv(2, 8)
+        effect.provideLayer(env)
+      },
+      //
       testM("Copy torrent test") {
         val rnd = new Random(42)
 

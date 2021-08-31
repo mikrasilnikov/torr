@@ -18,8 +18,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           state   <- createState(rnd, 32 :: Nil, 32, 32, 1)
-          lookup  <- Actor.cacheLookup(state, 0, 32)
-          expected = Chunk(Miss(EntryAddr(0, 0), IntRange(0, 32)))
+          lookup   = Actor.cacheLookup(state, 0, 32)
+          expected = Miss(EntryAddr(0, 0), IntRange(0, 32))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -27,8 +27,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           state   <- createState(rnd, 32 :: Nil, 32, 16, 2)
-          lookup  <- Actor.cacheLookup(state, 0, 32)
-          expected = Chunk(Miss(EntryAddr(0, 0), IntRange(0, 16)), Miss(EntryAddr(0, 1), IntRange(0, 16)))
+          lookup   = Actor.cacheLookup(state, 0, 32)
+          expected = Miss(EntryAddr(0, 0), IntRange(0, 16))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -36,8 +36,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           state   <- createState(rnd, 32 :: Nil, 32, 32, 2)
-          lookup  <- Actor.cacheLookup(state, 8, 16)
-          expected = Chunk(Miss(EntryAddr(0, 0), IntRange(8, 24)))
+          lookup   = Actor.cacheLookup(state, 8, 16)
+          expected = Miss(EntryAddr(0, 0), IntRange(8, 24))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -45,8 +45,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           state   <- createState(rnd, 32 :: 32 :: Nil, 32, 32, 2)
-          lookup  <- Actor.cacheLookup(state, 24, 16)
-          expected = Chunk(Miss(EntryAddr(0, 0), IntRange(24, 32)), Miss(EntryAddr(1, 0), IntRange(0, 8)))
+          lookup   = Actor.cacheLookup(state, 24, 16)
+          expected = Miss(EntryAddr(0, 0), IntRange(24, 32))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -54,8 +54,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
         val rnd = new java.util.Random(42)
         for {
           state   <- createState(rnd, 32 :: 32 :: 32 :: Nil, 32, 32, 2)
-          lookup  <- Actor.cacheLookup(state, 32 + 24, 16)
-          expected = Chunk(Miss(EntryAddr(1, 0), IntRange(24, 32)), Miss(EntryAddr(2, 0), IntRange(0, 8)))
+          lookup   = Actor.cacheLookup(state, 32 + 24, 16)
+          expected = Miss(EntryAddr(1, 0), IntRange(24, 32))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -66,8 +66,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           entryBuf <- Buffer.byte(32)
           entry     = ReadEntry(EntryAddr(0, 0), entryBuf, 32)
           _         = state.cache.addrToEntry.put(entry.addr, entry)
-          lookup   <- Actor.cacheLookup(state, 0, 32)
-          expected  = Chunk(Hit(entry, IntRange(0, 32)))
+          lookup    = Actor.cacheLookup(state, 0, 32)
+          expected  = Hit(entry, IntRange(0, 32))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -84,8 +84,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           e2  = ReadEntry(EntryAddr(0, 1), b2, 32)
           _   = state.cache.addrToEntry.put(e2.addr, e2)
 
-          lookup  <- Actor.cacheLookup(state, 0, 32)
-          expected = Chunk(Hit(e1, IntRange(0, 16)), Hit(e2, IntRange(0, 16)))
+          lookup   = Actor.cacheLookup(state, 0, 32)
+          expected = Hit(e1, IntRange(0, 16))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -98,8 +98,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           e1  = ReadEntry(EntryAddr(0, 0), b1, 32)
           _   = state.cache.addrToEntry.put(e1.addr, e1)
 
-          lookup  <- Actor.cacheLookup(state, 8, 16)
-          expected = Chunk(Hit(e1, IntRange(8, 24)))
+          lookup   = Actor.cacheLookup(state, 8, 16)
+          expected = Hit(e1, IntRange(8, 24))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -116,8 +116,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           e2  = ReadEntry(EntryAddr(1, 0), b2, 32)
           _   = state.cache.addrToEntry.put(e2.addr, e2)
 
-          lookup  <- Actor.cacheLookup(state, 24, 16)
-          expected = Chunk(Hit(e1, IntRange(24, 32)), Hit(e2, IntRange(0, 8)))
+          lookup   = Actor.cacheLookup(state, 24, 16)
+          expected = Hit(e1, IntRange(24, 32))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -134,8 +134,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           e2  = ReadEntry(EntryAddr(1, 0), b2, 16)
           _   = state.cache.addrToEntry.put(e2.addr, e2)
 
-          lookup  <- Actor.cacheLookup(state, 16, 16)
-          expected = Chunk(Hit(e1, IntRange(0, 8)), Hit(e2, IntRange(0, 8)))
+          lookup   = Actor.cacheLookup(state, 16, 16)
+          expected = Hit(e1, IntRange(0, 8))
         } yield assert(lookup)(equalTo(expected))
       },
       //
@@ -152,8 +152,8 @@ object CacheLookupSpec extends DefaultRunnableSpec {
           e2  = ReadEntry(EntryAddr(2, 0), b2, 32)
           _   = state.cache.addrToEntry.put(e2.addr, e2)
 
-          lookup  <- Actor.cacheLookup(state, 32 + 24, 16)
-          expected = Chunk(Hit(e1, IntRange(24, 32)), Hit(e2, IntRange(0, 8)))
+          lookup   = Actor.cacheLookup(state, 32 + 24, 16)
+          expected = Hit(e1, IntRange(24, 32))
         } yield assert(lookup)(equalTo(expected))
       }
     )
