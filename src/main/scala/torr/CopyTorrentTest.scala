@@ -27,7 +27,7 @@ object CopyTorrentTest extends App {
   val srcDirectoryName = "c:\\!temp\\CopyTest\\"
   val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
 
-  val blockSize = 32 * 1024
+  val blockSize: Int = 32 * 1024
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
     val effect = for {
@@ -197,8 +197,6 @@ object CopyTorrentTest extends App {
     val bufCount = (torrentLength / blockSize).toInt
     val bufOrder = (0 to bufCount).sortBy(_ => rnd.nextInt()).toList
 
-    // Хранить x последних смещений и попробовать найти минимальное количество, для которого проблема воспроизводится.
-    // При 43 ошибка проявляется на markUse
     def copy(
         bufNums: List[Int],
         srcState: State,
@@ -215,12 +213,9 @@ object CopyTorrentTest extends App {
 
           for {
             data <- src ? Fetch(piece, pieceOffset, amount)
-            //data <- Actor.read(srcState, offset, amount)
             rem  <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
             _    <- putStrLn(s"before Store rem = $rem").when(rem != 32768)
             _    <- dst ! Store(piece, pieceOffset, data)
-            //_    <- Actor.write(dst, dstState, offset, data)
-            //_    <- ZIO.foreach_(data)(DirectBufferPool.free)
             _    <- putStrLn(s"$bufsWritten of $bufCount completed").when(bufsWritten % 1000 == 0)
             _    <- copy(ns, srcState, dstState, bufsWritten + 1)
           } yield ()

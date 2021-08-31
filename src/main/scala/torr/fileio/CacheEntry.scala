@@ -1,13 +1,9 @@
 package torr.fileio
 
 import zio._
-import zio.clock._
 import zio.nio.core.ByteBuffer
-
 import scala.annotation.tailrec
 import scala.collection.mutable
-import torr.fileio
-
 import java.time.OffsetDateTime
 
 sealed trait CacheEntry {
