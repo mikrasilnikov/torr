@@ -9,44 +9,6 @@ import scala.annotation.tailrec
 
 sealed trait BValue {
 
-  def prettyPrint(maxStringSize: Int = 256): String = {
-
-    def print(node: BValue, builder: StringBuilder, indent: Int, indentFirst: Boolean = true): StringBuilder =
-      node match {
-        case BLong(v)   =>
-          if (indentFirst) builder.append(" " * indent)
-          builder.append(s"$v")
-        case BStr(v)    =>
-          if (indentFirst) builder.append(" " * indent)
-          if (v.size <= maxStringSize)
-            builder.append(printBinaryString(v.toArray))
-          else
-            builder.append(s"(string size=${v.size})")
-        case BList(vs)  =>
-          if (indentFirst) builder.append(" " * indent)
-          builder.append("List(\n")
-          vs.foreach { v => print(v, builder, indent + 2); builder.append("\n") }
-          builder.append(" " * indent)
-          builder.append(")")
-        case BDict(map) =>
-          if (indentFirst) builder.append(" " * indent)
-          builder.append("Map(\n")
-          map.foreach {
-            case (key, value) =>
-              print(key, builder, indent + 2)
-              builder.append(" => ")
-              print(value, builder, indent + 2, indentFirst = false)
-              builder.append("\n")
-          }
-          builder.append(" " * indent)
-          builder.append(")")
-      }
-
-    val builder = new StringBuilder
-    print(this, builder, 0)
-    builder.toString
-  }
-
   def /(key: String): Option[BValue] = {
     this match {
       case BDict(map) => map.get(key)
@@ -103,13 +65,6 @@ sealed trait BValue {
     Chunk.fromArray(hash)
   }
 
-  private def printBinaryString(data: Array[Byte]): String = {
-    if (data.forall(b => b >= 32 && b <= 126)) {
-      new String(data, StandardCharsets.US_ASCII)
-    } else {
-      data.map("%02x".format(_)).mkString
-    }
-  }
 }
 
 final case class BLong(value: Long)              extends BValue
@@ -154,5 +109,4 @@ object BValue {
 
     override def compare(x: BStr, y: BStr): Int = compareChunks(0, x.value, y.value)
   }
-
 }
