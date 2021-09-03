@@ -30,9 +30,8 @@ object MetaInfoSpec extends DefaultRunnableSpec {
         )
 
         for {
-          channel <- InMemoryChannel.make(data)
-          bval    <- BEncode.read(channel)
-          actual  <- MetaInfo.fromBValue(bval)
+          bval   <- ZIO(BEncode.read(Chunk.fromArray(data)))
+          actual <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))
       },
       //
@@ -55,9 +54,8 @@ object MetaInfoSpec extends DefaultRunnableSpec {
           )
         )
         for {
-          channel <- InMemoryChannel.make(data)
-          bval    <- BEncode.read(channel)
-          actual  <- MetaInfo.fromBValue(bval)
+          bval   <- ZIO(BEncode.read(Chunk.fromArray(data)))
+          actual <- MetaInfo.fromBValue(bval)
         } yield assert(actual)(equalTo(expected))
       }
     )

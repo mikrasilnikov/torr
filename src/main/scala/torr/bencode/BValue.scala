@@ -13,22 +13,22 @@ sealed trait BValue {
 
     def print(node: BValue, builder: StringBuilder, indent: Int, indentFirst: Boolean = true): StringBuilder =
       node match {
-        case BInt(v)   =>
+        case BLong(v)   =>
           if (indentFirst) builder.append(" " * indent)
           builder.append(s"$v")
-        case BStr(v)   =>
+        case BStr(v)    =>
           if (indentFirst) builder.append(" " * indent)
           if (v.size <= maxStringSize)
             builder.append(printBinaryString(v.toArray))
           else
             builder.append(s"(string size=${v.size})")
-        case BList(vs) =>
+        case BList(vs)  =>
           if (indentFirst) builder.append(" " * indent)
           builder.append("List(\n")
           vs.foreach { v => print(v, builder, indent + 2); builder.append("\n") }
           builder.append(" " * indent)
           builder.append(")")
-        case BMap(map) =>
+        case BDict(map) =>
           if (indentFirst) builder.append(" " * indent)
           builder.append("Map(\n")
           map.foreach {
@@ -49,15 +49,15 @@ sealed trait BValue {
 
   def /(key: String): Option[BValue] = {
     this match {
-      case BMap(map) => map.get(key)
-      case _         => None
+      case BDict(map) => map.get(key)
+      case _          => None
     }
   }
 
   def asLong: Option[Long] = {
     this match {
-      case BInt(v) => Some(v)
-      case _       => None
+      case BLong(v) => Some(v)
+      case _        => None
     }
   }
 
@@ -77,8 +77,8 @@ sealed trait BValue {
 
   def asDictionary: Option[Map[BStr, BValue]] = {
     this match {
-      case BMap(v) => Some(v)
-      case _       => None
+      case BDict(v) => Some(v)
+      case _        => None
     }
   }
 
@@ -96,14 +96,11 @@ sealed trait BValue {
     }
   }
 
-  def getSHA1: Task[Chunk[Byte]] = {
-    for {
-      channel <- InMemoryChannel.make(Array[Byte]())
-      _       <- BEncode.write(this, channel)
-      data    <- channel.getData.map(_.toArray)
-      md       = java.security.MessageDigest.getInstance("SHA-1")
-      hash    <- ZIO(md.digest(data))
-    } yield Chunk.fromArray(hash)
+  def getSHA1: Chunk[Byte] = {
+    val data = BEncode.write(this)
+    val md   = java.security.MessageDigest.getInstance("SHA-1")
+    val hash = md.digest(data.toArray)
+    Chunk.fromArray(hash)
   }
 
   private def printBinaryString(data: Array[Byte]): String = {
@@ -115,19 +112,19 @@ sealed trait BValue {
   }
 }
 
-final case class BInt(value: Long)              extends BValue
-final case class BStr(value: Chunk[Byte])       extends BValue
-final case class BList(value: List[BValue])     extends BValue
-final case class BMap(value: Map[BStr, BValue]) extends BValue
+final case class BLong(value: Long)              extends BValue
+final case class BStr(value: Chunk[Byte])        extends BValue
+final case class BList(value: List[BValue])      extends BValue
+final case class BDict(value: Map[BStr, BValue]) extends BValue
 
 object BValue {
   def string(value: String): BStr = BStr(Chunk.fromArray(value.getBytes(StandardCharsets.UTF_8)))
 
   def list(values: BValue*): BList = BList(values.toList)
 
-  def int(value: Long): BInt = BInt(value)
+  def long(value: Long): BLong = BLong(value)
 
-  def map(pairs: (BStr, BValue)*): BMap = BMap(pairs.toMap)
+  def map(pairs: (BStr, BValue)*): BDict = BDict(pairs.toMap)
 
   implicit def stringToBStr(s: String): BStr = string(s)
 

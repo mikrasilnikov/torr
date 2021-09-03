@@ -5,9 +5,12 @@ import zio.nio.core.file.Path
 import torr.bencode.{BEncode, BValue}
 import torr.channels.AsyncFileChannel
 import torr.misc.Traverse
+import zio.blocking.Blocking
 import zio.nio.core.Buffer
 import zio.nio.core.channels.AsynchronousFileChannel
+import zio.nio.file.Files
 
+import java.io.IOException
 import java.nio.file.StandardOpenOption
 
 package object metainfo {
@@ -25,14 +28,12 @@ package object metainfo {
 
   object MetaInfo {
 
-    def fromFile(fileName: String): Task[MetaInfo] = {
-      AsyncFileChannel.open(Path(fileName), StandardOpenOption.READ)
-        .use { channel =>
-          for {
-            bVal <- BEncode.read(channel)
-            res  <- fromBValue(bVal)
-          } yield res
-        }
+    def fromFile(fileName: String): RIO[Blocking, MetaInfo] = {
+      for {
+        data <- Files.readAllBytes(Path(fileName))
+        root  = BEncode.read(data)
+        res  <- fromBValue(root)
+      } yield res
     }
 
     def fromBValue(root: BValue): Task[MetaInfo] = {
@@ -48,7 +49,7 @@ package object metainfo {
       val res = for {
         createMetaInfo <- ZIO.fromOption(createMetaInfoOption)
         info           <- ZIO.fromOption(root / "info")
-        infoHash       <- info.getSHA1
+        infoHash        = info.getSHA1
       } yield createMetaInfo(infoHash)
 
       res.mapError {

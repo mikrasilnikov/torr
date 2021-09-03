@@ -23,8 +23,7 @@ object TrackerResponseSpec extends DefaultRunnableSpec {
         val expectedInterval = 1800
 
         for {
-          channel  <- InMemoryChannel.make(data)
-          bVal     <- BEncode.read(channel)
+          bVal     <- ZIO(BEncode.read(Chunk.fromArray(data)))
           response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
         } yield assert(())(anything) &&
           assert(response.interval)(equalTo(expectedInterval)) &&
@@ -40,8 +39,7 @@ object TrackerResponseSpec extends DefaultRunnableSpec {
         val expectedInterval = 3088
 
         for {
-          channel  <- InMemoryChannel.make(data)
-          bVal     <- BEncode.read(channel)
+          bVal     <- ZIO(BEncode.read(Chunk.fromArray(data)))
           response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
         } yield assert(())(anything) &&
           assert(response.interval)(equalTo(expectedInterval)) &&

@@ -22,7 +22,7 @@ case class TrackerLive(client: HttpClient) extends Announce.Service {
       url      <- ZIO(buildUrl(trackerRequest))
       request  <- ZIO(HttpRequest.newBuilder(URI.create(url)).build())
       data     <- fetchWithRetry(request)
-      bVal     <- BEncode.read(data)
+      bVal      = BEncode.read(Chunk.fromArray(data))
       response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
                     .orElseFail(new Exception("Could not interpret response"))
     } yield response
