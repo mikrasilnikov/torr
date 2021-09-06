@@ -3,7 +3,11 @@ package torr.peerwire
 import zio._
 import zio.nio.core.{Buffer, ByteBuffer}
 import torr.channels.ByteChannel
+import torr.directbuffers.DirectBufferPool
+import torr.metainfo.MetaInfo
+import zio.clock.Clock
 
+import java.nio.charset.StandardCharsets
 import scala.collection.mutable.BitSet
 
 sealed trait Message {
@@ -21,9 +25,11 @@ object Message {
   case class BitField(bits: TorrBitSet) extends Message
   case class Port(listenPort: Int)      extends Message
 
-  case class Request(index: Int, begin: Int, length: Int)    extends Message
-  case class Cancel(index: Int, begin: Int, length: Int)     extends Message
-  case class Piece(index: Int, begin: Int, data: ByteBuffer) extends Message
+  case class Request(index: Int, begin: Int, length: Int)     extends Message
+  case class Cancel(index: Int, begin: Int, length: Int)      extends Message
+  case class Piece(index: Int, begin: Int, block: ByteBuffer) extends Message
+
+  case class Handshake(infoHash: Chunk[Byte], peerId: Chunk[Byte], reserved: Chunk[Byte]) extends Message
 
   private val ChokeMsgId: Byte         = 0
   private val UnchokeMsgId: Byte       = 1
@@ -44,31 +50,62 @@ object Message {
 
   def send(message: Message, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
     message match {
-      case KeepAlive                     => sendBytes(channel, buf)
-      case Choke                         => sendBytes(channel, buf, ChokeMsgId)
-      case Unchoke                       => sendBytes(channel, buf, UnchokeMsgId)
-      case Interested                    => sendBytes(channel, buf, InterestedMsgId)
-      case NotInterested                 => sendBytes(channel, buf, NotInterestedMsgId)
-      case Have(pieceIndex)              => sendHave(pieceIndex, channel, buf)
-      case BitField(bits)                => sendBitField(bits, channel, buf)
-      case Port(port)                    => sendPort(port, channel, buf)
-      case Request(index, begin, length) => sendRequest(index, begin, length, channel, buf)
-      case Cancel(index, begin, length)  => sendCancel(index, begin, length, channel, buf)
-      case Piece(index, begin, data)     => sendPiece(index, begin, data, channel, buf)
+      case KeepAlive                             => sendBytes(channel, buf)
+      case Choke                                 => sendBytes(channel, buf, ChokeMsgId)
+      case Unchoke                               => sendBytes(channel, buf, UnchokeMsgId)
+      case Interested                            => sendBytes(channel, buf, InterestedMsgId)
+      case NotInterested                         => sendBytes(channel, buf, NotInterestedMsgId)
+      case Have(pieceIndex)                      => sendHave(pieceIndex, channel, buf)
+      case BitField(bits)                        => sendBitField(bits, channel, buf)
+      case Port(port)                            => sendPort(port, channel, buf)
+      case Request(index, begin, length)         => sendRequest(index, begin, length, channel, buf)
+      case Cancel(index, begin, length)          => sendCancel(index, begin, length, channel, buf)
+      case Piece(index, begin, data)             => sendPiece(index, begin, data, channel, buf)
+      case Handshake(infoHash, peerId, reserved) => sendHandshake(infoHash, peerId, reserved, channel, buf)
     }
 
-  def sendPiece(index: Int, begin: Int, data: ByteBuffer, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
+  def receive(channel: ByteChannel): RIO[DirectBufferPool with Clock, Message] = {
+    for {
+      buf <- DirectBufferPool.allocate
+      len <- receiveAmount(channel, buf, 4) *> buf.getInt
+      _   <- ZIO.fail(new IllegalStateException(s"Message size ($len) > bufSize (${buf.capacity})"))
+               .when(len > buf.capacity)
+      _   <- receiveAmount(channel, buf, len)
+      id  <- buf.get
+      res <- id match {
+               case ChokeMsgId         => ZIO(???)
+               case UnchokeMsgId       => ZIO(???)
+               case InterestedMsgId    => ZIO(???)
+               case NotInterestedMsgId => ZIO(???)
+               case HaveMsgId          => ???
+               case BitfieldMsgId      => ???
+               case RequestMsgId       => ???
+               case PieceMsgId         => receivePiece(buf)
+               case CancelMsgId        => ???
+               case PortMsgId          => ???
+             }
+    } yield res
+  }
+
+  def sendPiece(index: Int, begin: Int, block: ByteBuffer, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
     assert(buf.capacity >= 9)
     for {
       _        <- buf.clear
-      dataSize <- data.remaining
+      dataSize <- block.remaining
       _        <- buf.putInt(9 + dataSize)
       _        <- buf.put(PieceMsgId)
       _        <- buf.putInt(index)
       _        <- buf.putInt(begin)
       _        <- buf.flip *> writeWhole(channel, buf)
-      _        <- writeWhole(channel, data)
+      _        <- writeWhole(channel, block)
     } yield ()
+  }
+
+  def receivePiece(buf: ByteBuffer): Task[Piece] = {
+    for {
+      index <- buf.getInt
+      begin <- buf.getInt
+    } yield Piece(index, begin, buf)
   }
 
   def sendCancel(index: Int, begin: Int, length: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
@@ -136,6 +173,44 @@ object Message {
     } yield ()
   }
 
+  def sendHandshake(
+      infoHash: Chunk[Byte],
+      peerId: Chunk[Byte],
+      reserved: Chunk[Byte],
+      channel: ByteChannel,
+      buf: ByteBuffer
+  ): Task[Unit] = {
+    for {
+      _   <- buf.clear
+      str  = Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII))
+      _   <- buf.put(str.length.toByte)
+      _   <- buf.putChunk(str)
+      _   <- buf.putChunk(reserved)
+      _   <- buf.putChunk(infoHash)
+      _   <- buf.putChunk(peerId)
+      _   <- buf.flip
+      len <- buf.limit
+      _   <- ZIO.fail(new IllegalStateException(s"Wrong handshake length $len")).unless(len == 19 + 49)
+      _   <- writeWhole(channel, buf)
+    } yield ()
+  }
+
+  def receiveHandshake(channel: ByteChannel, buf: ByteBuffer): Task[Handshake] = {
+    for {
+      _        <- receiveAmount(channel, buf, 1)
+      strLen   <- buf.get
+      _        <- ZIO.fail(new IllegalStateException(s"Unexpected strLen = $strLen during handshake"))
+                    .unless(strLen == 19)
+      str      <- receiveAmount(channel, buf, strLen) *> buf.getChunk()
+      _        <- ZIO.fail(new IllegalStateException(s"Unexpected protocol name")).unless(
+                    str == Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII))
+                  )
+      reserved <- receiveAmount(channel, buf, 8) *> buf.getChunk()
+      infoHash <- receiveAmount(channel, buf, 20) *> buf.getChunk()
+      peerId   <- receiveAmount(channel, buf, 20) *> buf.getChunk()
+    } yield Handshake(infoHash, peerId, reserved)
+  }
+
   def sendBytes(channel: ByteChannel, buf: ByteBuffer, values: Byte*): Task[Unit] = {
     assert(buf.capacity >= values.length)
     for {
@@ -166,5 +241,14 @@ object Message {
   }
 
   private def peek(buf: ByteBuffer): Task[Byte] = buf.position.flatMap(pos => buf.get(pos))
+
+  private def receiveAmount(channel: ByteChannel, buf: ByteBuffer, amount: Int): Task[Unit] = {
+    for {
+      _ <- buf.clear
+      _ <- buf.limit(amount)
+      _ <- channel.read(buf)
+      _ <- buf.flip
+    } yield ()
+  }
 
 }

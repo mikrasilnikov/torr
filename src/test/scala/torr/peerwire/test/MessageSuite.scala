@@ -1,12 +1,20 @@
 package torr.peerwire.test
 
+import torr.actorsystem.ActorSystemLive
 import zio._
 import zio.test._
 import zio.test.Assertion._
 import torr.channels._
+import torr.directbuffers.DirectBufferPoolLive
 import torr.metainfo.test.MetaInfoSpec
 import torr.peerwire.{Message, TorrBitSet}
+import zio.logging.slf4j.Slf4jLogger
+import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
+import zio.test.environment.TestClock
+
+import java.nio.charset.StandardCharsets
+import java.util.Random
 
 object MessageSuite extends DefaultRunnableSpec {
   override def spec =
@@ -114,6 +122,78 @@ object MessageSuite extends DefaultRunnableSpec {
           _          <- Message.send(Message.Piece(168496141, 437984285, payloadBuf), channel, 32)
           actual     <- channel.getData
         } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("receive Piece") {
+        val rnd   = new Random(42)
+        val index = 27.toByte
+        val begin = 42.toByte
+        val block = torr.fileio.test.Helpers.randomChunk(rnd, 32)
+
+        val serialized =
+          Chunk[Byte](0, 0, 0, 9 + 32) ++
+            Chunk[Byte](7) ++
+            Chunk[Byte](0, 0, 0, index) ++
+            Chunk[Byte](0, 0, 0, begin) ++
+            block
+
+        val effect = for {
+          channel     <- InMemoryChannel.make(serialized)
+          actual      <- Message.receive(channel)
+          piece        = actual.asInstanceOf[Message.Piece]
+          blockActual <- piece.block.getChunk()
+        } yield assert(piece.index)(equalTo(index.toInt)) &&
+          assert(piece.begin)(equalTo(begin.toInt)) &&
+          assert(blockActual)(equalTo(block))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
+      },
+      //
+      testM("send Handshake") {
+        val rnd      = new Random(42)
+        val reserved = torr.fileio.test.Helpers.randomChunk(rnd, 8)
+        val infoHash = torr.fileio.test.Helpers.randomChunk(rnd, 20)
+        val peerId   = torr.fileio.test.Helpers.randomChunk(rnd, 20)
+
+        val expected =
+          Chunk(19.toByte) ++
+            Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII)) ++
+            reserved ++
+            infoHash ++
+            peerId
+
+        for {
+          channel <- InMemoryChannel.make
+          buf     <- Buffer.byte(128)
+          msg      = Message.Handshake(infoHash, peerId, reserved)
+          _       <- Message.send(msg, channel, buf)
+          actual  <- channel.getData
+        } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("receive Handshake") {
+        val rnd      = new Random(42)
+        val reserved = torr.fileio.test.Helpers.randomChunk(rnd, 8)
+        val infoHash = torr.fileio.test.Helpers.randomChunk(rnd, 20)
+        val peerId   = torr.fileio.test.Helpers.randomChunk(rnd, 20)
+
+        val serialized =
+          Chunk(19.toByte) ++
+            Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII)) ++
+            reserved ++
+            infoHash ++
+            peerId
+
+        for {
+          channel <- InMemoryChannel.make(serialized)
+          buf     <- Buffer.byte(128)
+          msg     <- Message.receiveHandshake(channel, buf)
+          expected = Message.Handshake(infoHash, peerId, reserved)
+        } yield assert(msg)(equalTo(expected))
       }
     )
 }
