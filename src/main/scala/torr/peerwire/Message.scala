@@ -88,7 +88,6 @@ object Message {
   }
 
   def sendPiece(index: Int, begin: Int, block: ByteBuffer, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 9)
     for {
       _        <- buf.clear
       dataSize <- block.remaining

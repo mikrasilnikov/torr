@@ -15,12 +15,12 @@ object BEncode {
     }
 
   private def writeLong(long: BLong): Chunk[Byte] = {
-    val data = s"i${long.value}e".getBytes(StandardCharsets.UTF_8)
+    val data = s"i${long.value}e".getBytes(StandardCharsets.US_ASCII)
     Chunk.fromArray(data)
   }
 
   private def writeString(str: BStr): Chunk[Byte] = {
-    val size = s"${str.value.length}:".getBytes(StandardCharsets.UTF_8)
+    val size = s"${str.value.length}:".getBytes(StandardCharsets.US_ASCII)
     Chunk.fromArray(size) ++ str.value
   }
 
@@ -32,14 +32,15 @@ object BEncode {
         case h :: t => loop(t, acc ++ write(h))
       }
 
-    val prefix = Chunk.fromArray("l".getBytes(StandardCharsets.UTF_8))
-    val suffix = Chunk.fromArray("e".getBytes(StandardCharsets.UTF_8))
+    val prefix = Chunk.fromArray("l".getBytes(StandardCharsets.US_ASCII))
+    val suffix = Chunk.fromArray("e".getBytes(StandardCharsets.US_ASCII))
 
     prefix ++ loop(lst.value) ++ suffix
   }
 
   private def writeDict(dict: BDict, acc: Chunk[Byte] = Chunk.empty): Chunk[Byte] = {
 
+    @tailrec
     def loop(kvps: List[(BStr, BValue)], acc: Chunk[Byte] = Chunk.empty): Chunk[Byte] = {
       kvps match {
         case Nil    => acc
@@ -47,8 +48,8 @@ object BEncode {
       }
     }
 
-    val prefix = Chunk.fromArray("d".getBytes(StandardCharsets.UTF_8))
-    val suffix = Chunk.fromArray("e".getBytes(StandardCharsets.UTF_8))
+    val prefix = Chunk.fromArray("d".getBytes(StandardCharsets.US_ASCII))
+    val suffix = Chunk.fromArray("e".getBytes(StandardCharsets.US_ASCII))
 
     prefix ++ loop(dict.value.toList.sortBy { case (key, _) => key }) ++ suffix
   }
