@@ -28,7 +28,7 @@ object DirectBufferPoolLive {
 
   def make(
       maxBuffers: Int,
-      bufSize: Int = torr.fileio.MinimumTorrentBlockSize
+      bufSize: Int = torr.fileio.DefaultBufferSize
   ): ZLayer[ActorSystem with Logging with Clock, Throwable, DirectBufferPool] = {
 
     val effect = for {
