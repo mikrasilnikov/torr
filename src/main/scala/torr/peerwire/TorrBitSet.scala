@@ -1,7 +1,9 @@
 package torr.peerwire
 
 import zio._
+
 import java.nio._
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 // BitSet wrapper that allows serialization according to BitTorrent protocol specification (BitField message).
@@ -31,5 +33,34 @@ object TorrBitSet {
   def make(length: Int): TorrBitSet = {
     val data = Array.ofDim[Long](math.ceil(length.toDouble / 64).toInt)
     TorrBitSet(mutable.BitSet.fromBitMaskNoCopy(data), length)
+  }
+
+  def fromBytes(data: Chunk[Byte]): TorrBitSet = {
+
+    @tailrec
+    def loop(remaining: Chunk[Byte], acc: Chunk[Long] = Chunk.empty): TorrBitSet = {
+      if (remaining.isEmpty) {
+        TorrBitSet(mutable.BitSet.fromBitMaskNoCopy(acc.toArray), data.length * 8)
+      } else {
+        val toProcess = math.min(8, remaining.length)
+        val buf       = ByteBuffer.allocate(8)
+
+        var i = 0
+        while (i < toProcess) {
+          buf.put(i, remaining(i))
+          i += 1
+        }
+
+        buf.flip()
+        buf.limit(8)
+        val long = java.lang.Long.reverse(
+          buf.asLongBuffer().get()
+        )
+
+        loop(remaining.drop(toProcess), acc :+ long)
+      }
+    }
+
+    loop(data)
   }
 }

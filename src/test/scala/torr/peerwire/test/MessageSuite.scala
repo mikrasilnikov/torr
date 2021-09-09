@@ -74,6 +74,21 @@ object MessageSuite extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
       },
       //
+      testM("receive Have") {
+        val message = MetaInfoSpec.toBytes("0000000504000000ff")
+        val effect  = for {
+          channel <- InMemoryChannel.make(message)
+          actual  <- Message.receive(channel)
+          expected = Message.Have(255)
+        } yield assert(actual)(equalTo(expected))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
+      },
+      //
       testM("send BitField") {
         val expected = MetaInfoSpec.toBytes("0000000205a0")
         val bitSet   = TorrBitSet.make(7)
@@ -86,6 +101,22 @@ object MessageSuite extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
       },
       //
+      testM("receive BitField") {
+        val message = MetaInfoSpec.toBytes("0000000205a0")
+        val effect  = for {
+          channel    <- InMemoryChannel.make(message)
+          actual     <- Message.receive(channel)
+          expectedSet = TorrBitSet.fromBytes(Chunk(0xa0.toByte))
+          expected    = Message.BitField(expectedSet)
+        } yield assert(actual)(equalTo(expected))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
+      },
+      //
       testM("send Request") {
         val expected = MetaInfoSpec.toBytes("0000000d06000000010000000200000003")
         for {
@@ -93,6 +124,21 @@ object MessageSuite extends DefaultRunnableSpec {
           _       <- Message.send(Message.Request(1, 2, 3), channel, 32)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("receive Request") {
+        val message = MetaInfoSpec.toBytes("0000000d06000000010000000200000003")
+        val effect  = for {
+          channel <- InMemoryChannel.make(message)
+          actual  <- Message.receive(channel)
+          expected = Message.Request(1, 2, 3)
+        } yield assert(actual)(equalTo(expected))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
       },
       //
       testM("send Cancel") {
@@ -104,6 +150,21 @@ object MessageSuite extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
       },
       //
+      testM("receive Cancel") {
+        val message = MetaInfoSpec.toBytes("0000000d08000000010000000200000003")
+        val effect  = for {
+          channel <- InMemoryChannel.make(message)
+          actual  <- Message.receive(channel)
+          expected = Message.Cancel(1, 2, 3)
+        } yield assert(actual)(equalTo(expected))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
+      },
+      //
       testM("send Port") {
         val expected = MetaInfoSpec.toBytes("0000000309ffff")
         for {
@@ -111,6 +172,21 @@ object MessageSuite extends DefaultRunnableSpec {
           _       <- Message.send(Message.Port(65535), channel, 32)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
+      },
+      //
+      testM("receive Port") {
+        val message = MetaInfoSpec.toBytes("0000000309ffff")
+        val effect  = for {
+          channel <- InMemoryChannel.make(message)
+          actual  <- Message.receive(channel)
+          expected = Message.Port(65535)
+        } yield assert(actual)(equalTo(expected))
+
+        effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
+          ActorSystemLive.make("Test"),
+          DirectBufferPoolLive.make(1, 1024)
+        )
       },
       //
       testM("send Piece") {

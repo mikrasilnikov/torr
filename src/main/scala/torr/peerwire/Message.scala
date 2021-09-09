@@ -73,16 +73,16 @@ object Message {
       _   <- receiveAmount(channel, buf, len)
       id  <- buf.get
       res <- id match {
-               case ChokeMsgId         => ZIO(???)
-               case UnchokeMsgId       => ZIO(???)
-               case InterestedMsgId    => ZIO(???)
-               case NotInterestedMsgId => ZIO(???)
-               case HaveMsgId          => ???
-               case BitfieldMsgId      => ???
-               case RequestMsgId       => ???
+               case ChokeMsgId         => ZIO.succeed(Choke)
+               case UnchokeMsgId       => ZIO.succeed(Unchoke)
+               case InterestedMsgId    => ZIO.succeed(Interested)
+               case NotInterestedMsgId => ZIO.succeed(NotInterested)
+               case HaveMsgId          => receiveHave(buf)
+               case BitfieldMsgId      => receiveBitField(buf)
+               case RequestMsgId       => receiveRequest(buf)
                case PieceMsgId         => receivePiece(buf)
-               case CancelMsgId        => ???
-               case PortMsgId          => ???
+               case CancelMsgId        => receiveCancel(buf)
+               case PortMsgId          => receivePort(buf)
              }
     } yield res
   }
@@ -109,7 +109,6 @@ object Message {
   }
 
   def sendCancel(index: Int, begin: Int, length: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 13 + 4)
     for {
       _ <- buf.clear
       _ <- buf.putInt(13)
@@ -119,6 +118,14 @@ object Message {
       _ <- buf.putInt(length)
       _ <- buf.flip *> writeWhole(channel, buf)
     } yield ()
+  }
+
+  def receiveCancel(buf: ByteBuffer): Task[Cancel] = {
+    for {
+      index  <- buf.getInt
+      begin  <- buf.getInt
+      length <- buf.getInt
+    } yield Cancel(index, begin, length)
   }
 
   def sendRequest(index: Int, begin: Int, length: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
@@ -134,8 +141,15 @@ object Message {
     } yield ()
   }
 
+  def receiveRequest(buf: ByteBuffer): Task[Request] = {
+    for {
+      index  <- buf.getInt
+      begin  <- buf.getInt
+      length <- buf.getInt
+    } yield Request(index, begin, length)
+  }
+
   def sendPort(port: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 7)
     for {
       _       <- buf.clear
       _       <- buf.putInt(3)
@@ -150,8 +164,16 @@ object Message {
     } yield ()
   }
 
+  def receivePort(buf: ByteBuffer): Task[Port] = {
+    for {
+      portBuf <- Buffer.byte(4)
+      _       <- portBuf.movePosition(2)
+      _       <- portBuf.putByteBuffer(buf)
+      value   <- portBuf.flip *> portBuf.asIntBuffer.flatMap(_.get)
+    } yield Port(value)
+  }
+
   def sendHave(pieceIndex: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 9)
     for {
       _ <- buf.clear
       _ <- buf.putInt(5)
@@ -161,8 +183,13 @@ object Message {
     } yield ()
   }
 
+  def receiveHave(buf: ByteBuffer): Task[Have] = {
+    for {
+      pieceIndex <- buf.getInt
+    } yield Have(pieceIndex)
+  }
+
   def sendBitField(set: TorrBitSet, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 5)
     for {
       _     <- buf.clear
       chunk  = set.toBytes
@@ -171,6 +198,13 @@ object Message {
       _     <- buf.flip *> writeWhole(channel, buf)
       _     <- writeWhole(chunk, channel, buf)
     } yield ()
+  }
+
+  def receiveBitField(buf: ByteBuffer): Task[BitField] = {
+    for {
+      chunk <- buf.getChunk()
+      bitSet = TorrBitSet.fromBytes(chunk)
+    } yield BitField(bitSet)
   }
 
   def sendHandshake(
@@ -240,8 +274,6 @@ object Message {
     }
   }
 
-  private def peek(buf: ByteBuffer): Task[Byte] = buf.position.flatMap(pos => buf.get(pos))
-
   private def receiveAmount(channel: ByteChannel, buf: ByteBuffer, amount: Int): Task[Unit] = {
     for {
       _ <- buf.clear
@@ -250,5 +282,4 @@ object Message {
       _ <- buf.flip
     } yield ()
   }
-
 }
