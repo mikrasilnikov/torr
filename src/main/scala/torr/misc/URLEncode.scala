@@ -9,7 +9,7 @@ object URLEncode {
   def encode(data: Array[Byte]): String = {
 
     @tailrec
-    def go(i: Int, acc: StringBuilder): String = {
+    def loop(i: Int, acc: StringBuilder): String = {
       if (i >= data.length) {
         acc.toString()
       } else {
@@ -24,11 +24,11 @@ object URLEncode {
           acc.append('%')
           acc.append("%02X".format(data(i)))
         }
-        go(i + 1, acc)
+        loop(i + 1, acc)
       }
     }
 
-    go(0, new StringBuilder)
+    loop(0, new StringBuilder)
   }
 
 }

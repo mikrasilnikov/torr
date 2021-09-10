@@ -16,7 +16,7 @@ import zio.test.environment.TestClock
 import java.nio.charset.StandardCharsets
 import java.util.Random
 
-object MessageSuite extends DefaultRunnableSpec {
+object MessageSpec extends DefaultRunnableSpec {
   override def spec =
     suite("MessageSuite")(
       //

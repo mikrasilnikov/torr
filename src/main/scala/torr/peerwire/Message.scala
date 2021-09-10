@@ -274,10 +274,21 @@ object Message {
   }
 
   private def receiveAmount(channel: ByteChannel, buf: ByteBuffer, amount: Int): Task[Unit] = {
+
+    //noinspection SimplifyUnlessInspection
+    def fillBuf: Task[Unit] =
+      for {
+        rem <- buf.remaining
+        _   <- rem match {
+                 case 0 => ZIO.unit
+                 case _ => channel.read(buf) *> fillBuf
+               }
+      } yield ()
+
     for {
       _ <- buf.clear
       _ <- buf.limit(amount)
-      _ <- channel.read(buf)
+      _ <- fillBuf
       _ <- buf.flip
     } yield ()
   }

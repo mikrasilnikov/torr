@@ -1,12 +1,12 @@
 import scala.collection.mutable
-import scala.reflect.runtime.universe.{Type, typeOf, typeTag}
+import scala.reflect.ClassTag
 
 sealed trait Message
 case object KeepAlive extends Message
 case class WithPayload(value : String) extends Message
 
 
-val s = new mutable.HashMap[Type, String]()
-s += (typeOf[KeepAlive.type] -> "Promise1")
+val s = new mutable.HashMap[ClassTag[_], String]()
+s += (ClassTag(KeepAlive.getClass) -> "Promise1")
 
 
