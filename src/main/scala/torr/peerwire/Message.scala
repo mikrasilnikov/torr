@@ -68,21 +68,34 @@ object Message {
     for {
       buf <- DirectBufferPool.allocate
       len <- receiveAmount(channel, buf, 4) *> buf.getInt
-      _   <- ZIO.fail(new IllegalStateException(s"Message size ($len) > bufSize (${buf.capacity})"))
-               .when(len > buf.capacity)
-      _   <- receiveAmount(channel, buf, len)
+      res <- len match {
+               case 0 => ZIO.succeed(Message.KeepAlive)
+               case _ => receivePayload(channel, len, buf)
+             }
+    } yield res
+  }
+
+  private def receivePayload(
+      channel: ByteChannel,
+      amount: Int,
+      buf: ByteBuffer
+  ): RIO[DirectBufferPool with Clock, Message] = {
+    for {
+      _   <- ZIO.fail(new IllegalStateException(s"Message size ($amount) > bufSize (${buf.capacity})"))
+               .when(amount > buf.capacity)
+      _   <- receiveAmount(channel, buf, amount)
       id  <- buf.get
       res <- id match {
                case ChokeMsgId         => ZIO.succeed(Choke)
                case UnchokeMsgId       => ZIO.succeed(Unchoke)
                case InterestedMsgId    => ZIO.succeed(Interested)
                case NotInterestedMsgId => ZIO.succeed(NotInterested)
-               case HaveMsgId          => receiveHave(buf)
-               case BitfieldMsgId      => receiveBitField(buf)
-               case RequestMsgId       => receiveRequest(buf)
+               case HaveMsgId          => receiveHave(buf) <* DirectBufferPool.free(buf)
+               case BitfieldMsgId      => receiveBitField(buf) <* DirectBufferPool.free(buf)
+               case RequestMsgId       => receiveRequest(buf) <* DirectBufferPool.free(buf)
                case PieceMsgId         => receivePiece(buf)
-               case CancelMsgId        => receiveCancel(buf)
-               case PortMsgId          => receivePort(buf)
+               case CancelMsgId        => receiveCancel(buf) <* DirectBufferPool.free(buf)
+               case PortMsgId          => receivePort(buf) <* DirectBufferPool.free(buf)
              }
     } yield res
   }

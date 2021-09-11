@@ -98,6 +98,7 @@ object PeerHandle {
     for {
       actor <- actorP.await
       _     <- Message.receive(channel)
+                 .interruptible
                  .flatMap(msg => actor ! OnMessage(msg))
                  .forever
     } yield ()
