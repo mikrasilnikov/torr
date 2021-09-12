@@ -28,7 +28,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                        for {
                          buf    <- Buffer.byte(1024)
                          _      <- Message.send(expected, channel.remote, buf)
-                         actual <- h.receive(ClassTag(Message.KeepAlive.getClass))
+                         actual <- h.receive[Message.KeepAlive.type]
                        } yield assert(actual)(equalTo(expected))
                      }
         } yield res
@@ -62,7 +62,34 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         )
 
         assertM(effect1.run)(fails(hasMessage(equalTo("Message size (101) > bufSize (100)"))))
+      },
+      //
+      testM("All receiving fibers fail on protocol error") {
+        val rnd    = new java.util.Random(42)
+        val effect =
+          for {
+            channel    <- TestSocketChannel.make
+            handle      = PeerHandle.fromChannel(channel, "Test")
+            (e1, e2)   <- handle.use { h =>
+                            for {
+                              buf     <- Buffer.byte(1024)
+                              client1 <- h.receive[Message.Choke.type].fork
+                              client2 <- h.receive[Message.Unchoke.type].fork
+                              _       <- Message.send(Message.NotInterested, channel.remote, buf)
+                              e1      <- client1.await
+                              e2      <- client2.await
+                            } yield (e1, e2)
+                          }
+            expectedMsg = "Unexpected message of type torr.peerwire.Message$NotInterested$"
 
+          } yield assert(e1)(fails(hasMessage(equalTo(expectedMsg)))) &&
+            assert(e2)(fails(hasMessage(equalTo(expectedMsg))))
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8, 100)
+        )
       }
     )
 }

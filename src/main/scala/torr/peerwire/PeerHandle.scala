@@ -9,7 +9,6 @@ import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
 import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
-
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -30,7 +29,7 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
     receive0(tag1, tag2)
 
-  def receive0(tags: ClassTag[_]*): Task[Message] = {
+  private def receive0(tags: ClassTag[_]*): Task[Message] = {
     for {
       p   <- Promise.make[Throwable, Message]
       _   <- actor ? PeerActor.Receive(tags.toList, p)
@@ -58,32 +57,42 @@ object PeerHandle {
     for {
       actorP       <- Promise.make[Nothing, ActorRef[PeerActor.Command]].toManaged_
       receiveFiber <- receiveProc(channel, actorP).fork.toManaged(_.interrupt)
-
-      state      = PeerActor.State(
-                     channel,
-                     new mutable.HashMap[ClassTag[_], Promise[Throwable, Message]],
-                     new mutable.HashMap[Promise[Throwable, Message], List[ClassTag[_]]]()
-                   )
-
-      system    <- ZIO.service[ActorSystem.Service].toManaged_
-      supervisor = actors.Supervisor.retryOrElse(Schedule.stop, (e, _: Unit) => ZIO.die(e))
-      actor     <- system.system.make(actorName = channelName, supervisor, state, stateful)
-                     .toManaged { a =>
-                       for {
-                         state    <- (a ? PeerActor.GetState).orDieWith(_ =>
-                                       new IllegalStateException("Could not get state  from actor")
-                                     )
-                         context  <- (a ? PeerActor.GetContext).orDieWith(_ =>
-                                       new IllegalStateException("Could not get context from actor")
-                                     )
-                         messages <- a.stop.orElseSucceed(List())
-                         _        <- processRemainingMessages(state, context, messages.asInstanceOf[List[Command[_]]])
-
-                       } yield ()
-                     }
-      _         <- actorP.succeed(actor).toManaged_
-
+      actor        <- createPeerActor(channel, channelName).toManaged(shutdownPeerActor)
+      _            <- actorP.succeed(actor).toManaged_
     } yield PeerHandle(actor, receiveFiber)
+  }
+
+  private def createPeerActor(
+      channel: ByteChannel,
+      channelName: String
+  ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[Command]] = {
+
+    val state = PeerActor.State(
+      channel,
+      new mutable.HashMap[ClassTag[_], Promise[Throwable, Message]],
+      new mutable.HashMap[Promise[Throwable, Message], List[ClassTag[_]]]()
+    )
+
+    val supervisor = actors.Supervisor.retryOrElse(
+      Schedule.stop,
+      (e, _: Unit) => ZIO.die(e)
+    )
+
+    for {
+      system <- ZIO.service[ActorSystem.Service]
+      actor  <- system.system.make(actorName = channelName, supervisor, state, stateful)
+    } yield actor
+  }
+
+  private def shutdownPeerActor(actor: ActorRef[Command]): URIO[DirectBufferPool with Clock, Unit] = {
+    for {
+      state    <- (actor ? PeerActor.GetState)
+                    .orDieWith(_ => new IllegalStateException("Could not get state  from actor"))
+      context  <- (actor ? PeerActor.GetContext)
+                    .orDieWith(_ => new IllegalStateException("Could not get context from actor"))
+      messages <- actor.stop.orElseSucceed(List())
+      _        <- processRemainingMessages(state, context, messages.asInstanceOf[List[Command[_]]])
+    } yield ()
   }
 
   private def processRemainingMessages(
