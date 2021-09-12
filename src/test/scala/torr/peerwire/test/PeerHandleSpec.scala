@@ -3,6 +3,7 @@ package torr.peerwire.test
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.DirectBufferPoolLive
+import torr.fileio.test.Helpers
 import torr.peerwire.{Message, PeerHandle}
 import zio._
 import zio.logging.slf4j.Slf4jLogger
@@ -25,11 +26,10 @@ object PeerHandleSpec extends DefaultRunnableSpec {
           handle   = PeerHandle.fromChannel(channel, "Test")
           res     <- handle.use { h =>
                        for {
-                         buf      <- Buffer.byte(1024)
-                         _        <- Message.send(expected, channel.remote, buf)
-                         rcvFib   <- h.receive(ClassTag(Message.KeepAlive.getClass)).fork
-                         received <- rcvFib.join.debug("rcvFib.join")
-                       } yield assert(received)(equalTo(expected))
+                         buf    <- Buffer.byte(1024)
+                         _      <- Message.send(expected, channel.remote, buf)
+                         actual <- h.receive(ClassTag(Message.KeepAlive.getClass))
+                       } yield assert(actual)(equalTo(expected))
                      }
         } yield res
 
@@ -41,7 +41,28 @@ object PeerHandleSpec extends DefaultRunnableSpec {
       },
       //
       testM("Disconnecting client on malformed message") {
-        ???
+        val rnd    = new java.util.Random(42)
+        val effect = for {
+          channel <- TestSocketChannel.make
+          handle   = PeerHandle.fromChannel(channel, "Test")
+          res     <- handle.use { h =>
+                       for {
+                         buf <- Buffer.byte(4)
+                         _   <- buf.putInt(101) *> buf.flip
+                         _   <- channel.remote.write(buf)
+                         _   <- h.receive[Message.Choke.type]
+                       } yield ()
+                     }
+        } yield ()
+
+        val effect1 = effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8, 100)
+        )
+
+        assertM(effect1.run)(fails(hasMessage(equalTo("Message size (101) > bufSize (100)"))))
+
       }
     )
 }

@@ -65,6 +65,8 @@ object Actor {
             self <- context.self[Command]
             _    <- checkWriteOutConditions(self, state, writeEntry)
           } yield (state, ())
+
+        case Flush                               => ???
       }
     }
   }

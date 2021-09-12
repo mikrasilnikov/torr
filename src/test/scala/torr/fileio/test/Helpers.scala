@@ -69,5 +69,4 @@ object Helpers {
           createFiles(cs, offset + c.size, res :+ OpenedFile(offset, c.size, channel))
         }
     }
-
 }

@@ -8,7 +8,7 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
-import torr.peerwire.PeerActor.{Command, OnMessage, State, stateful}
+import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -16,13 +16,25 @@ import scala.reflect.ClassTag
 case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Throwable, Unit]) {
 
   def send(msg: Message): Task[Unit] = {
-    actor ! PeerActor.Send(msg)
+    for {
+      p <- Promise.make[Throwable, Unit]
+      _ <- actor ? PeerActor.Send(msg, p)
+      _ <- p.await
+    } yield ()
+
   }
 
-  def receive(tags: ClassTag[_]*): Task[Message] = {
+  def receive[M <: Message](implicit tag: ClassTag[M]): Task[Message] =
+    receive0(tag)
+
+  def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
+    receive0(tag1, tag2)
+
+  def receive0(tags: ClassTag[_]*): Task[Message] = {
     for {
-      promise <- actor ? PeerActor.Receive(tags: _*)
-      res     <- promise.await
+      p   <- Promise.make[Throwable, Message]
+      _   <- actor ? PeerActor.Receive(tags.toList, p)
+      res <- p.await
     } yield res
   }
 }
@@ -83,8 +95,8 @@ object PeerHandle {
       case Nil     => ZIO.unit
       case m :: ms =>
         for {
-          sa <- stateful.receive(state, m, context).orDieWith(_ =>
-                  new Exception("Could not process remaining messages for actor")
+          sa <- stateful.receive(state, m, context).orDieWith(e =>
+                  new Exception(s"Could not process remaining message $m ($e)")
                 )
           _  <- processRemainingMessages(sa._1, context, ms)
         } yield ()
@@ -97,10 +109,13 @@ object PeerHandle {
   ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
     for {
       actor <- actorP.await
-      _     <- Message.receive(channel)
-                 .interruptible
-                 .flatMap(msg => actor ! OnMessage(msg))
+      _     <- Message.receive(channel).interruptible
+                 .flatMap(m => actor ! OnMessage(m))
                  .forever
+                 .foldM(
+                   e => actor ! StartFailing(e),
+                   _ => ZIO.unit
+                 )
     } yield ()
   }
 }

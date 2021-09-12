@@ -52,10 +52,7 @@ package object metainfo {
         infoHash        = info.getSHA1
       } yield createMetaInfo(infoHash)
 
-      res.mapError {
-        case e: Throwable => e
-        case _            => new Exception(s"Could not create metainfo from ${root.toString}")
-      }
+      res.orElseFail(new Exception(s"Could not create metainfo from ${root.toString}"))
     }
 
     private def singleFile(root: BValue): Option[List[FileEntry]] =

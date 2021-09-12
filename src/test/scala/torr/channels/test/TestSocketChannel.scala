@@ -30,21 +30,19 @@ case class TestSocketChannel(incoming: Queue[Byte], outgoing: Queue[Byte], rando
   val remote = new ByteChannel {
     def read(buf: ByteBuffer): Task[Int] = {
       for {
-        remaining  <- buf.remaining
-        bytesToRead = random.between(1, remaining + 1)
-        chunk      <- outgoing.takeN(bytesToRead).map(lst => Chunk.fromArray(lst.toArray))
-        _          <- buf.putChunk(chunk)
-      } yield bytesToRead
+        remaining <- buf.remaining
+        chunk     <- outgoing.takeN(remaining).map(lst => Chunk.fromArray(lst.toArray))
+        _         <- buf.putChunk(chunk)
+      } yield remaining
 
     }
 
     def write(buf: ByteBuffer): Task[Int] = {
       for {
-        remaining   <- buf.remaining
-        bytesToWrite = random.between(1, remaining + 1)
-        chunk       <- buf.getChunk(bytesToWrite)
-        _           <- incoming.offerAll(chunk)
-      } yield bytesToWrite
+        remaining <- buf.remaining
+        chunk     <- buf.getChunk(remaining)
+        _         <- incoming.offerAll(chunk)
+      } yield remaining
     }
 
     def isOpen: Task[Boolean] = ZIO.succeed(true)
