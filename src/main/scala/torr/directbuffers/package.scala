@@ -14,7 +14,6 @@ package object directbuffers {
     trait Service {
       def allocate: ZIO[Clock, Throwable, ByteBuffer]
       def free(buf: ByteBuffer): Task[Unit]
-      def bufSize: Task[Long] = ???
       def numAvailable: Task[Int]
     }
   }
