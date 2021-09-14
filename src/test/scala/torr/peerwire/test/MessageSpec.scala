@@ -12,7 +12,6 @@ import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
 import zio.test.environment.TestClock
-
 import java.nio.charset.StandardCharsets
 import java.util.Random
 
