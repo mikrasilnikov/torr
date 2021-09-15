@@ -8,7 +8,9 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
+import torr.metainfo.MetaInfo
 import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -20,16 +22,15 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
       _ <- actor ? PeerActor.Send(msg, p)
       _ <- p.await
     } yield ()
-
   }
 
   def receive[M <: Message](implicit tag: ClassTag[M]): Task[Message] =
-    receive0(tag)
+    receiveCore(tag)
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
-    receive0(tag1, tag2)
+    receiveCore(tag1, tag2)
 
-  private def receive0(tags: ClassTag[_]*): Task[Message] = {
+  private def receiveCore(tags: ClassTag[_]*): Task[Message] = {
     for {
       p   <- Promise.make[Throwable, Message]
       _   <- actor ? PeerActor.Receive(tags.toList, p)
@@ -40,35 +41,59 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
 
 object PeerHandle {
 
-  def fromAddress(address: InetSocketAddress)
-      : ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  def fromAddress(
+      address: InetSocketAddress,
+      infoHash: Chunk[Byte],
+      localPeerId: Chunk[Byte]
+  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       nioChannel <- AsynchronousSocketChannel.open
       _          <- nioChannel.connect(address).toManaged_
       channel     = AsyncSocketChannel(nioChannel)
-      res        <- fromChannel(channel, address.toString())
+      res        <- fromChannelWithHandshake(channel, address.toString(), infoHash, localPeerId)
+    } yield res
+  }
+
+  def fromChannelWithHandshake(
+      channel: ByteChannel,
+      channelName: String,
+      infoHash: Chunk[Byte],
+      localPeerId: Chunk[Byte]
+  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+    for {
+      handshake <- DirectBufferPool.allocateManaged
+                     .use { buf =>
+                       Message.sendHandshake(infoHash, localPeerId, channel, buf) *>
+                         Message.receiveHandshake(channel, buf)
+                     }
+                     .toManaged_
+
+      res       <- fromChannel(channel, channelName, handshake.peerId)
     } yield res
   }
 
   def fromChannel(
       channel: ByteChannel,
-      channelName: String
+      channelName: String,
+      remotePeerId: Chunk[Byte]
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       actorP       <- Promise.make[Nothing, ActorRef[PeerActor.Command]].toManaged_
       receiveFiber <- receiveProc(channel, actorP).fork.toManaged(_.interrupt)
-      actor        <- createPeerActor(channel, channelName).toManaged(shutdownPeerActor)
+      actor        <- createPeerActor(channel, channelName, remotePeerId).toManaged(shutdownPeerActor)
       _            <- actorP.succeed(actor).toManaged_
     } yield PeerHandle(actor, receiveFiber)
   }
 
   private def createPeerActor(
       channel: ByteChannel,
-      channelName: String
+      channelName: String,
+      remotePeerId: Chunk[Byte]
   ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[Command]] = {
 
     val state = PeerActor.State(
       channel,
+      remotePeerId,
       new mutable.HashMap[ClassTag[_], Promise[Throwable, Message]],
       new mutable.HashMap[Promise[Throwable, Message], List[ClassTag[_]]]()
     )

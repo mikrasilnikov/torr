@@ -23,7 +23,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val expected = Message.KeepAlive
         val effect   = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test")
+          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf    <- Buffer.byte(1024)
@@ -44,7 +44,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val rnd    = new java.util.Random(42)
         val effect = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test")
+          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf <- Buffer.byte(4)
@@ -69,7 +69,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect =
           for {
             channel    <- TestSocketChannel.make
-            handle      = PeerHandle.fromChannel(channel, "Test")
+            handle      = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
             (e1, e2)   <- handle.use { h =>
                             for {
                               buf     <- Buffer.byte(1024)

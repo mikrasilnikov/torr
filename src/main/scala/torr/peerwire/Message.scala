@@ -25,11 +25,10 @@ object Message {
   case class BitField(bits: TorrBitSet) extends Message
   case class Port(listenPort: Int)      extends Message
 
-  case class Request(index: Int, begin: Int, length: Int)     extends Message
-  case class Cancel(index: Int, begin: Int, length: Int)      extends Message
-  case class Piece(index: Int, begin: Int, block: ByteBuffer) extends Message
-
-  case class Handshake(infoHash: Chunk[Byte], peerId: Chunk[Byte], reserved: Chunk[Byte]) extends Message
+  case class Request(index: Int, begin: Int, length: Int)          extends Message
+  case class Cancel(index: Int, begin: Int, length: Int)           extends Message
+  case class Piece(index: Int, begin: Int, block: ByteBuffer)      extends Message
+  case class Handshake(infoHash: Chunk[Byte], peerId: Chunk[Byte]) extends Message
 
   private val ChokeMsgId: Byte         = 0
   private val UnchokeMsgId: Byte       = 1
@@ -50,18 +49,18 @@ object Message {
 
   def send(message: Message, channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
     message match {
-      case KeepAlive                             => sendBytes(channel, buf)
-      case Choke                                 => sendBytes(channel, buf, ChokeMsgId)
-      case Unchoke                               => sendBytes(channel, buf, UnchokeMsgId)
-      case Interested                            => sendBytes(channel, buf, InterestedMsgId)
-      case NotInterested                         => sendBytes(channel, buf, NotInterestedMsgId)
-      case Have(pieceIndex)                      => sendHave(pieceIndex, channel, buf)
-      case BitField(bits)                        => sendBitField(bits, channel, buf)
-      case Port(port)                            => sendPort(port, channel, buf)
-      case Request(index, begin, length)         => sendRequest(index, begin, length, channel, buf)
-      case Cancel(index, begin, length)          => sendCancel(index, begin, length, channel, buf)
-      case Piece(index, begin, data)             => sendPiece(index, begin, data, channel, buf)
-      case Handshake(infoHash, peerId, reserved) => sendHandshake(infoHash, peerId, reserved, channel, buf)
+      case KeepAlive                     => sendBytes(channel, buf)
+      case Choke                         => sendBytes(channel, buf, ChokeMsgId)
+      case Unchoke                       => sendBytes(channel, buf, UnchokeMsgId)
+      case Interested                    => sendBytes(channel, buf, InterestedMsgId)
+      case NotInterested                 => sendBytes(channel, buf, NotInterestedMsgId)
+      case Have(pieceIndex)              => sendHave(pieceIndex, channel, buf)
+      case BitField(bits)                => sendBitField(bits, channel, buf)
+      case Port(port)                    => sendPort(port, channel, buf)
+      case Request(index, begin, length) => sendRequest(index, begin, length, channel, buf)
+      case Cancel(index, begin, length)  => sendCancel(index, begin, length, channel, buf)
+      case Piece(index, begin, data)     => sendPiece(index, begin, data, channel, buf)
+      case Handshake(infoHash, peerId)   => sendHandshake(infoHash, peerId, channel, buf)
     }
 
   def receive(channel: ByteChannel): RIO[DirectBufferPool with Clock, Message] = {
@@ -222,10 +221,10 @@ object Message {
   def sendHandshake(
       infoHash: Chunk[Byte],
       peerId: Chunk[Byte],
-      reserved: Chunk[Byte],
       channel: ByteChannel,
       buf: ByteBuffer
   ): Task[Unit] = {
+    val reserved = Chunk.fill(8)(0.toByte)
     for {
       _   <- buf.clear
       str  = Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII))
@@ -254,7 +253,7 @@ object Message {
       reserved <- receiveAmount(channel, buf, 8) *> buf.getChunk()
       infoHash <- receiveAmount(channel, buf, 20) *> buf.getChunk()
       peerId   <- receiveAmount(channel, buf, 20) *> buf.getChunk()
-    } yield Handshake(infoHash, peerId, reserved)
+    } yield Handshake(infoHash, peerId)
   }
 
   def sendBytes(channel: ByteChannel, buf: ByteBuffer, values: Byte*): Task[Unit] = {

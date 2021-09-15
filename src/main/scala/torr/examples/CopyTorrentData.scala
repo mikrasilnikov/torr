@@ -1,26 +1,26 @@
-package torr.fileio
+package torr.examples
 
-import torr.actorsystem.{ActorSystem, ActorSystemLive}
+import torr.actorsystem._
 import torr.channels.AsyncFileChannel
 import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
-import torr.fileio.Actor.{Fail, Fetch, GetState, State, Store}
-import torr.fileio.{Actor, Cache}
-import zio._
-import torr.metainfo.MetaInfo
+import torr.fileio.Actor._
+import torr.fileio._
+import torr.metainfo._
 import zio.actors.ActorRef
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.console.{Console, putStrLn}
-import zio.duration.durationInt
+import zio.console._
 import zio.logging.slf4j.Slf4jLogger
-import zio.nio.core.{Buffer, ByteBuffer}
 import zio.nio.core.channels.AsynchronousFileChannel
 import zio.nio.core.file.Path
+import zio.nio.core._
 import zio.nio.file.Files
+import zio._
+import zio.duration.durationInt
 
-import java.nio.file.{OpenOption, StandardOpenOption}
+import java.nio.file._
 
-object CopyTorrentTest extends App {
+object CopyTorrentData extends App {
 
   val metaInfoFile     =
     "d:\\Torrents\\!torrent\\Ragdoll_Masters v3.1.torrent"

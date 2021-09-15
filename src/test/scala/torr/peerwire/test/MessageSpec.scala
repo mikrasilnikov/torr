@@ -230,7 +230,7 @@ object MessageSpec extends DefaultRunnableSpec {
       //
       testM("send Handshake") {
         val rnd      = new Random(42)
-        val reserved = torr.fileio.test.Helpers.randomChunk(rnd, 8)
+        val reserved = Chunk.fill(8)(0.toByte)
         val infoHash = torr.fileio.test.Helpers.randomChunk(rnd, 20)
         val peerId   = torr.fileio.test.Helpers.randomChunk(rnd, 20)
 
@@ -244,7 +244,7 @@ object MessageSpec extends DefaultRunnableSpec {
         for {
           channel <- InMemoryChannel.make
           buf     <- Buffer.byte(128)
-          msg      = Message.Handshake(infoHash, peerId, reserved)
+          msg      = Message.Handshake(infoHash, peerId)
           _       <- Message.send(msg, channel, buf)
           actual  <- channel.getData
         } yield assert(actual)(equalTo(expected))
@@ -252,7 +252,7 @@ object MessageSpec extends DefaultRunnableSpec {
       //
       testM("receive Handshake") {
         val rnd      = new Random(42)
-        val reserved = torr.fileio.test.Helpers.randomChunk(rnd, 8)
+        val reserved = Chunk.fill(8)(0.toByte)
         val infoHash = torr.fileio.test.Helpers.randomChunk(rnd, 20)
         val peerId   = torr.fileio.test.Helpers.randomChunk(rnd, 20)
 
@@ -267,7 +267,7 @@ object MessageSpec extends DefaultRunnableSpec {
           channel <- InMemoryChannel.make(serialized)
           buf     <- Buffer.byte(128)
           msg     <- Message.receiveHandshake(channel, buf)
-          expected = Message.Handshake(infoHash, peerId, reserved)
+          expected = Message.Handshake(infoHash, peerId)
         } yield assert(msg)(equalTo(expected))
       }
     )
