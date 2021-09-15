@@ -16,7 +16,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
   override def spec =
     suite("PeerHandleSpec")(
       //
-      testM("receive keep-alive") {
+      testM("Receives a message") {
         val expected = Message.KeepAlive
         val effect   = for {
           channel <- TestSocketChannel.make
@@ -37,7 +37,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         )
       },
       //
-      testM("Disconnecting client on malformed message") {
+      testM("Disconnects client on malformed message") {
         val rnd    = new java.util.Random(42)
         val effect = for {
           channel <- TestSocketChannel.make
@@ -130,7 +130,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         )
       },
       //
-      testM("Failing actor fails everything else") {
+      testM("Failing actor fails every client") {
         val rnd    = new java.util.Random(42)
         val effect =
           for {
