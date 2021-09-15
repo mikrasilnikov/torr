@@ -2,11 +2,10 @@ package torr.peerwire
 
 import java.time.OffsetDateTime
 import scala.collection.mutable
-import scala.reflect.ClassTag
 
 class PeerMailbox {
 
-  private val byMessageClass = new mutable.HashMap[Class[_], mutable.Queue[(OffsetDateTime, Message)]]()
+  private[peerwire] val byMessageClass = new mutable.HashMap[Class[_], mutable.Queue[(OffsetDateTime, Message)]]()
 
   def enqueue[M <: Message](received: OffsetDateTime, message: M): Unit = {
     val tag = message.getClass
