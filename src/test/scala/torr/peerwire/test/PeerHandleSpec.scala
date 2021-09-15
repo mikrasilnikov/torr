@@ -3,17 +3,14 @@ package torr.peerwire.test
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.DirectBufferPoolLive
-import torr.fileio.test.Helpers
-import torr.peerwire.{Message, PeerHandle}
+import torr.peerwire.{Message, PeerActorConfig, PeerHandle}
 import zio._
+import zio.duration.durationInt
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
 import zio.test._
 import zio.test.Assertion._
-
-import scala.reflect.ClassTag
-import scala.util.Random
 
 object PeerHandleSpec extends DefaultRunnableSpec {
   override def spec =
@@ -72,18 +69,92 @@ object PeerHandleSpec extends DefaultRunnableSpec {
             handle      = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
             (e1, e2)   <- handle.use { h =>
                             for {
-                              buf     <- Buffer.byte(1024)
                               client1 <- h.receive[Message.Choke.type].fork
                               client2 <- h.receive[Message.Unchoke.type].fork
-                              _       <- Message.send(Message.NotInterested, channel.remote, buf)
+                              buf     <- Buffer.byte(4)
+                              _       <- buf.putInt(101) *> buf.flip
+                              _       <- channel.remote.write(buf)
                               e1      <- client1.await
                               e2      <- client2.await
                             } yield (e1, e2)
                           }
-            expectedMsg = "Unexpected message of type torr.peerwire.Message$NotInterested$"
+            expectedMsg = "Message size (101) > bufSize (100)"
 
           } yield assert(e1)(fails(hasMessage(equalTo(expectedMsg)))) &&
             assert(e2)(fails(hasMessage(equalTo(expectedMsg))))
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8, 100)
+        )
+      },
+      //
+      testM("All receiving fibers fail on mailbox overflow") {
+        val rnd    = new java.util.Random(42)
+        val effect =
+          for {
+            channel    <- TestSocketChannel.make
+            actorConfig = PeerActorConfig(
+                            maxMailboxSize = 2,
+                            maxMessageProcessingLatency = 30.seconds
+                          )
+            handle      = PeerHandle.fromChannel(
+                            channel,
+                            "Test",
+                            remotePeerId = Chunk.fill(20)(0.toByte),
+                            actorConfig
+                          )
+            (e1, e2)   <- handle.use {
+                            h =>
+                              for {
+                                client1 <- h.receive[Message.Choke.type].fork
+                                client2 <- h.receive[Message.Unchoke.type].fork
+                                buf     <- Buffer.byte(128)
+                                _       <- Message.send(Message.KeepAlive, channel.remote, buf)
+                                _       <- Message.send(Message.KeepAlive, channel.remote, buf)
+                                _       <- Message.send(Message.KeepAlive, channel.remote, buf)
+                                e1      <- client1.await
+                                e2      <- client2.await
+                              } yield (e1, e2)
+                          }
+            expectedMsg = "state.mailbox.size (3) > state.maxMailboxSize (2)"
+
+          } yield assert(e1)(fails(hasMessage(containsString(expectedMsg)))) &&
+            assert(e2)(fails(hasMessage(containsString(expectedMsg))))
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8, 100)
+        )
+      },
+      //
+      testM("Failing actor fails everything else") {
+        val rnd    = new java.util.Random(42)
+        val effect =
+          for {
+            channel    <- TestSocketChannel.make
+            actorConfig = PeerActorConfig(
+                            maxMailboxSize = 2,
+                            maxMessageProcessingLatency = 30.seconds
+                          )
+            handle      = PeerHandle.fromChannel(
+                            channel,
+                            "Test",
+                            remotePeerId = Chunk.fill(20)(0.toByte),
+                            actorConfig
+                          )
+            e          <- handle.use { h =>
+                            for {
+                              client1 <- h.receive[Message.Choke.type].fork
+                              buf     <- Buffer.byte(128)
+                              _       <- buf.putInt(Int.MaxValue) *> buf.flip
+                              _       <- channel.remote.write(buf)
+                              e       <- client1.await
+                            } yield e
+                          }
+          } yield assert(e)(fails(hasMessage(equalTo("Boom!"))))
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),

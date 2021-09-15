@@ -6,14 +6,15 @@ import scala.reflect.ClassTag
 
 class PeerMailbox {
 
-  private val byMessageTag = new mutable.HashMap[ClassTag[_], mutable.Queue[(OffsetDateTime, Message)]]()
+  private val byMessageClass = new mutable.HashMap[Class[_], mutable.Queue[(OffsetDateTime, Message)]]()
 
-  def enqueue[M <: Message](received: OffsetDateTime, message: M)(implicit tag: ClassTag[M]): Unit = {
-    byMessageTag.get(tag) match {
+  def enqueue[M <: Message](received: OffsetDateTime, message: M): Unit = {
+    val tag = message.getClass
+    byMessageClass.get(tag) match {
       case None        =>
         val queue = mutable.Queue.empty[(OffsetDateTime, Message)]
         queue.enqueue((received, message))
-        byMessageTag.put(tag, queue)
+        byMessageClass.put(tag, queue)
 
       case Some(queue) =>
         queue.enqueue((received, message))
@@ -23,12 +24,12 @@ class PeerMailbox {
   /**
     * Dequeues the oldest received message having one of the specified types.
     */
-  def dequeue(tags: List[ClassTag[_]]): Option[Message] = {
+  def dequeue(classes: List[Class[_]]): Option[Message] = {
 
-    val matchingNonEmptyQueues = tags
-      .map(tag => (tag, byMessageTag.get(tag)))
+    val matchingNonEmptyQueues = classes
+      .map(cls => (cls, byMessageClass.get(cls)))
       .filter { case (_, queueOption) => queueOption.isDefined }
-      .map { case (tag, queueOption) => (tag, queueOption.get) }
+      .map { case (cls, queueOption) => (cls, queueOption.get) }
       .filter { case (_, queue) => queue.nonEmpty }
       .sortBy { case (_, queue) => queue.head._1 }
 
@@ -41,22 +42,22 @@ class PeerMailbox {
   }
 
   def oldestMessage: Option[(OffsetDateTime, Message)] = {
-    byMessageTag
+    byMessageClass
       .filter { case (_, queue) => queue.nonEmpty }
       .map { case (_, queue) => queue.head }
       .minByOption { case (time, _) => time }
   }
 
-  def size: Int = byMessageTag.foldLeft(0) { case (acc, (_, queue)) => acc + queue.size }
+  def size: Int = byMessageClass.foldLeft(0) { case (acc, (_, queue)) => acc + queue.size }
 
   def formatStats: String = {
-    byMessageTag
+    byMessageClass
       .toList
       .filter { case (_, queue) => queue.nonEmpty }
-      .map { case (tag, queue) => (tag, queue.size) }
+      .map { case (cls, queue) => (cls, queue.size) }
       .sortBy { case (_, size) => size }
       .reverse
-      .map { case (tag, size) => s"$tag => $size" }
+      .map { case (cls, size) => s"$cls => $size" }
       .mkString("\n")
   }
 }

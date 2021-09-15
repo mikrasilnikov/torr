@@ -14,8 +14,8 @@ import scala.reflect.ClassTag
 object PeerActor {
 
   sealed trait Command[+_]
-  case class Send(message: Message, p: Promise[Throwable, Unit])                      extends Command[Unit]
-  case class Receive(messageTypes: List[ClassTag[_]], p: Promise[Throwable, Message]) extends Command[Unit]
+  case class Send(message: Message, p: Promise[Throwable, Unit])                   extends Command[Unit]
+  case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
 
   private[peerwire] case class OnMessage(message: Message)    extends Command[Unit]
   private[peerwire] case class StartFailing(error: Throwable) extends Command[Unit]
@@ -25,16 +25,12 @@ object PeerActor {
   case class State(
       channel: ByteChannel,
       remotePeerId: Chunk[Byte] = Chunk.fill(20)(0.toByte),
-      expectedMessages: mutable.Map[ClassTag[_], Promise[Throwable, Message]] =
-        new mutable.HashMap[ClassTag[_], Promise[Throwable, Message]](),
-      givenPromises: mutable.Map[Promise[Throwable, Message], List[ClassTag[_]]] =
-        new mutable.HashMap[Promise[Throwable, Message], List[ClassTag[_]]],
+      expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
+        new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
+      givenPromises: mutable.Map[Promise[Throwable, Message], List[Class[_]]] =
+        new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]],
       mailbox: PeerMailbox = new PeerMailbox,
-      /** Will start failing if this amount of messages is enqueued in mailbox. */
-      maxMailboxSize: Int = 100,
-      /** Will start failing if a received message has not been processed for this time period. */
-      maxMessageProcessingLatency: Duration = 30.seconds,
-      /** An error to fail all incoming requests with. */
+      actorConfig: PeerActorConfig = PeerActorConfig.default,
       var isFailingWith: Option[Throwable] = None
   )
 
@@ -43,8 +39,14 @@ object PeerActor {
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
         case Send(m, p)          => send(state, m, p).map(p => (state, p))
-        case Receive(types, p)   => receive(state, types, p).map(p => (state, p))
-        case OnMessage(m)        => onMessage(state, m).as(state, ())
+        case Receive(classes, p) => receive(state, classes, p).map(p => (state, p))
+
+        case OnMessage(m)        =>
+          m match {
+            case Message.Fail => ZIO.fail(new IllegalArgumentException(s"Boom!"))
+            case _            => onMessage(state, m).as(state, ())
+          }
+
         case GetContext          => ZIO.succeed(state, context)
         case GetState            => ZIO.succeed(state, state)
         case StartFailing(error) => startFailing(state, error).as(state, ())
@@ -74,20 +76,22 @@ object PeerActor {
 
     private[peerwire] def receive(
         state: State,
-        tags: List[ClassTag[_]],
+        classes: List[Class[_]],
         p: Promise[Throwable, Message]
     ): Task[Unit] = {
 
       if (state.isFailingWith.isDefined)
         p.fail(state.isFailingWith.get).as()
       else {
-        state.mailbox.dequeue(tags) match {
+        state.mailbox.dequeue(classes) match {
           case Some(m) => p.succeed(m).as()
-          case None    => tags.foreach { t =>
+          case None    => classes.foreach { t =>
               state.expectedMessages.get(t) match {
                 case Some(_) =>
                   p.fail(new IllegalStateException(s"Message of type $t is already expected by another proc")).as()
-                case None    => state.expectedMessages.put(t, p)
+                case None    =>
+                  state.expectedMessages.put(t, p)
+                  state.givenPromises.put(p, classes)
               }
             }
             ZIO.unit
@@ -95,8 +99,9 @@ object PeerActor {
       }
     }
 
-    private[peerwire] def onMessage[M <: Message](state: State, msg: M)(implicit tag: ClassTag[M]): RIO[Clock, Unit] = {
-      state.expectedMessages.get(tag) match {
+    private[peerwire] def onMessage[M <: Message](state: State, msg: M): RIO[Clock, Unit] = {
+      val cls = msg.getClass
+      state.expectedMessages.get(cls) match {
         case None          =>
           for {
             now <- clock.currentDateTime
@@ -123,12 +128,13 @@ object PeerActor {
 
     //noinspection SimplifyWhenInspection
     private def failOnExcessiveMailboxSize(state: State, now: OffsetDateTime): Task[Unit] = {
-      if (state.mailbox.size >= state.maxMailboxSize) {
+      val newMailboxSize = state.mailbox.size + 1
+      if (newMailboxSize > state.actorConfig.maxMailboxSize) {
         val mailboxStats = state.mailbox.formatStats
         startFailing(
           state,
           new IllegalStateException(
-            s"state.mailbox.size (${state.mailbox.size}) >= state.maxMailboxSize (${state.maxMailboxSize}).\n$mailboxStats"
+            s"state.mailbox.size ($newMailboxSize) > state.maxMailboxSize (${state.actorConfig.maxMailboxSize}).\n$mailboxStats"
           )
         )
       } else ZIO.unit
@@ -140,7 +146,7 @@ object PeerActor {
         case None              => ZIO.unit
         case Some((time, msg)) =>
           val currentDelaySeconds = java.time.Duration.between(time, now).toSeconds
-          if (currentDelaySeconds >= state.maxMessageProcessingLatency.toSeconds) {
+          if (currentDelaySeconds >= state.actorConfig.maxMessageProcessingLatency.toSeconds) {
             val mailboxStats = state.mailbox.formatStats
             startFailing(
               state,

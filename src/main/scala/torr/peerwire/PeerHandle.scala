@@ -8,9 +8,7 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
-import torr.metainfo.MetaInfo
 import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
-
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -25,15 +23,15 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
   }
 
   def receive[M <: Message](implicit tag: ClassTag[M]): Task[Message] =
-    receiveCore(tag)
+    receiveCore(tag.runtimeClass)
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
-    receiveCore(tag1, tag2)
+    receiveCore(tag1.runtimeClass, tag1.runtimeClass)
 
-  private def receiveCore(tags: ClassTag[_]*): Task[Message] = {
+  private def receiveCore(classes: Class[_]*): Task[Message] = {
     for {
       p   <- Promise.make[Throwable, Message]
-      _   <- actor ? PeerActor.Receive(tags.toList, p)
+      _   <- actor ? PeerActor.Receive(classes.toList, p)
       res <- p.await
     } yield res
   }
@@ -75,12 +73,13 @@ object PeerHandle {
   def fromChannel(
       channel: ByteChannel,
       channelName: String,
-      remotePeerId: Chunk[Byte]
+      remotePeerId: Chunk[Byte],
+      actorConfig: PeerActorConfig = PeerActorConfig.default
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       actorP       <- Promise.make[Nothing, ActorRef[PeerActor.Command]].toManaged_
       receiveFiber <- receiveProc(channel, actorP).fork.toManaged(_.interrupt)
-      actor        <- createPeerActor(channel, channelName, remotePeerId).toManaged(shutdownPeerActor)
+      actor        <- createPeerActor(channel, channelName, remotePeerId, actorConfig).toManaged(shutdownPeerActor)
       _            <- actorP.succeed(actor).toManaged_
     } yield PeerHandle(actor, receiveFiber)
   }
@@ -88,31 +87,42 @@ object PeerHandle {
   private def createPeerActor(
       channel: ByteChannel,
       channelName: String,
-      remotePeerId: Chunk[Byte]
+      remotePeerId: Chunk[Byte],
+      actorConfig: PeerActorConfig
   ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[Command]] = {
 
     val state = PeerActor.State(
       channel,
       remotePeerId,
-      new mutable.HashMap[ClassTag[_], Promise[Throwable, Message]],
-      new mutable.HashMap[Promise[Throwable, Message], List[ClassTag[_]]]()
+      new mutable.HashMap[Class[_], Promise[Throwable, Message]],
+      new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]](),
+      actorConfig = actorConfig
     )
 
-    val supervisor = actors.Supervisor.retryOrElse(
-      Schedule.stop,
-      (e, _: Unit) => ZIO.die(e)
-    )
+    // Supervisor that sends message StartFailing(...) to actor after first error.
+    def makeSupervisor(promise: Promise[Nothing, ActorRef[PeerActor.Command]]) =
+      actors.Supervisor.retryOrElse(
+        Schedule.stop,
+        (e, _: Unit) =>
+          for {
+            actor <- promise.await
+            _     <- (actor ! StartFailing(e)).orDie
+          } yield ()
+      )
 
     for {
-      system <- ZIO.service[ActorSystem.Service]
-      actor  <- system.system.make(actorName = channelName, supervisor, state, stateful)
+      actorP    <- Promise.make[Nothing, ActorRef[PeerActor.Command]]
+      system    <- ZIO.service[ActorSystem.Service]
+      supervisor = makeSupervisor(actorP)
+      actor     <- system.system.make(actorName = channelName, supervisor, state, stateful)
+      _         <- actorP.succeed(actor)
     } yield actor
   }
 
   private def shutdownPeerActor(actor: ActorRef[Command]): URIO[DirectBufferPool with Clock, Unit] = {
     for {
       state    <- (actor ? PeerActor.GetState)
-                    .orDieWith(_ => new IllegalStateException("Could not get state  from actor"))
+                    .orDieWith(_ => new IllegalStateException("Could not get state from actor"))
       context  <- (actor ? PeerActor.GetContext)
                     .orDieWith(_ => new IllegalStateException("Could not get context from actor"))
       messages <- actor.stop.orElseSucceed(List())

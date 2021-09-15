@@ -4,11 +4,8 @@ import zio._
 import zio.nio.core.{Buffer, ByteBuffer}
 import torr.channels.ByteChannel
 import torr.directbuffers.DirectBufferPool
-import torr.metainfo.MetaInfo
 import zio.clock.Clock
-
 import java.nio.charset.StandardCharsets
-import scala.collection.mutable.BitSet
 
 sealed trait Message {
   def send(channel: ByteChannel, buf: ByteBuffer): Task[Unit] =
@@ -29,6 +26,7 @@ object Message {
   case class Cancel(index: Int, begin: Int, length: Int)           extends Message
   case class Piece(index: Int, begin: Int, block: ByteBuffer)      extends Message
   case class Handshake(infoHash: Chunk[Byte], peerId: Chunk[Byte]) extends Message
+  private[peerwire] case object Fail                               extends Message
 
   private val ChokeMsgId: Byte         = 0
   private val UnchokeMsgId: Byte       = 1
@@ -68,8 +66,9 @@ object Message {
       buf <- DirectBufferPool.allocate
       len <- receiveAmount(channel, buf, 4) *> buf.getInt
       res <- len match {
-               case 0 => ZIO.succeed(Message.KeepAlive)
-               case _ => receivePayload(channel, len, buf)
+               case 0            => ZIO.succeed(Message.KeepAlive)
+               case Int.MaxValue => ZIO.succeed(Message.Fail)
+               case _            => receivePayload(channel, len, buf)
              }
     } yield res
   }
@@ -250,7 +249,7 @@ object Message {
       _        <- ZIO.fail(new IllegalStateException(s"Unexpected protocol name")).unless(
                     str == Chunk.fromArray("BitTorrent protocol".getBytes(StandardCharsets.US_ASCII))
                   )
-      reserved <- receiveAmount(channel, buf, 8) *> buf.getChunk()
+      _        <- receiveAmount(channel, buf, 8) *> buf.getChunk()
       infoHash <- receiveAmount(channel, buf, 20) *> buf.getChunk()
       peerId   <- receiveAmount(channel, buf, 20) *> buf.getChunk()
     } yield Handshake(infoHash, peerId)
