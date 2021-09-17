@@ -11,17 +11,22 @@ import torr.directbuffers.DirectBufferPool
 import torr.{fileio, metainfo}
 import torr.fileio.Actor.{Command, Fetch, GetState, State, Store}
 import torr.metainfo.MetaInfo
+import zio.blocking.Blocking
+import zio.nio.file.Files
 
 import java.nio.file.{OpenOption, StandardOpenOption}
 
 case class FileIOLive(private val actor: ActorRef[Command]) extends FileIO.Service {
 
-  def fetch(piece: Int, offset: Int, amount: Int): ZManaged[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
-    val read = actor ? Fetch(piece, offset, amount)
-    read.toManaged(bufs => ZIO.foreach_(bufs)(b => DirectBufferPool.free(b).orDie))
+  def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
+    actor ? Fetch(piece, offset, amount)
   }
 
-  def store(piece: Int, offset: Int, data: Chunk[ByteBuffer]): Task[Unit] = actor ! Store(piece, offset, data)
+  def store(piece: Int, offset: Int, data: Chunk[ByteBuffer]): Task[Unit] = {
+    actor ! Store(piece, offset, data)
+  }
+
+  def flush: Task[Unit] = ???
 
   def hash(piece: Int): Task[Array[Byte]] = ???
 }
@@ -30,20 +35,60 @@ object FileIOLive {
 
   def make(
       metaInfo: MetaInfo,
-      baseDirectoryName: String
-  ): ZLayer[ActorSystem with DirectBufferPool with Clock, Throwable, FileIO] = {
+      baseDirectoryName: String,
+      actorName: String = "FileIO"
+  ): ZLayer[ActorSystem with DirectBufferPool with Clock with Blocking, Throwable, FileIO] = {
 
     val managed = for {
+      _          <- createFiles(metaInfo, baseDirectoryName).toManaged_
       files      <- openFiles(metaInfo, baseDirectoryName, StandardOpenOption.READ, StandardOpenOption.WRITE)
       torrentSize = metaInfo.entries.map(_.size).sum
       state       = State(metaInfo.pieceSize, torrentSize, files.toVector, Cache())
-      actor      <- createActorManaged("FileIO", state)
+      actor      <- createActorManaged(actorName, state)
     } yield FileIOLive(actor)
 
     managed.toLayer
   }
 
-  def openFiles(
+  private def createFiles(metaInfo: MetaInfo, directoryName: String): ZIO[Blocking, Throwable, Unit] = {
+    ZIO.foreach_(metaInfo.entries) { entry =>
+      for {
+        buf  <- Buffer.byte(64 * 1024)
+        path <- ZIO(Path(directoryName) / entry.path)
+        _    <- createDirectory(path.parent.get)
+        _    <- AsyncFileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+                  .use(channel => fill(channel, entry.size, buf))
+                  .whenM(Files.notExists(path))
+      } yield ()
+    }
+  }
+
+  private def createDirectory(path: Path): ZIO[Blocking, Throwable, Unit] = {
+    Files.exists(path).flatMap {
+      case true  => ZIO.unit
+      case false =>
+        for {
+          parent <- ZIO.fromOption(path.parent)
+                      .orElseFail(new IllegalArgumentException("Path must be absolute"))
+          _      <- createDirectory(parent) *> Files.createDirectory(path)
+        } yield ()
+    }
+  }
+
+  private def fill(channel: AsyncFileChannel, amount: Long, buf: ByteBuffer, position: Long = 0): Task[Unit] = {
+    amount - position match {
+      case 0         => ZIO.unit
+      case remaining =>
+        for {
+          _       <- buf.clear
+          _       <- buf.limit(remaining.toInt).when(remaining < buf.capacity)
+          written <- channel.write(buf, position)
+          _       <- fill(channel, amount, buf, position + written)
+        } yield ()
+    }
+  }
+
+  private def openFiles(
       metaInfo: MetaInfo,
       directoryName: String,
       options: OpenOption*
@@ -69,7 +114,7 @@ object FileIOLive {
     }
   }
 
-  def createActor(
+  private def createActor(
       name: String,
       state: fileio.Actor.State
   ): ZIO[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {
@@ -83,7 +128,7 @@ object FileIOLive {
     } yield res
   }
 
-  def createActorManaged(
+  private[fileio] def createActorManaged(
       name: String,
       state: fileio.Actor.State
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, ActorRef[Command]] = {

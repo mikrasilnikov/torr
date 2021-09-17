@@ -14,8 +14,9 @@ package object fileio {
   @accessible
   object FileIO {
     trait Service {
-      def fetch(piece: Int, offset: Int, amount: Int): ZManaged[DirectBufferPool, Throwable, Chunk[ByteBuffer]]
+      def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]]
       def store(piece: Int, offset: Int, data: Chunk[ByteBuffer]): Task[Unit]
+      def flush: Task[Unit]
       def hash(piece: Int): Task[Array[Byte]]
     }
   }

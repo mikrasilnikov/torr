@@ -22,6 +22,8 @@ package object metainfo {
       val pieceOffset = offset % pieceSize
       Request(piece.toInt, pieceOffset.toInt, size)
     }
+
+    val torrentSize: Long = entries.map(_.size).sum
   }
 
   final case class PieceHash(value: Chunk[Byte])
