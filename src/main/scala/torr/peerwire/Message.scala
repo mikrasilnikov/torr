@@ -12,6 +12,20 @@ sealed trait Message {
     Message.send(this, channel, buf)
 }
 
+object MessageTypes {
+  type KeepAlive     = Message.KeepAlive.type
+  type Choke         = Message.Choke.type
+  type Unchoke       = Message.Unchoke.type
+  type Interested    = Message.Interested.type
+  type NotInterested = Message.NotInterested.type
+  type Have          = Message.Have
+  type BitField      = Message.BitField
+  type Port          = Message.Port
+  type Request       = Message.Request
+  type Cancel        = Message.Cancel
+  type Piece         = Message.Piece
+}
+
 object Message {
   case object KeepAlive                 extends Message
   case object Choke                     extends Message
@@ -66,8 +80,8 @@ object Message {
       buf <- DirectBufferPool.allocate
       len <- receiveAmount(channel, buf, 4) *> buf.getInt
       res <- len match {
-               case 0            => ZIO.succeed(Message.KeepAlive)
-               case Int.MaxValue => ZIO.succeed(Message.Fail)
+               case 0            => DirectBufferPool.free(buf) *> ZIO.succeed(Message.KeepAlive)
+               case Int.MaxValue => DirectBufferPool.free(buf) *> ZIO.succeed(Message.Fail)
                case _            => receivePayload(channel, len, buf)
              }
     } yield res
@@ -84,10 +98,10 @@ object Message {
       _   <- receiveAmount(channel, buf, amount)
       id  <- buf.get
       res <- id match {
-               case ChokeMsgId         => ZIO.succeed(Choke)
-               case UnchokeMsgId       => ZIO.succeed(Unchoke)
-               case InterestedMsgId    => ZIO.succeed(Interested)
-               case NotInterestedMsgId => ZIO.succeed(NotInterested)
+               case ChokeMsgId         => DirectBufferPool.free(buf) *> ZIO.succeed(Choke)
+               case UnchokeMsgId       => DirectBufferPool.free(buf) *> ZIO.succeed(Unchoke)
+               case InterestedMsgId    => DirectBufferPool.free(buf) *> ZIO.succeed(Interested)
+               case NotInterestedMsgId => DirectBufferPool.free(buf) *> ZIO.succeed(NotInterested)
                case HaveMsgId          => receiveHave(buf) <* DirectBufferPool.free(buf)
                case BitfieldMsgId      => receiveBitField(buf) <* DirectBufferPool.free(buf)
                case RequestMsgId       => receiveRequest(buf) <* DirectBufferPool.free(buf)
@@ -139,7 +153,6 @@ object Message {
   }
 
   def sendRequest(index: Int, begin: Int, length: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
-    assert(buf.capacity >= 13 + 4)
     for {
       _ <- buf.clear
       _ <- buf.putInt(13)

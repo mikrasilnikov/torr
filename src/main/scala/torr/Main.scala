@@ -14,9 +14,15 @@ import zio.nio.file.Files
 
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import scala.collection.mutable
 
 object Main extends App {
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+    val treeSet1 = new mutable.TreeSet[Int]()
+    val treeSet2 = new mutable.TreeSet[Int]()
+    
+    val x = treeSet1.intersect(treeSet2)
+    
     putStrLn("Hello").repeatN(7).exitCode
   }
 }

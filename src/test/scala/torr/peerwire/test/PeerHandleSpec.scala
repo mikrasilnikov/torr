@@ -3,6 +3,7 @@ package torr.peerwire.test
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.DirectBufferPoolLive
+import torr.peerwire.PeerActor.GetState
 import torr.peerwire.{Message, PeerActorConfig, PeerHandle}
 import zio._
 import zio.duration.durationInt
@@ -16,16 +17,63 @@ object PeerHandleSpec extends DefaultRunnableSpec {
   override def spec =
     suite("PeerHandleSpec")(
       //
-      testM("Receives a message") {
-        val expected = Message.KeepAlive
+      testM("Receives a message stored in mailbox") {
+        val expected = Message.Have(12345)
         val effect   = for {
           channel <- TestSocketChannel.make
           handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
-                         buf    <- Buffer.byte(1024)
-                         _      <- Message.send(expected, channel.remote, buf)
-                         actual <- h.receive[Message.KeepAlive.type]
+                         buf           <- Buffer.byte(1024)
+                         _             <- Message.send(expected, channel.remote, buf)
+                         getMailboxSize = (h.actor ? GetState).map(s => s.mailbox.size)
+                         _             <- getMailboxSize.repeatUntil(_ == 1)
+                         mailboxSize   <- getMailboxSize
+                         actual        <- h.receive[Message.Have]
+                       } yield assert(actual)(equalTo(expected)) && assert(mailboxSize)(equalTo(1))
+                     }
+        } yield res
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
+      },
+      //
+      testM("Receives an expected message") {
+        val expected = Message.Have(12345)
+        val effect   = for {
+          channel <- TestSocketChannel.make
+          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          res     <- handle.use { h =>
+                       for {
+                         actualFib <- h.receive[Message.Have].fork
+                         _         <- actualFib.status.repeatUntil(s => s.isInstanceOf[Fiber.Status.Suspended])
+                         buf       <- Buffer.byte(1024)
+                         _         <- Message.send(expected, channel.remote, buf)
+                         actual    <- actualFib.join
+
+                       } yield assert(actual)(equalTo(expected))
+                     }
+        } yield res
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolLive.make(8)
+        )
+      },
+      //
+      testM("Sends a message") {
+        val expected = Message.Have(12345)
+        val effect   = for {
+          channel <- TestSocketChannel.make
+          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          res     <- handle.use { h =>
+                       for {
+                         _      <- h.send(expected)
+                         actual <- Message.receive(channel.remote)
                        } yield assert(actual)(equalTo(expected))
                      }
         } yield res

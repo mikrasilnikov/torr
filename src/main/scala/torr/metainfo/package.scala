@@ -1,17 +1,12 @@
 package torr
 
 import zio._
-import zio.nio.core.file.Path
-import torr.bencode.{BEncode, BValue}
-import torr.channels.AsyncFileChannel
-import torr.misc.Traverse
 import zio.blocking.Blocking
-import zio.nio.core.Buffer
-import zio.nio.core.channels.AsynchronousFileChannel
+import zio.nio.core.file.Path
 import zio.nio.file.Files
-
-import java.io.IOException
-import java.nio.file.StandardOpenOption
+import torr.bencode.{BEncode, BValue}
+import torr.misc.Traverse
+import torr.peerwire.Message.Request
 
 package object metainfo {
 
@@ -21,7 +16,13 @@ package object metainfo {
       pieces: List[PieceHash],
       entries: List[FileEntry],
       infoHash: Chunk[Byte]
-  )
+  ) {
+    def requestFromOffset(offset: Long, size: Int): Request = {
+      val piece       = offset / pieceSize
+      val pieceOffset = offset % pieceSize
+      Request(piece.toInt, pieceOffset.toInt, size)
+    }
+  }
 
   final case class PieceHash(value: Chunk[Byte])
   final case class FileEntry(path: Path, size: Long)
