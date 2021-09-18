@@ -51,7 +51,6 @@ object Actor {
           val absolute = absoluteOffset(state, piece, pieceOffset)
           for {
             amount <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
-            //_      <- ZIO(println(s"amount0 == $amount, piece = $piece, pieceOffset = $pieceOffset")).when(amount != 32768)
             self   <- context.self[Command]
             _      <- validateAmount(state, absolute, amount)
             _      <- write(self, state, absolute, data)
@@ -66,8 +65,15 @@ object Actor {
             _    <- checkWriteOutConditions(self, state, writeEntry)
           } yield (state, ())
 
-        case Flush                               => ???
+        case Flush                               => flush(state).as(state, ())
       }
+    }
+  }
+
+  private[fileio] def flush(state: State): Task[Unit] = {
+    ZIO.foreach_(state.cache.addrToEntry) {
+      case (_, entry @ WriteEntry(_, _, _, _)) => makeReadEntryFromWriteEntry(state, entry)
+      case _                                   => ZIO.unit
     }
   }
 

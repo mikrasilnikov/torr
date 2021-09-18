@@ -9,14 +9,14 @@ import torr.actorsystem.ActorSystem
 import torr.channels.AsyncFileChannel
 import torr.directbuffers.DirectBufferPool
 import torr.{fileio, metainfo}
-import torr.fileio.Actor.{Command, Fetch, GetState, State, Store}
+import torr.fileio.Actor.{Command, Fetch, Flush, GetState, State, Store}
 import torr.metainfo.MetaInfo
 import zio.blocking.Blocking
 import zio.nio.file.Files
 
 import java.nio.file.{OpenOption, StandardOpenOption}
 
-case class FileIOLive(private val actor: ActorRef[Command]) extends FileIO.Service {
+case class FileIOLive(private val actor: ActorRef[Command], metaInfo: MetaInfo) extends FileIO.Service {
 
   def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
     actor ? Fetch(piece, offset, amount)
@@ -26,26 +26,28 @@ case class FileIOLive(private val actor: ActorRef[Command]) extends FileIO.Servi
     actor ! Store(piece, offset, data)
   }
 
-  def flush: Task[Unit] = ???
+  def flush: Task[Unit] = {
+    actor ? Flush
+  }
 
-  def hash(piece: Int): Task[Array[Byte]] = ???
 }
 
 object FileIOLive {
 
   def make(
-      metaInfo: MetaInfo,
+      metaInfoFileName: String,
       baseDirectoryName: String,
       actorName: String = "FileIO"
   ): ZLayer[ActorSystem with DirectBufferPool with Clock with Blocking, Throwable, FileIO] = {
 
     val managed = for {
+      metaInfo   <- MetaInfo.fromFile(metaInfoFileName).toManaged_
       _          <- createFiles(metaInfo, baseDirectoryName).toManaged_
       files      <- openFiles(metaInfo, baseDirectoryName, StandardOpenOption.READ, StandardOpenOption.WRITE)
       torrentSize = metaInfo.entries.map(_.size).sum
       state       = State(metaInfo.pieceSize, torrentSize, files.toVector, Cache())
       actor      <- createActorManaged(actorName, state)
-    } yield FileIOLive(actor)
+    } yield FileIOLive(actor, metaInfo)
 
     managed.toLayer
   }

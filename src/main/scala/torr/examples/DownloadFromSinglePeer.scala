@@ -2,6 +2,7 @@ package torr.examples
 
 import torr.actorsystem.ActorSystemLive
 import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
+import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
 import torr.peerwire.{Message, PeerHandle}
 import torr.peerwire.MessageTypes._
@@ -10,9 +11,10 @@ import zio.console.{Console, putStrLn}
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.{InetAddress, InetSocketAddress}
+
 import scala.collection.immutable.HashMap
 
-object DownloadLocalTorrent extends App {
+object DownloadFromSinglePeer extends App {
 
   val metaInfoFile          =
     "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
@@ -33,7 +35,7 @@ object DownloadLocalTorrent extends App {
       localPeerId    = Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
       remoteAddress <- InetSocketAddress.hostName(remoteHost, remotePort)
       //remoteAddress <- InetSocketAddress.hostName("173.212.205.73", 51413)
-      metaInfo      <- MetaInfo.fromFile(metaInfoFile)
+      metaInfo      <- FileIO.metaInfo
       _             <- PeerHandle.fromAddress(remoteAddress, metaInfo.infoHash, localPeerId)
                          .use(peerHandle => downloadProc(metaInfo, peerHandle))
     } yield ()
@@ -41,11 +43,15 @@ object DownloadLocalTorrent extends App {
     effect.injectCustom(
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
-      DirectBufferPoolLive.make(32)
+      DirectBufferPoolLive.make(32),
+      FileIOLive.make(metaInfoFile, dstDirectoryName)
     ).exitCode
   }
 
-  def downloadProc(metaInfo: MetaInfo, peer: PeerHandle): ZIO[DirectBufferPool with Console, Throwable, Unit] = {
+  def downloadProc(
+      metaInfo: MetaInfo,
+      peer: PeerHandle
+  ): ZIO[FileIO with DirectBufferPool with Console, Throwable, Unit] = {
     for {
       _          <- peer.receive[BitField]        //.debug("rcv downloadProc")
       rcvHaveFib <- receiveHave(peer).fork
@@ -60,7 +66,7 @@ object DownloadLocalTorrent extends App {
       peer: PeerHandle,
       offset: Long = 0L,
       retryRequests: Map[Long, Message.Request] = HashMap.empty[Long, Message.Request]
-  ): RIO[DirectBufferPool with Console, Unit] = {
+  ): RIO[FileIO with DirectBufferPool with Console, Unit] = {
 
     val torrentSize = metaInfo.entries.map(_.size).sum
 
@@ -71,7 +77,7 @@ object DownloadLocalTorrent extends App {
                }
       state <- downloadUntilChoked(peer, metaInfo, torrentSize, offset, retryRequests).debug("state")
       _     <- state match {
-                 case Completed           => ZIO.unit
+                 case Completed           => FileIO.flush *> ZIO.unit
                  case InProgress(o, reqs) => downloadUntilCompleted(metaInfo, peer, o, reqs)
                }
     } yield ()
@@ -87,7 +93,7 @@ object DownloadLocalTorrent extends App {
       torrentSize: Long,
       offset: Long,
       pendingRequests: Map[Long, Message.Request]
-  ): RIO[Console with DirectBufferPool, DownloadState] = {
+  ): RIO[FileIO with DirectBufferPool with Console, DownloadState] = {
     val remaining = torrentSize - offset
 
     if (remaining <= 0 && pendingRequests.isEmpty) {
@@ -114,15 +120,15 @@ object DownloadLocalTorrent extends App {
         msg <- peer.receive[Piece, Choke] //.debug("rcv [downloadUntilChoked]")
         res <- msg match {
 
-                 case Message.Piece(index, begin, buf) =>
+                 case Message.Piece(index, begin, data) =>
                    val rcvPieceOffset = index.toLong * metaInfo.pieceSize + begin
                    for {
-                     _   <- DirectBufferPool.free(buf)
+                     _   <- FileIO.store(index, begin, Chunk(data))
                      res <- downloadUntilChoked(peer, metaInfo, torrentSize, offset, pendingRequests - rcvPieceOffset)
                    } yield res
 
-                 case Message.Choke                    => ZIO.succeed(InProgress(offset, pendingRequests))
-                 case _                                => ZIO.dieMessage("!")
+                 case Message.Choke                     => ZIO.succeed(InProgress(offset, pendingRequests))
+                 case _                                 => ZIO.dieMessage("!")
                }
       } yield res
     }

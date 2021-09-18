@@ -4,6 +4,7 @@ import zio._
 import zio.macros.accessible
 import zio.nio.core.ByteBuffer
 import torr.directbuffers.DirectBufferPool
+import torr.metainfo.MetaInfo
 
 package object fileio {
 
@@ -17,7 +18,7 @@ package object fileio {
       def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]]
       def store(piece: Int, offset: Int, data: Chunk[ByteBuffer]): Task[Unit]
       def flush: Task[Unit]
-      def hash(piece: Int): Task[Array[Byte]]
+      def metaInfo: MetaInfo
     }
   }
 }

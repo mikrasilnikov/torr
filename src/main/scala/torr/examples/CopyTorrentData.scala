@@ -33,11 +33,14 @@ object CopyTorrentData extends App {
     val effect = for {
       metaInfo <- MetaInfo.fromFile(metaInfoFile)
 
-      srcFileIO = FileIOLive.make(metaInfo, srcDirectoryName, "FileIO1").build
-      dstFileIO = FileIOLive.make(metaInfo, dstDirectoryName, "FileIO2").build
+      srcFileIO = FileIOLive.make(metaInfoFile, srcDirectoryName, "FileIO1").build
+      dstFileIO = FileIOLive.make(metaInfoFile, dstDirectoryName, "FileIO2").build
+
+      //metaInfo <- srcFileIO.use(src => ZIO.succeed(src.get.metaInfo))
 
       _ <- (srcFileIO <*> dstFileIO).use {
              case (src, dst) =>
+               val metaInfo = src.get.metaInfo
                //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
                copyRandom(metaInfo.pieceSize, metaInfo.torrentSize, src.get, dst.get)
            }
