@@ -4,9 +4,12 @@ import zio._
 import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.clock.Clock
+
 import scala.collection.mutable
 import torr.channels.ByteChannel
 import torr.directbuffers.DirectBufferPool
+import zio.nio.core.ByteBuffer
+
 import java.time.OffsetDateTime
 import scala.concurrent.duration.{Duration, DurationInt}
 import scala.reflect.ClassTag
@@ -14,7 +17,7 @@ import scala.reflect.ClassTag
 object PeerActor {
 
   sealed trait Command[+_]
-  case class Send(message: Message, p: Promise[Throwable, Unit])                   extends Command[Unit]
+  case class Send(message: Message)                                                extends Command[Unit]
   case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
 
   private[peerwire] case class OnMessage(message: Message)    extends Command[Unit]
@@ -24,6 +27,7 @@ object PeerActor {
 
   case class State(
       channel: ByteChannel,
+      sendBuf: ByteBuffer,
       remotePeerId: Chunk[Byte] = Chunk.fill(20)(0.toByte),
       expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
         new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
@@ -38,15 +42,13 @@ object PeerActor {
 
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
-        case Send(m, p)          => send(state, m, p).map(p => (state, p))
+        case Send(m)             => send(state, m).map(p => (state, p))
         case Receive(classes, p) => receive(state, classes, p).map(p => (state, p))
-
         case OnMessage(m)        =>
           m match {
             case Message.Fail => ZIO.fail(new IllegalArgumentException(s"Boom!"))
             case _            => onMessage(state, m).as(state, ())
           }
-
         case GetContext          => ZIO.succeed(state, context)
         case GetState            => ZIO.succeed(state, state)
         case StartFailing(error) => startFailing(state, error).as(state, ())
@@ -55,22 +57,16 @@ object PeerActor {
 
     private[peerwire] def send(
         state: State,
-        msg: Message,
-        p: Promise[Throwable, Unit]
+        msg: Message
     ): RIO[DirectBufferPool with Clock, Unit] = {
       state.isFailingWith match {
-        case Some(error) => p.fail(error).as()
-        case None        =>
-          for {
-            _ <- DirectBufferPool.allocateManaged
-                   .use { buf =>
-                     Message.send(msg, state.channel, buf)
-                       .foldM(
-                         e => p.fail(e) *> startFailing(state, e),
-                         _ => p.succeed()
-                       )
-                   }
-          } yield ()
+        case Some(_) => ZIO.unit
+        case None    =>
+          Message.send(msg, state.channel, state.sendBuf)
+            .foldM(
+              e => startFailing(state, e),
+              _ => ZIO.unit
+            )
       }
     }
 

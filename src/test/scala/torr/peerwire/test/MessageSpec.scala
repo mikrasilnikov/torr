@@ -77,7 +77,8 @@ object MessageSpec extends DefaultRunnableSpec {
         val message = MetaInfoSpec.toBytes("0000000504000000ff")
         val effect  = for {
           channel <- InMemoryChannel.make(message)
-          actual  <- Message.receive(channel)
+          buf     <- Buffer.byte(64)
+          actual  <- Message.receive(channel, buf)
           expected = Message.Have(255)
         } yield assert(actual)(equalTo(expected))
 
@@ -104,7 +105,8 @@ object MessageSpec extends DefaultRunnableSpec {
         val message = MetaInfoSpec.toBytes("0000000205a0")
         val effect  = for {
           channel    <- InMemoryChannel.make(message)
-          actual     <- Message.receive(channel)
+          buf        <- Buffer.byte(64)
+          actual     <- Message.receive(channel, buf)
           expectedSet = TorrBitSet.fromBytes(Chunk(0xa0.toByte))
           expected    = Message.BitField(expectedSet)
         } yield assert(actual)(equalTo(expected))
@@ -129,7 +131,8 @@ object MessageSpec extends DefaultRunnableSpec {
         val message = MetaInfoSpec.toBytes("0000000d06000000010000000200000003")
         val effect  = for {
           channel <- InMemoryChannel.make(message)
-          actual  <- Message.receive(channel)
+          buf     <- Buffer.byte(64)
+          actual  <- Message.receive(channel, buf)
           expected = Message.Request(1, 2, 3)
         } yield assert(actual)(equalTo(expected))
 
@@ -153,7 +156,8 @@ object MessageSpec extends DefaultRunnableSpec {
         val message = MetaInfoSpec.toBytes("0000000d08000000010000000200000003")
         val effect  = for {
           channel <- InMemoryChannel.make(message)
-          actual  <- Message.receive(channel)
+          buf     <- Buffer.byte(64)
+          actual  <- Message.receive(channel, buf)
           expected = Message.Cancel(1, 2, 3)
         } yield assert(actual)(equalTo(expected))
 
@@ -177,7 +181,8 @@ object MessageSpec extends DefaultRunnableSpec {
         val message = MetaInfoSpec.toBytes("0000000309ffff")
         val effect  = for {
           channel <- InMemoryChannel.make(message)
-          actual  <- Message.receive(channel)
+          buf     <- Buffer.byte(64)
+          actual  <- Message.receive(channel, buf)
           expected = Message.Port(65535)
         } yield assert(actual)(equalTo(expected))
 
@@ -214,7 +219,8 @@ object MessageSpec extends DefaultRunnableSpec {
 
         val effect = for {
           channel     <- InMemoryChannel.make(serialized)
-          actual      <- Message.receive(channel)
+          buf         <- Buffer.byte(64)
+          actual      <- Message.receive(channel, buf)
           piece        = actual.asInstanceOf[Message.Piece]
           blockActual <- piece.block.getChunk()
         } yield assert(piece.index)(equalTo(index.toInt)) &&

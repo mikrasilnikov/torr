@@ -16,9 +16,7 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
 
   def send(msg: Message): Task[Unit] = {
     for {
-      p <- Promise.make[Throwable, Unit]
-      _ <- actor ? PeerActor.Send(msg, p)
-      _ <- p.await
+      _ <- actor ! PeerActor.Send(msg)
     } yield ()
   }
 
@@ -48,37 +46,35 @@ object PeerHandle {
       nioChannel <- AsynchronousSocketChannel.open
       _          <- nioChannel.connect(address).toManaged_
       channel     = AsyncSocketChannel(nioChannel)
-      res        <- fromChannelWithHandshake(channel, address.toString(), infoHash, localPeerId)
+      msgBuf     <- Buffer.byteDirect(1024).toManaged_
+      res        <- fromChannelWithHandshake(channel, msgBuf, address.toString(), infoHash, localPeerId)
     } yield res
   }
 
   def fromChannelWithHandshake(
       channel: ByteChannel,
+      msgBuf: ByteBuffer,
       channelName: String,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
-      handshake <- DirectBufferPool.allocateManaged
-                     .use { buf =>
-                       Message.sendHandshake(infoHash, localPeerId, channel, buf) *>
-                         Message.receiveHandshake(channel, buf)
-                     }
-                     .toManaged_
-
-      res       <- fromChannel(channel, channelName, handshake.peerId)
+      _         <- Message.sendHandshake(infoHash, localPeerId, channel, msgBuf).toManaged_
+      handshake <- Message.receiveHandshake(channel, msgBuf).toManaged_
+      res       <- fromChannel(channel, msgBuf, channelName, handshake.peerId)
     } yield res
   }
 
   def fromChannel(
       channel: ByteChannel,
+      msgBuf: ByteBuffer,
       channelName: String,
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig = PeerActorConfig.default
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       actorP       <- Promise.make[Nothing, ActorRef[PeerActor.Command]].toManaged_
-      receiveFiber <- receiveProc(channel, actorP).fork.toManaged(_.interrupt)
+      receiveFiber <- receiveProc(channel, msgBuf, actorP).fork.toManaged(_.interrupt)
       actor        <- createPeerActor(channel, channelName, remotePeerId, actorConfig).toManaged(shutdownPeerActor)
       _            <- actorP.succeed(actor).toManaged_
     } yield PeerHandle(actor, receiveFiber)
@@ -91,13 +87,15 @@ object PeerHandle {
       actorConfig: PeerActorConfig
   ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[Command]] = {
 
-    val state = PeerActor.State(
-      channel,
-      remotePeerId,
-      new mutable.HashMap[Class[_], Promise[Throwable, Message]],
-      new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]](),
-      actorConfig = actorConfig
-    )
+    def makeState(sendBuf: ByteBuffer) =
+      PeerActor.State(
+        channel,
+        sendBuf,
+        remotePeerId,
+        new mutable.HashMap[Class[_], Promise[Throwable, Message]],
+        new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]](),
+        actorConfig = actorConfig
+      )
 
     // Supervisor that sends message StartFailing(...) to actor after first error.
     def makeSupervisor(promise: Promise[Nothing, ActorRef[PeerActor.Command]]) =
@@ -114,6 +112,8 @@ object PeerHandle {
       actorP    <- Promise.make[Nothing, ActorRef[PeerActor.Command]]
       system    <- ZIO.service[ActorSystem.Service]
       supervisor = makeSupervisor(actorP)
+      sendBuf   <- Buffer.byteDirect(1024)
+      state      = makeState(sendBuf)
       actor     <- system.system.make(actorName = channelName, supervisor, state, stateful)
       _         <- actorP.succeed(actor)
     } yield actor
@@ -149,11 +149,12 @@ object PeerHandle {
 
   private[peerwire] def receiveProc(
       channel: ByteChannel,
+      rcvBuf: ByteBuffer,
       actorP: Promise[Nothing, ActorRef[Command]]
   ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
     for {
       actor <- actorP.await
-      _     <- Message.receive(channel).interruptible
+      _     <- Message.receive(channel, rcvBuf).interruptible
                  .flatMap(m => actor ! OnMessage(m))
                  .forever
                  .foldM(

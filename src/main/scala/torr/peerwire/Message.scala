@@ -75,39 +75,29 @@ object Message {
       case Handshake(infoHash, peerId)   => sendHandshake(infoHash, peerId, channel, buf)
     }
 
-  def receive(channel: ByteChannel): RIO[DirectBufferPool with Clock, Message] = {
+  def receive(channel: ByteChannel, buf: ByteBuffer): RIO[DirectBufferPool with Clock, Message] = {
     for {
-      buf <- DirectBufferPool.allocate
       len <- receiveAmount(channel, buf, 4) *> buf.getInt
       res <- len match {
-               case 0            => DirectBufferPool.free(buf) *> ZIO.succeed(Message.KeepAlive)
-               case Int.MaxValue => DirectBufferPool.free(buf) *> ZIO.succeed(Message.Fail)
-               case _            => receivePayload(channel, len, buf)
-             }
-    } yield res
-  }
-
-  private def receivePayload(
-      channel: ByteChannel,
-      amount: Int,
-      buf: ByteBuffer
-  ): RIO[DirectBufferPool with Clock, Message] = {
-    for {
-      _   <- ZIO.fail(new IllegalStateException(s"Message size ($amount) > bufSize (${buf.capacity})"))
-               .when(amount > buf.capacity)
-      _   <- receiveAmount(channel, buf, amount)
-      id  <- buf.get
-      res <- id match {
-               case ChokeMsgId         => DirectBufferPool.free(buf) *> ZIO.succeed(Choke)
-               case UnchokeMsgId       => DirectBufferPool.free(buf) *> ZIO.succeed(Unchoke)
-               case InterestedMsgId    => DirectBufferPool.free(buf) *> ZIO.succeed(Interested)
-               case NotInterestedMsgId => DirectBufferPool.free(buf) *> ZIO.succeed(NotInterested)
-               case HaveMsgId          => receiveHave(buf) <* DirectBufferPool.free(buf)
-               case BitfieldMsgId      => receiveBitField(buf) <* DirectBufferPool.free(buf)
-               case RequestMsgId       => receiveRequest(buf) <* DirectBufferPool.free(buf)
-               case PieceMsgId         => receivePiece(buf)
-               case CancelMsgId        => receiveCancel(buf) <* DirectBufferPool.free(buf)
-               case PortMsgId          => receivePort(buf) <* DirectBufferPool.free(buf)
+               case 0            => ZIO.succeed(Message.KeepAlive)
+               case Int.MaxValue => ZIO.succeed(Message.Fail)
+               case _            =>
+                 for {
+                   id  <- receiveAmount(channel, buf, 1) *> buf.get
+                   res <- id match {
+                            case ChokeMsgId         => ZIO.succeed(Choke)
+                            case UnchokeMsgId       => ZIO.succeed(Unchoke)
+                            case InterestedMsgId    => ZIO.succeed(Interested)
+                            case NotInterestedMsgId => ZIO.succeed(NotInterested)
+                            case HaveMsgId          => receiveHave(channel, buf)
+                            case RequestMsgId       => receiveRequest(channel, buf)
+                            case CancelMsgId        => receiveCancel(channel, buf)
+                            case PortMsgId          => receivePort(channel, buf)
+                            case BitfieldMsgId      => receiveBitField(channel, payloadLength = len - 1)
+                            case PieceMsgId         => receivePiece(channel, payloadLength = len - 1)
+                            case _                  => ZIO.fail(new Exception(s"Unknown message id $id"))
+                          }
+                 } yield res
              }
     } yield res
   }
@@ -125,11 +115,16 @@ object Message {
     } yield ()
   }
 
-  def receivePiece(buf: ByteBuffer): Task[Piece] = {
+  def receivePiece(
+      channel: ByteChannel,
+      payloadLength: Int
+  ): RIO[DirectBufferPool with Clock, Piece] = {
     for {
-      index <- buf.getInt
-      begin <- buf.getInt
-    } yield Piece(index, begin, buf)
+      payloadBuf <- DirectBufferPool.allocate
+      _          <- receiveAmount(channel, payloadBuf, payloadLength)
+      index      <- payloadBuf.getInt
+      begin      <- payloadBuf.getInt
+    } yield Piece(index, begin, payloadBuf)
   }
 
   def sendCancel(index: Int, begin: Int, length: Int, channel: ByteChannel, buf: ByteBuffer): Task[Unit] = {
@@ -144,8 +139,9 @@ object Message {
     } yield ()
   }
 
-  def receiveCancel(buf: ByteBuffer): Task[Cancel] = {
+  def receiveCancel(channel: ByteChannel, buf: ByteBuffer): Task[Cancel] = {
     for {
+      _      <- receiveAmount(channel, buf, 3 * 4)
       index  <- buf.getInt
       begin  <- buf.getInt
       length <- buf.getInt
@@ -164,8 +160,9 @@ object Message {
     } yield ()
   }
 
-  def receiveRequest(buf: ByteBuffer): Task[Request] = {
+  def receiveRequest(channel: ByteChannel, buf: ByteBuffer): Task[Request] = {
     for {
+      _      <- receiveAmount(channel, buf, 3 * 4)
       index  <- buf.getInt
       begin  <- buf.getInt
       length <- buf.getInt
@@ -187,12 +184,14 @@ object Message {
     } yield ()
   }
 
-  def receivePort(buf: ByteBuffer): Task[Port] = {
+  def receivePort(channel: ByteChannel, buf: ByteBuffer): Task[Port] = {
     for {
+      _       <- receiveAmount(channel, buf, 2)
       portBuf <- Buffer.byte(4)
-      _       <- portBuf.movePosition(2)
+      _       <- portBuf.position(2)
       _       <- portBuf.putByteBuffer(buf)
-      value   <- portBuf.flip *> portBuf.asIntBuffer.flatMap(_.get)
+      _       <- portBuf.flip
+      value   <- portBuf.asIntBuffer.flatMap(_.get)
     } yield Port(value)
   }
 
@@ -206,8 +205,9 @@ object Message {
     } yield ()
   }
 
-  def receiveHave(buf: ByteBuffer): Task[Have] = {
+  def receiveHave(channel: ByteChannel, buf: ByteBuffer): Task[Have] = {
     for {
+      _          <- receiveAmount(channel, buf, 4)
       pieceIndex <- buf.getInt
     } yield Have(pieceIndex)
   }
@@ -223,10 +223,12 @@ object Message {
     } yield ()
   }
 
-  def receiveBitField(buf: ByteBuffer): Task[BitField] = {
+  def receiveBitField(channel: ByteChannel, payloadLength: Int): Task[BitField] = {
     for {
-      chunk <- buf.getChunk()
-      bitSet = TorrBitSet.fromBytes(chunk)
+      payloadBuf <- Buffer.byte(payloadLength)
+      _          <- receiveAmount(channel, payloadBuf, payloadLength)
+      chunk      <- payloadBuf.getChunk()
+      bitSet      = TorrBitSet.fromBytes(chunk)
     } yield BitField(bitSet)
   }
 
@@ -269,7 +271,6 @@ object Message {
   }
 
   def sendBytes(channel: ByteChannel, buf: ByteBuffer, values: Byte*): Task[Unit] = {
-    assert(buf.capacity >= values.length)
     for {
       _ <- buf.clear
       _ <- buf.putInt(values.length)

@@ -21,7 +21,8 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val expected = Message.Have(12345)
         val effect   = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          msgBuf  <- Buffer.byte(64)
+          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf           <- Buffer.byte(1024)
@@ -45,7 +46,8 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val expected = Message.Have(12345)
         val effect   = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          msgBuf  <- Buffer.byte(64)
+          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          actualFib <- h.receive[Message.Have].fork
@@ -69,11 +71,12 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val expected = Message.Have(12345)
         val effect   = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          msgBuf  <- Buffer.byte(64)
+          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          _      <- h.send(expected)
-                         actual <- Message.receive(channel.remote)
+                         actual <- Message.receive(channel.remote, msgBuf)
                        } yield assert(actual)(equalTo(expected))
                      }
         } yield res
@@ -89,11 +92,14 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val rnd    = new java.util.Random(42)
         val effect = for {
           channel <- TestSocketChannel.make
-          handle   = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          msgBuf  <- Buffer.byte(64)
+          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
-                         buf <- Buffer.byte(4)
-                         _   <- buf.putInt(101) *> buf.flip
+                         buf <- Buffer.byte(5)
+                         _   <- buf.putInt(1)
+                         _   <- buf.put(100)
+                         _   <- buf.flip
                          _   <- channel.remote.write(buf)
                          _   <- h.receive[Message.Choke.type]
                        } yield ()
@@ -106,7 +112,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
           DirectBufferPoolLive.make(8, 100)
         )
 
-        assertM(effect1.run)(fails(hasMessage(equalTo("Message size (101) > bufSize (100)"))))
+        assertM(effect1.run)(fails(hasMessage(equalTo("Unknown message id 100"))))
       },
       //
       testM("All receiving fibers fail on protocol error") {
@@ -114,19 +120,22 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect =
           for {
             channel    <- TestSocketChannel.make
-            handle      = PeerHandle.fromChannel(channel, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+            msgBuf     <- Buffer.byte(64)
+            handle      = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
             (e1, e2)   <- handle.use { h =>
                             for {
                               client1 <- h.receive[Message.Choke.type].fork
                               client2 <- h.receive[Message.Unchoke.type].fork
-                              buf     <- Buffer.byte(4)
-                              _       <- buf.putInt(101) *> buf.flip
+                              buf     <- Buffer.byte(5)
+                              _       <- buf.putInt(1)
+                              _       <- buf.put(100)
+                              _       <- buf.flip
                               _       <- channel.remote.write(buf)
                               e1      <- client1.await
                               e2      <- client2.await
                             } yield (e1, e2)
                           }
-            expectedMsg = "Message size (101) > bufSize (100)"
+            expectedMsg = "Unknown message id 100"
 
           } yield assert(e1)(fails(hasMessage(equalTo(expectedMsg)))) &&
             assert(e2)(fails(hasMessage(equalTo(expectedMsg))))
@@ -147,8 +156,10 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                             maxMailboxSize = 2,
                             maxMessageProcessingLatency = 30.seconds
                           )
+            msgBuf     <- Buffer.byte(64)
             handle      = PeerHandle.fromChannel(
                             channel,
+                            msgBuf,
                             "Test",
                             remotePeerId = Chunk.fill(20)(0.toByte),
                             actorConfig
@@ -187,8 +198,10 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                             maxMailboxSize = 2,
                             maxMessageProcessingLatency = 30.seconds
                           )
+            msgBuf     <- Buffer.byte(64)
             handle      = PeerHandle.fromChannel(
                             channel,
+                            msgBuf,
                             "Test",
                             remotePeerId = Chunk.fill(20)(0.toByte),
                             actorConfig

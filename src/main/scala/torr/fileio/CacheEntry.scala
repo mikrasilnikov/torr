@@ -50,7 +50,7 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int, var expi
     else loop(usedRanges.toList)
   }
 
-  def write(buf: ByteBuffer, entryOffset: Int, amount: Int): Task[Int] =
+  def write(buf: ByteBuffer, entryOffset: Int, amount: Int): Task[Int] = {
     for {
       bufPos <- buf.position
       bufLim <- buf.limit
@@ -64,6 +64,7 @@ case class WriteEntry(addr: EntryAddr, data: ByteBuffer, dataSize: Int, var expi
 
       _ <- buf.limit(bufLim)
     } yield amount
+  }
 }
 
 case class EntryAddr(fileIndex: Int, entryIndex: Long)

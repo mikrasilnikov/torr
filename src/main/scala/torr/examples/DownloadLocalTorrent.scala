@@ -10,7 +10,6 @@ import zio.console.{Console, putStrLn}
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.{InetAddress, InetSocketAddress}
-
 import scala.collection.immutable.HashMap
 
 object DownloadLocalTorrent extends App {
@@ -32,8 +31,8 @@ object DownloadLocalTorrent extends App {
     val effect = for {
       peerHash      <- random.nextBytes(12)
       localPeerId    = Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
-      //remoteAddress <- InetSocketAddress.hostName(remoteHost, remotePort)
-      remoteAddress <- InetSocketAddress.hostName("173.212.205.73", 51413)
+      remoteAddress <- InetSocketAddress.hostName(remoteHost, remotePort)
+      //remoteAddress <- InetSocketAddress.hostName("173.212.205.73", 51413)
       metaInfo      <- MetaInfo.fromFile(metaInfoFile)
       _             <- PeerHandle.fromAddress(remoteAddress, metaInfo.infoHash, localPeerId)
                          .use(peerHandle => downloadProc(metaInfo, peerHandle))
@@ -42,15 +41,15 @@ object DownloadLocalTorrent extends App {
     effect.injectCustom(
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
-      DirectBufferPoolLive.make(128)
+      DirectBufferPoolLive.make(32)
     ).exitCode
   }
 
   def downloadProc(metaInfo: MetaInfo, peer: PeerHandle): ZIO[DirectBufferPool with Console, Throwable, Unit] = {
     for {
-      _          <- peer.receive[BitField].debug("rcv downloadProc")
+      _          <- peer.receive[BitField]        //.debug("rcv downloadProc")
       rcvHaveFib <- receiveHave(peer).fork
-      _          <- peer.send(Message.Interested).debug("snd Interested")
+      _          <- peer.send(Message.Interested) //.debug("snd Interested")
       _          <- downloadUntilCompleted(metaInfo, peer)
       _          <- rcvHaveFib.interrupt
     } yield ()
@@ -131,7 +130,7 @@ object DownloadLocalTorrent extends App {
 
   def receiveHave(peer: PeerHandle): Task[Unit] = {
     for {
-      _ <- peer.receive[Have].debug("rcv")
+      _ <- peer.receive[Have] //.debug("rcv")
       _ <- receiveHave(peer)
     } yield ()
   }
