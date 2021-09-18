@@ -210,7 +210,9 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                             for {
                               client1 <- h.receive[Message.Choke.type].fork
                               buf     <- Buffer.byte(128)
-                              _       <- buf.putInt(Int.MaxValue) *> buf.flip
+                              _       <- buf.putInt(5)
+                              _       <- buf.put(Byte.MaxValue)
+                              _       <- buf.flip
                               _       <- channel.remote.write(buf)
                               e       <- client1.await
                             } yield e

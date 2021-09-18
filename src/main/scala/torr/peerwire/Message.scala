@@ -52,6 +52,7 @@ object Message {
   private val PieceMsgId: Byte         = 7
   private val CancelMsgId: Byte        = 8
   private val PortMsgId: Byte          = 9
+  private val FailMessageId: Byte      = Byte.MaxValue
 
   def send(message: Message, channel: ByteChannel, bufSize: Int = 1024 * 4): Task[Unit] =
     for {
@@ -79,9 +80,8 @@ object Message {
     for {
       len <- receiveAmount(channel, buf, 4) *> buf.getInt
       res <- len match {
-               case 0            => ZIO.succeed(Message.KeepAlive)
-               case Int.MaxValue => ZIO.succeed(Message.Fail)
-               case _            =>
+               case 0 => ZIO.succeed(Message.KeepAlive)
+               case _ =>
                  for {
                    id  <- receiveAmount(channel, buf, 1) *> buf.get
                    res <- id match {
@@ -95,6 +95,7 @@ object Message {
                             case PortMsgId          => receivePort(channel, buf)
                             case BitfieldMsgId      => receiveBitField(channel, payloadLength = len - 1)
                             case PieceMsgId         => receivePiece(channel, payloadLength = len - 1)
+                            case FailMessageId      => ZIO.succeed(Message.Fail)
                             case _                  => ZIO.fail(new Exception(s"Unknown message id $id"))
                           }
                  } yield res

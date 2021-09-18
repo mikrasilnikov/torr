@@ -4,15 +4,11 @@ import zio._
 import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.clock.Clock
-
 import scala.collection.mutable
 import torr.channels.ByteChannel
 import torr.directbuffers.DirectBufferPool
 import zio.nio.core.ByteBuffer
-
 import java.time.OffsetDateTime
-import scala.concurrent.duration.{Duration, DurationInt}
-import scala.reflect.ClassTag
 
 object PeerActor {
 
