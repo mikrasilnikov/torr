@@ -14,7 +14,7 @@ import zio.nio.core.{InetAddress, InetSocketAddress}
 
 import scala.collection.immutable.HashMap
 
-object DownloadFromSinglePeer extends App {
+object DownloadFromPeer extends App {
 
   val metaInfoFile          =
     "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
@@ -104,22 +104,21 @@ object DownloadFromSinglePeer extends App {
       // We must maintain a queue of unfulfilled requests for performance reasons.
       // See https://wiki.theory.org/BitTorrentSpecification#Queuing
       val amount   = math.min(requestSize.toLong, remaining)
-      val req      = metaInfo.requestFromOffset(offset, amount.toInt)
+      val request  = metaInfo.requestFromOffset(offset, amount.toInt)
       val progress = offset * 100 / torrentSize
 
       for {
-        _   <- peer.send(req) // .debug(s"snd [downloadUntilChoked] $req")
+        _   <- peer.send(request) // .debug(s"snd [downloadUntilChoked] $request")
         _   <- putStrLn(s"offset = ${offset / (1024 * 1024)}M, $progress% completed").when(
                  offset % (128L * 1024 * 1024) == 0
                )
-        res <- downloadUntilChoked(peer, metaInfo, torrentSize, offset + amount, pendingRequests + (offset -> req))
+        res <- downloadUntilChoked(peer, metaInfo, torrentSize, offset + amount, pendingRequests + (offset -> request))
       } yield res
 
     } else {
       for {
         msg <- peer.receive[Piece, Choke] //.debug("rcv [downloadUntilChoked]")
         res <- msg match {
-
                  case Message.Piece(index, begin, data) =>
                    val rcvPieceOffset = index.toLong * metaInfo.pieceSize + begin
                    for {
