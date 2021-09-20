@@ -5,6 +5,7 @@ import zio.nio.core._
 
 import java.io.EOFException
 import java.lang
+import java.nio.charset.StandardCharsets
 
 case class InMemoryChannelState(data: Chunk[Byte], position: Int)
 
@@ -71,7 +72,7 @@ object InMemoryChannel {
 
   def make(data: String): UIO[InMemoryChannel] =
     for {
-      data  <- ZIO.succeed(Chunk.fromArray(data.toArray.map(_.toByte)))
+      data  <- ZIO.succeed(Chunk.fromArray(data.getBytes(StandardCharsets.UTF_8)))
       state <- RefM.make(InMemoryChannelState(data, 0))
     } yield InMemoryChannel(state)
 
