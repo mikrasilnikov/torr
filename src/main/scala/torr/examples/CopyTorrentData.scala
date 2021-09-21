@@ -30,14 +30,11 @@ object CopyTorrentData extends App {
   val blockSize: Int = 16 * 1024
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
+
+    val srcFileIO = FileIOLive.make(metaInfoFile, srcDirectoryName, "FileIO1").build
+    val dstFileIO = FileIOLive.make(metaInfoFile, dstDirectoryName, "FileIO2").build
+
     val effect = for {
-      metaInfo <- MetaInfo.fromFile(metaInfoFile)
-
-      srcFileIO = FileIOLive.make(metaInfoFile, srcDirectoryName, "FileIO1").build
-      dstFileIO = FileIOLive.make(metaInfoFile, dstDirectoryName, "FileIO2").build
-
-      //metaInfo <- srcFileIO.use(src => ZIO.succeed(src.get.metaInfo))
-
       _ <- (srcFileIO <*> dstFileIO).use {
              case (src, dst) =>
                for {
@@ -45,9 +42,7 @@ object CopyTorrentData extends App {
                  res      <- copyRandom(metaInfo.pieceSize, metaInfo.torrentSize, src.get, dst.get)
                  //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
                } yield res
-
            }
-
     } yield ()
 
     val actorSystem = ActorSystemLive.make("Test")
@@ -114,8 +109,6 @@ object CopyTorrentData extends App {
 
           for {
             data <- src.fetch(piece, pieceOffset, amount)
-            rem  <- ZIO.foldLeft(data)(0L) { case (acc, buf) => buf.remaining.map(acc + _) }
-            _    <- putStrLn(s"before Store rem = $rem").when(rem != 32768)
             _    <- dst.store(piece, pieceOffset, data)
             _    <- putStrLn(s"$bufsWritten of $bufCount completed").when(bufsWritten % 1000 == 0)
             _    <- copy(ns, bufsWritten + 1)
@@ -126,7 +119,6 @@ object CopyTorrentData extends App {
       _ <- copy(bufOrder)
       _ <- dst.flush
     } yield ()
-
   }
 
   def printBuffersStats(position: Long): ZIO[Console with Clock with DirectBufferPool, Throwable, Unit] =
@@ -134,5 +126,4 @@ object CopyTorrentData extends App {
       avail <- DirectBufferPool.numAvailable
       _     <- putStrLn(s"${position / 1024 / 1024} - $avail")
     } yield ()
-
 }

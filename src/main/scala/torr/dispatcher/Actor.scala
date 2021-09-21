@@ -37,6 +37,7 @@ object Actor {
   }
 
   private[dispatcher] def tryAllocateJob(state: State, remoteHave: Set[PieceId]): Option[DownloadJob] = {
+
     val suspended = state.suspendedJobs.view
       .filterKeys(id => remoteHave.contains(id))
       .headOption
@@ -58,6 +59,7 @@ object Actor {
   }
 
   private[dispatcher] def releaseJob(state: State, job: DownloadJob): Unit = {
+
     if (!state.activeJobs.keySet.contains(job.pieceId)) {
       throw new IllegalArgumentException(s"$job is not in state.activeJobs")
 
