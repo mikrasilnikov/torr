@@ -13,10 +13,9 @@ import torr.fileio.Actor.{Command, Fetch, Flush, GetState, State, Store}
 import torr.metainfo.MetaInfo
 import zio.blocking.Blocking
 import zio.nio.file.Files
-
 import java.nio.file.{OpenOption, StandardOpenOption}
 
-case class FileIOLive(private val actor: ActorRef[Command], metaInfo: MetaInfo) extends FileIO.Service {
+case class FileIOLive(private val actor: ActorRef[Command], mi: MetaInfo) extends FileIO.Service {
 
   def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
     actor ? Fetch(piece, offset, amount)
@@ -29,6 +28,8 @@ case class FileIOLive(private val actor: ActorRef[Command], metaInfo: MetaInfo) 
   def flush: Task[Unit] = {
     actor ? Flush
   }
+
+  def metaInfo: Task[MetaInfo] = ZIO(mi)
 
 }
 

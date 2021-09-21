@@ -13,7 +13,7 @@ package object metainfo {
   final case class MetaInfo(
       announce: String,
       pieceSize: Int,
-      pieces: List[PieceHash],
+      pieceHashes: Vector[Chunk[Byte]],
       entries: List[FileEntry],
       infoHash: Chunk[Byte]
   ) {
@@ -26,7 +26,6 @@ package object metainfo {
     val torrentSize: Long = entries.map(_.size).sum
   }
 
-  final case class PieceHash(value: Chunk[Byte])
   final case class FileEntry(path: Path, size: Long)
 
   object MetaInfo {
@@ -45,7 +44,7 @@ package object metainfo {
         announce  <- (root / "announce").asString
         pieceSize <- (root / "info" / "piece length").asInt
         pieces    <- (root / "info" / "pieces").asChunk
-                       .map(ch => ch.grouped(20).map(PieceHash).toList)
+                       .map(ch => ch.grouped(20).toVector)
         entries   <- singleFile(root) orElse multiFile(root)
       } yield infoHash => MetaInfo(announce, pieceSize, pieces, entries, infoHash)
 

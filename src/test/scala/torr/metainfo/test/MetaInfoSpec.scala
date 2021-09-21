@@ -19,10 +19,10 @@ object MetaInfoSpec extends DefaultRunnableSpec {
           announce = "udp://tracker.openbittorrent.com:80/announce",
           pieceSize = 262144,
           entries = FileEntry(Path("file1.dat"), 524288) :: Nil,
-          pieces =
-            PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
-              PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
-              Nil,
+          pieceHashes = Vector(
+            toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7"),
+            toBytes("d93b208338769447004e90bf142769fc004d8b0c")
+          ),
           infoHash = Chunk.fromArray(
             Array[Byte](-81, -93, -38, -63, -123, 80, -128, -23, -44, 115, 25, 102, 115, 73, -8, -128, 1, -36, -23,
               -127)
@@ -42,12 +42,12 @@ object MetaInfoSpec extends DefaultRunnableSpec {
           announce = "udp://tracker.openbittorrent.com:80/announce",
           pieceSize = 262144,
           entries = FileEntry(Path("file1.dat"), 524288) :: FileEntry(Path("subdir/file2.dat"), 524288) :: Nil,
-          pieces =
-            PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
-              PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
-              PieceHash(toBytes("d93b208338769447004e90bf142769fc004d8b0c")) ::
-              PieceHash(toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")) ::
-              Nil,
+          pieceHashes = Vector(
+            toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7"),
+            toBytes("d93b208338769447004e90bf142769fc004d8b0c"),
+            toBytes("d93b208338769447004e90bf142769fc004d8b0c"),
+            toBytes("2e000fa7e85759c7f4c254d4d9c33ef481e459a7")
+          ),
           infoHash = Chunk.fromArray(
             Array[Byte](-20, -4, 67, -91, 14, -110, -79, -102, 42, 35, -80, -78, -86, -100, 45, -95, -101, -117, 109,
               -4)

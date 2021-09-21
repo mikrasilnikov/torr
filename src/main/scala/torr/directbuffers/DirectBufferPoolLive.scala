@@ -48,7 +48,6 @@ object DirectBufferPoolLive {
     effect.toLayer
   }
 
-  // Putting buffer index at the beginning, for testing
   private def createIndexedBuf(index: Int, bufferSize: Int): UIO[ByteBuffer] =
     for {
       res <- Buffer.byteDirect(bufferSize)

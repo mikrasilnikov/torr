@@ -21,12 +21,12 @@ object Actor {
   val stateful = new Stateful[Logging, State, Command] {
     def receive[A](state: State, msg: Command[A], context: Context): RIO[Logging, (State, A)] = {
       msg match {
+        case Allocate        => allocate(state)
+        case Free(buf)       => free(state, buf).map((_, ()))
         case GetNumAvailable => state match {
             case Available(buffers) => ZIO.succeed(state, buffers.length)
             case Starving(requests) => ZIO.succeed(state, -1 * requests.length)
           }
-        case Free(buf)       => free(state, buf).map((_, ()))
-        case Allocate        => allocate(state)
       }
     }
 
@@ -71,7 +71,7 @@ object Actor {
 
         case Starving(q)        => for {
             p <- Promise.make[Nothing, ByteBuffer]
-            _ <- ZIO(q.enqueue(p))
+            _  = q.enqueue(p)
           } yield (Starving(q), p)
 
       }
