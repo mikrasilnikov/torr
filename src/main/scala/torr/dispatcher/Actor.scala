@@ -75,7 +75,7 @@ object Actor {
         // Piece hash is not equal to the expected metainfo value.
         // We must re-download piece from another peer.
         state.activeJobs.remove(job.pieceId)
-        throw new IllegalStateException(s"Piece hash for piece ${job.pieceId} does not match")
+        throw new IllegalStateException(s"Piece hash for piece ${job.pieceId} is not correct")
       }
     } else {
       state.activeJobs.remove(job.pieceId)

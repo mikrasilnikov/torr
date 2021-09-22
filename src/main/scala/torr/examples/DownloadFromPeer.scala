@@ -34,7 +34,6 @@ object DownloadFromPeer extends App {
       peerHash      <- random.nextBytes(12)
       localPeerId    = Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
       remoteAddress <- InetSocketAddress.hostName(remoteHost, remotePort)
-      //remoteAddress <- InetSocketAddress.hostName("173.212.205.73", 51413)
       metaInfo      <- FileIO.metaInfo
       _             <- PeerHandle.fromAddress(remoteAddress, metaInfo.infoHash, localPeerId)
                          .use(peerHandle => downloadProc(metaInfo, peerHandle))

@@ -8,7 +8,7 @@ import torr.metainfo._
 
 package object fileio {
 
-  val DefaultBufferSize: Int = 24 * 1024
+  val DefaultBufferSize: Int = 64 * 1024
 
   type FileIO = Has[FileIO.Service]
 
