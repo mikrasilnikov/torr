@@ -33,9 +33,9 @@ case class FileIOLive(private val actor: ActorRef[Command], mi: MetaInfo, freshF
     actor ? Flush
   }
 
-  val metaInfo: MetaInfo = mi
+  def metaInfo: Task[MetaInfo] = ZIO.succeed(mi)
 
-  override def freshFilesWereAllocated: Boolean = freshFiles
+  def freshFilesWereAllocated: Task[Boolean] = ZIO.succeed(freshFiles)
 }
 
 object FileIOLive {

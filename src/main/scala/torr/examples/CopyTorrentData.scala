@@ -38,7 +38,7 @@ object CopyTorrentData extends App {
       _ <- (srcFileIO <*> dstFileIO).use {
              case (src, dst) =>
                for {
-                 metaInfo <- ZIO(src.get.metaInfo)
+                 metaInfo <- src.get.metaInfo
                  res      <- copyRandom(metaInfo.pieceSize, metaInfo.torrentSize, src.get, dst.get)
                  //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
                } yield res

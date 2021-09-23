@@ -24,11 +24,12 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 object DispatcherLive {
   def make: ZLayer[ActorSystem with DirectBufferPool with FileIO with Clock with Console, Throwable, Dispatcher] = {
     val effect = for {
-      system  <- ZIO.service[ActorSystem.Service]
-      fileIO  <- ZIO.service[FileIO.Service]
-      metaInfo = fileIO.metaInfo
+      system        <- ZIO.service[ActorSystem.Service]
+      fileIO        <- ZIO.service[FileIO.Service]
+      metaInfo      <- fileIO.metaInfo
+      filesAreFresh <- fileIO.freshFilesWereAllocated
 
-      localHave <- if (fileIO.freshFilesWereAllocated) ZIO.succeed(new mutable.HashSet[PieceId]())
+      localHave <- if (filesAreFresh) ZIO.succeed(new mutable.HashSet[PieceId]())
                    else
                      for {
                        pieceRef    <- Ref.make[Int](0)
