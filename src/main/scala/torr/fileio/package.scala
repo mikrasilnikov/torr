@@ -18,7 +18,8 @@ package object fileio {
       def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]]
       def store(piece: Int, offset: Int, data: Chunk[ByteBuffer]): Task[Unit]
       def flush: Task[Unit]
-      def metaInfo: Task[MetaInfo]
+      def metaInfo: MetaInfo
+      def freshFilesWereAllocated: Boolean
     }
   }
 }

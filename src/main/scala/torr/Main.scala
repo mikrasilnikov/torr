@@ -1,28 +1,38 @@
 package torr
 
+import torr.actorsystem.ActorSystemLive
+import torr.directbuffers.DirectBufferPoolLive
+import torr.dispatcher.{Dispatcher, DispatcherLive, PieceId}
+import torr.fileio.FileIOLive
 import zio._
-import zio.actors.Actor.Stateful
-import zio.actors.{ActorSystem, Context}
-import zio.clock.Clock
 import zio.console.putStrLn
-import zio.duration.durationInt
 import zio.logging.slf4j.Slf4jLogger
-import zio.nio.core._
-import zio.nio.core.channels.AsynchronousFileChannel
-import zio.nio.core.file.Path
-import zio.nio.file.Files
+import zio.magic.ZioProvideMagicOps
 
-import java.nio.file.StandardOpenOption
-import java.security.MessageDigest
-import scala.collection.mutable
+import scala.collection.immutable.HashSet
 
 object Main extends App {
+
+  val metaInfoFile      =
+    "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
+  val dataDirectoryName = "c:\\!temp\\CopyTest\\"
+
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
-    val treeSet1 = new mutable.TreeSet[Int]()
-    val treeSet2 = new mutable.TreeSet[Int]()
-    
-    val x = treeSet1.intersect(treeSet2)
-    
-    putStrLn("Hello").repeatN(7).exitCode
+
+    val effect = for {
+      job <- Dispatcher.tryAcquireJob(HashSet[PieceId](0, 1, 2))
+      _   <- putStrLn(s"$job")
+    } yield ()
+
+    effect.injectCustom(
+      ActorSystemLive.make("Test"),
+      Slf4jLogger.make((_, message) => message),
+      DirectBufferPoolLive.make(32),
+      FileIOLive.make(metaInfoFile, dataDirectoryName, allocateFiles = true),
+      DispatcherLive.make
+    )
+      .catchAll(e => putStrLn(e.getMessage))
+      .exitCode
+
   }
 }

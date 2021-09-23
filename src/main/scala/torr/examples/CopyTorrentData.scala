@@ -31,14 +31,14 @@ object CopyTorrentData extends App {
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
-    val srcFileIO = FileIOLive.make(metaInfoFile, srcDirectoryName, "FileIO1").build
-    val dstFileIO = FileIOLive.make(metaInfoFile, dstDirectoryName, "FileIO2").build
+    val srcFileIO = FileIOLive.make(metaInfoFile, srcDirectoryName, allocateFiles = false, actorName = "FileIO1").build
+    val dstFileIO = FileIOLive.make(metaInfoFile, dstDirectoryName, allocateFiles = false, actorName = "FileIO2").build
 
     val effect = for {
       _ <- (srcFileIO <*> dstFileIO).use {
              case (src, dst) =>
                for {
-                 metaInfo <- src.get.metaInfo
+                 metaInfo <- ZIO(src.get.metaInfo)
                  res      <- copyRandom(metaInfo.pieceSize, metaInfo.torrentSize, src.get, dst.get)
                  //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
                } yield res

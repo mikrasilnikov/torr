@@ -13,7 +13,7 @@ import torr.fileio.{FileIO, FileIOLive}
 object CheckTorrent extends App {
   val metaInfoFile      =
     "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
-  val dataDirectoryName = "c:\\!temp\\CopyTest1\\"
+  val dataDirectoryName = "c:\\!temp\\CopyTest\\"
   //val dataDirectoryName = "d:\\Torrents\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе)\\"
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
@@ -39,7 +39,9 @@ object CheckTorrent extends App {
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
       DirectBufferPoolLive.make(32),
-      FileIOLive.make(metaInfoFile, dataDirectoryName)
-    ).exitCode
+      FileIOLive.make(metaInfoFile, dataDirectoryName, allocateFiles = false)
+    )
+      .catchAll(e => putStrLn(e.getMessage))
+      .exitCode
   }
 }
