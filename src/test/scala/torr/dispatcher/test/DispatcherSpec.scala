@@ -71,7 +71,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val job    = DownloadJob(0, metaInfo.pieceSize)
         val actual = Try(Actor.releaseJob(state, job))
 
-        assert(actual)(isFailure(hasMessage(equalTo("DownloadJob(0,262144,0,HashMap()) is not in state.activeJobs"))))
+        assert(actual)(isFailure(hasMessage(equalTo("DownloadJob(0,262144,0) is not in state.activeJobs"))))
       },
       //
       test("releases completed job") {
