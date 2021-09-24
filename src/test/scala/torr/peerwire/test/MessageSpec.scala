@@ -224,7 +224,7 @@ object MessageSpec extends DefaultRunnableSpec {
           piece        = actual.asInstanceOf[Message.Piece]
           blockActual <- piece.block.getChunk()
         } yield assert(piece.index)(equalTo(index.toInt)) &&
-          assert(piece.begin)(equalTo(begin.toInt)) &&
+          assert(piece.offset)(equalTo(begin.toInt)) &&
           assert(blockActual)(equalTo(block))
 
         effect.injectCustom(

@@ -1,6 +1,6 @@
 package torr.dispatcher.test
 
-import torr.dispatcher.{Actor, DownloadJob, PieceId}
+import torr.dispatcher.{AcquireSuccess, Actor, DownloadJob, PieceId}
 import torr.metainfo.{FileEntry, MetaInfo}
 import torr.metainfo.test.MetaInfoSpec.toBytes
 import zio._
@@ -21,8 +21,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val state      = Actor.State(metaInfo, new mutable.HashSet[PieceId])
         val remoteHave = HashSet[PieceId](0, 1, 2)
 
-        val expected = DownloadJob(0, 0, metaInfo.pieceSize)
-        val actual   = Actor.tryAllocateJob(state, remoteHave).get
+        val expected = DownloadJob(0, metaInfo.pieceSize)
+        val actual   = Actor.acquireJob(state, remoteHave).asInstanceOf[AcquireSuccess].job
 
         assert(actual)(equalTo(expected)) &&
         assert(state.activeJobs.size)(equalTo(1)) &&
@@ -33,10 +33,10 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val state      = Actor.State(metaInfo, new mutable.HashSet[PieceId])
         val remoteHave = HashSet[PieceId](0, 1, 2)
 
-        val expectedFirst  = DownloadJob(0, 0, metaInfo.pieceSize)
-        val expectedSecond = DownloadJob(1, 0, metaInfo.pieceSize)
-        val actualFirst    = Actor.tryAllocateJob(state, remoteHave).get
-        val actualSecond   = Actor.tryAllocateJob(state, remoteHave).get
+        val expectedFirst  = DownloadJob(0, metaInfo.pieceSize)
+        val expectedSecond = DownloadJob(1, metaInfo.pieceSize)
+        val actualFirst    = Actor.acquireJob(state, remoteHave).asInstanceOf[AcquireSuccess].job
+        val actualSecond   = Actor.acquireJob(state, remoteHave).asInstanceOf[AcquireSuccess].job
 
         assert(actualFirst)(equalTo(expectedFirst)) &&
         assert(actualSecond)(equalTo(expectedSecond))
@@ -50,7 +50,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
 
         val remoteHave = HashSet[PieceId](0, 1, 2)
 
-        val actual = Actor.tryAllocateJob(state, remoteHave).get
+        val actual = Actor.acquireJob(state, remoteHave).asInstanceOf[AcquireSuccess].job
 
         assert(actual)(equalTo(expected))
       },
@@ -59,8 +59,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val state      = Actor.State(metaInfo, new mutable.HashSet[PieceId])
         val remoteHave = HashSet[PieceId](2)
 
-        val expected = DownloadJob(2, 0, metaInfo.pieceSize)
-        val actual   = Actor.tryAllocateJob(state, remoteHave).get
+        val expected = DownloadJob(2, metaInfo.pieceSize)
+        val actual   = Actor.acquireJob(state, remoteHave).asInstanceOf[AcquireSuccess].job
 
         assert(actual)(equalTo(expected))
       },
@@ -68,10 +68,10 @@ object DispatcherSpec extends DefaultRunnableSpec {
       test("releases inactive job") {
         val state = Actor.State(metaInfo, new mutable.HashSet[PieceId])
 
-        val job    = DownloadJob(0, 0, metaInfo.pieceSize)
+        val job    = DownloadJob(0, metaInfo.pieceSize)
         val actual = Try(Actor.releaseJob(state, job))
 
-        assert(actual)(isFailure(hasMessage(equalTo("DownloadJob(0,0,262144) is not in state.activeJobs"))))
+        assert(actual)(isFailure(hasMessage(equalTo("DownloadJob(0,262144,0,HashMap()) is not in state.activeJobs"))))
       },
       //
       test("releases completed job") {
@@ -103,7 +103,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
       test("releases suspended job") {
         val state = Actor.State(metaInfo, new mutable.HashSet[PieceId])
 
-        val job = DownloadJob(0, metaInfo.pieceSize / 2, metaInfo.pieceSize)
+        val job = DownloadJob(0, metaInfo.pieceSize, metaInfo.pieceSize / 2)
         state.activeJobs.put(0, job)
         Actor.releaseJob(state, job)
 

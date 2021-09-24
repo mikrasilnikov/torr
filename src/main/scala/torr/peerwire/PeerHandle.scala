@@ -33,6 +33,8 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
       res <- p.await
     } yield res
   }
+
+  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[Message]] = ???
 }
 
 object PeerHandle {

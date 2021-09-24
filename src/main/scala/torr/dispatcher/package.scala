@@ -5,20 +5,27 @@ import zio.macros.accessible
 
 package object dispatcher {
 
-  type PieceId = Int
+  type PieceId    = Int
   type Dispatcher = Has[Dispatcher.Service]
+
+  sealed trait AcquireJobResult
+  case class AcquireSuccess(job: DownloadJob) extends AcquireJobResult
+  case object NotInterested                   extends AcquireJobResult
 
   @accessible
   object Dispatcher {
     trait Service {
-      def tryAcquireJob(have: Set[PieceId]): Task[Option[DownloadJob]]
-      def releaseJob(job: DownloadJob): Task[Unit]
 
-      def tryAcquireJobManaged(have: Set[PieceId]): ZManaged[Any, Throwable, Option[DownloadJob]] =
-        ZManaged.make(tryAcquireJob(have)) {
-          case Some(job) => releaseJob(job).orDie
-          case None      => ZIO.unit
-        }
+      def isDownloadCompleted: Task[Boolean] = ???
+
+      def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] = ???
+
+      def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult]
+      def releaseJob(acquireResult: AcquireJobResult): Task[Unit]
+
+      def acquireJobManaged(remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
+        ZManaged.make(acquireJob(remoteHave))(releaseJob(_).orDie)
+
     }
   }
 }

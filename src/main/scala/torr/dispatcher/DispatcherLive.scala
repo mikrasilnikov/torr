@@ -5,7 +5,7 @@ import torr.consoleui.SimpleProgressBar
 import torr.directbuffers.DirectBufferPool
 import zio._
 import zio.actors.ActorRef
-import torr.dispatcher.Actor.{Command, ReleaseJob, TryAcquireJob}
+import torr.dispatcher.Actor.{Command, ReleaseJob, AcquireJob}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import zio.clock.Clock
@@ -16,9 +16,13 @@ import scala.collection.mutable
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
-  def tryAcquireJob(remoteHave: Set[PieceId]): Task[Option[DownloadJob]] = actor ? TryAcquireJob(remoteHave)
+  def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult] = actor ? AcquireJob(remoteHave)
 
-  def releaseJob(job: DownloadJob): Task[Unit] = actor ? ReleaseJob(job)
+  def releaseJob(acquireResult: AcquireJobResult): Task[Unit] =
+    acquireResult match {
+      case NotInterested       => ZIO.unit
+      case AcquireSuccess(job) => actor ! ReleaseJob(job)
+    }
 }
 
 object DispatcherLive {

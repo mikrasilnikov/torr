@@ -36,9 +36,9 @@ object Message {
   case class BitField(bits: TorrBitSet) extends Message
   case class Port(listenPort: Int)      extends Message
 
-  case class Request(index: Int, begin: Int, length: Int)          extends Message
-  case class Cancel(index: Int, begin: Int, length: Int)           extends Message
-  case class Piece(index: Int, begin: Int, block: ByteBuffer)      extends Message
+  case class Request(index: Int, offset: Int, length: Int)         extends Message
+  case class Cancel(index: Int, offset: Int, length: Int)          extends Message
+  case class Piece(index: Int, offset: Int, block: ByteBuffer)     extends Message
   case class Handshake(infoHash: Chunk[Byte], peerId: Chunk[Byte]) extends Message
   private[peerwire] case object Fail                               extends Message
 

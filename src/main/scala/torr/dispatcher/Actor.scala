@@ -8,8 +8,8 @@ import torr.metainfo.MetaInfo
 
 object Actor {
   sealed trait Command[+_]
-  case class TryAcquireJob(remoteHave: Set[PieceId]) extends Command[Option[DownloadJob]]
-  case class ReleaseJob(job: DownloadJob)            extends Command[Unit]
+  case class AcquireJob(remoteHave: Set[PieceId]) extends Command[AcquireJobResult]
+  case class ReleaseJob(job: DownloadJob)         extends Command[Unit]
 
   /**
     * Code that is responsible for interacting with a remote peer (a `peer procedure`) is expected to allocate,
@@ -31,29 +31,29 @@ object Actor {
     //noinspection WrapInsteadOfLiftInspection
     def receive[A](state: State, msg: Command[A], context: Context): RIO[Any, (State, A)] =
       msg match {
-        case TryAcquireJob(have) => ZIO(tryAllocateJob(state, have)).map(res => (state, res))
-        case ReleaseJob(job)     => ZIO(releaseJob(state, job)).as(state, ())
+        case AcquireJob(have) => ZIO(acquireJob(state, have)).map(res => (state, res))
+        case ReleaseJob(job)  => ZIO(releaseJob(state, job)).as(state, ())
       }
   }
 
-  private[dispatcher] def tryAllocateJob(state: State, remoteHave: Set[PieceId]): Option[DownloadJob] = {
+  private[dispatcher] def acquireJob(state: State, remoteHave: Set[PieceId]): AcquireJobResult = {
 
     val suspended = state.suspendedJobs.view
       .filterKeys(id => remoteHave.contains(id))
       .headOption
 
     suspended match {
-      case Some((_, job)) => Some(job)
+      case Some((_, job)) => AcquireSuccess(job)
       case None           =>
         val idOption = remoteHave.find(remoteId =>
           !state.activeJobs.keySet.contains(remoteId) &&
             !state.localHave.contains(remoteId)
         )
 
-        idOption.map { pieceId =>
-          val result = DownloadJob(pieceId, offset = 0, state.metaInfo.pieceSize)
-          state.activeJobs.put(result.pieceId, result)
-          result
+        idOption.fold[AcquireJobResult](NotInterested) { pieceId =>
+          val job = DownloadJob(pieceId, state.metaInfo.pieceSize)
+          state.activeJobs.put(job.pieceId, job)
+          AcquireSuccess(job)
         }
     }
   }

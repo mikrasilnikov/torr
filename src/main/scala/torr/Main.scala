@@ -20,7 +20,7 @@ object Main extends App {
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
     val effect = for {
-      job <- Dispatcher.tryAcquireJob(HashSet[PieceId](0, 1, 2))
+      job <- Dispatcher.acquireJob(HashSet[PieceId](0, 1, 2))
       _   <- putStrLn(s"$job")
     } yield ()
 

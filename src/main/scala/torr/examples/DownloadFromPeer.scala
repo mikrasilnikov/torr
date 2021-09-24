@@ -11,7 +11,6 @@ import zio.console.{Console, putStrLn}
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.{InetAddress, InetSocketAddress}
-
 import scala.collection.immutable.HashMap
 
 object DownloadFromPeer extends App {

@@ -1,5 +1,7 @@
 package torr.dispatcher
 
+import zio._
+import zio.nio.core.ByteBuffer
 import java.security.MessageDigest
 
 /**
@@ -8,9 +10,26 @@ import java.security.MessageDigest
   */
 final case class DownloadJob(
     pieceId: PieceId,
-    offset: Int,
-    length: Int
+    pieceLength: Int,
+    private var hashOffset: Int = 0
 ) {
+  def isCompleted: Boolean  = hashOffset >= pieceLength
   val digest: MessageDigest = MessageDigest.getInstance("SHA-1")
-  def isCompleted: Boolean  = offset >= length
+
+  def hashBlock(dataOffset: Int, data: ByteBuffer): Task[Unit] = {
+    if (dataOffset != hashOffset) {
+      ZIO.fail(new IllegalArgumentException(
+        s"Blocks must be hashed in order. Current offset = $hashOffset, receivedOffset = $dataOffset"
+      ))
+    } else {
+      for {
+        size <- data.remaining
+        _    <- data.mark
+        _    <- data.withJavaBuffer(jBuf => ZIO(digest.update(jBuf)))
+        _    <- data.reset
+        _     = hashOffset += size
+      } yield ()
+    }
+  }
+
 }
