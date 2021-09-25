@@ -9,6 +9,7 @@ import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
 import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -24,7 +25,13 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
     receiveCore(tag.runtimeClass)
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
-    receiveCore(tag1.runtimeClass, tag1.runtimeClass)
+    receiveCore(tag1.runtimeClass, tag2.runtimeClass)
+
+  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[Message]] =
+    pollCore(tag.runtimeClass)
+
+  def onMessage(msg: Message): Task[Unit] =
+    actor ? OnMessage(msg)
 
   private def receiveCore(classes: Class[_]*): Task[Message] = {
     for {
@@ -34,10 +41,14 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
     } yield res
   }
 
-  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[Message]] = ???
+  private def pollCore(classes: Class[_]*): Task[Option[Message]] = {
+    actor ? PeerActor.Poll(classes.toList)
+  }
 }
 
 object PeerHandle {
+
+  private type PendingMessage[A] = (Command[A], Promise[Throwable, A])
 
   def fromAddress(
       address: InetSocketAddress,
@@ -127,19 +138,19 @@ object PeerHandle {
                     .orDieWith(_ => new IllegalStateException("Could not get state from actor"))
       context  <- (actor ? PeerActor.GetContext)
                     .orDieWith(_ => new IllegalStateException("Could not get context from actor"))
-      messages <- actor.stop.orElseSucceed(List())
-      _        <- processRemainingMessages(state, context, messages.asInstanceOf[List[Command[_]]])
+      messages <- actor.stop.orElseSucceed(List[PendingMessage[_]]())
+      _        <- processRemainingMessages(state, context, messages.asInstanceOf[List[PendingMessage[_]]])
     } yield ()
   }
 
   private def processRemainingMessages(
       state: State,
       context: Context,
-      messages: List[Command[_]]
+      messages: List[PendingMessage[_]]
   ): ZIO[DirectBufferPool with Clock, Nothing, Unit] = {
     messages match {
-      case Nil     => ZIO.unit
-      case m :: ms =>
+      case Nil          => ZIO.unit
+      case (m, _) :: ms =>
         for {
           sa <- stateful.receive(state, m, context).orDieWith(e =>
                   new Exception(s"Could not process remaining message $m ($e)")

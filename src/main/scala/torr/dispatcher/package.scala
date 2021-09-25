@@ -15,17 +15,12 @@ package object dispatcher {
   @accessible
   object Dispatcher {
     trait Service {
-
-      def isDownloadCompleted: Task[Boolean] = ???
-
-      def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] = ???
-
+      def isDownloadCompleted: Task[Boolean]
+      def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean]
       def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult]
       def releaseJob(acquireResult: AcquireJobResult): Task[Unit]
-
       def acquireJobManaged(remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(remoteHave))(releaseJob(_).orDie)
-
     }
   }
 }

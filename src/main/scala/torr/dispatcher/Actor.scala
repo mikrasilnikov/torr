@@ -8,8 +8,10 @@ import torr.metainfo.MetaInfo
 
 object Actor {
   sealed trait Command[+_]
-  case class AcquireJob(remoteHave: Set[PieceId]) extends Command[AcquireJobResult]
-  case class ReleaseJob(job: DownloadJob)         extends Command[Unit]
+  case class AcquireJob(remoteHave: Set[PieceId])          extends Command[AcquireJobResult]
+  case class ReleaseJob(job: DownloadJob)                  extends Command[Unit]
+  case object IsDownloadCompleted                          extends Command[Boolean]
+  case class IsRemoteInteresting(remoteHave: Set[PieceId]) extends Command[Boolean]
 
   /**
     * Code that is responsible for interacting with a remote peer (a `peer procedure`) is expected to allocate,
@@ -31,8 +33,10 @@ object Actor {
     //noinspection WrapInsteadOfLiftInspection
     def receive[A](state: State, msg: Command[A], context: Context): RIO[Any, (State, A)] =
       msg match {
-        case AcquireJob(have) => ZIO(acquireJob(state, have)).map(res => (state, res))
-        case ReleaseJob(job)  => ZIO(releaseJob(state, job)).as(state, ())
+        case AcquireJob(have)          => ZIO(acquireJob(state, have)).map(res => (state, res))
+        case ReleaseJob(job)           => ZIO(releaseJob(state, job)).as(state, ())
+        case IsDownloadCompleted       => ZIO(isDownloadCompleted(state)).map(res => (state, res))
+        case IsRemoteInteresting(have) => ZIO(isRemoteInteresting(state, have)).map(res => (state, res))
       }
   }
 
@@ -51,7 +55,13 @@ object Actor {
         )
 
         idOption.fold[AcquireJobResult](NotInterested) { pieceId =>
-          val job = DownloadJob(pieceId, state.metaInfo.pieceSize)
+          val pieceSize =
+            if (pieceId == state.metaInfo.pieceHashes.size - 1)
+              state.metaInfo.torrentSize - pieceId * state.metaInfo.pieceSize
+            else
+              state.metaInfo.pieceSize
+
+          val job = DownloadJob(pieceId, pieceSize.toInt)
           state.activeJobs.put(job.pieceId, job)
           AcquireSuccess(job)
         }
@@ -81,5 +91,14 @@ object Actor {
       state.activeJobs.remove(job.pieceId)
       state.suspendedJobs.put(job.pieceId, job)
     }
+  }
+
+  private[dispatcher] def isDownloadCompleted(state: State): Boolean = {
+    state.metaInfo.pieceHashes.indices.forall(state.localHave)
+  }
+
+  private[dispatcher] def isRemoteInteresting(state: State, remoteHave: Set[PieceId]): Boolean = {
+    state.metaInfo.pieceHashes.indices
+      .exists(pieceId => remoteHave(pieceId) && !state.localHave(pieceId))
   }
 }

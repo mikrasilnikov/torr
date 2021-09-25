@@ -5,7 +5,7 @@ import torr.consoleui.SimpleProgressBar
 import torr.directbuffers.DirectBufferPool
 import zio._
 import zio.actors.ActorRef
-import torr.dispatcher.Actor.{Command, ReleaseJob, AcquireJob}
+import torr.dispatcher.Actor.{AcquireJob, Command, IsDownloadCompleted, IsRemoteInteresting, ReleaseJob}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import zio.clock.Clock
@@ -23,12 +23,17 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
       case NotInterested       => ZIO.unit
       case AcquireSuccess(job) => actor ! ReleaseJob(job)
     }
+
+  def isDownloadCompleted: Task[Boolean] =
+    actor ? IsDownloadCompleted
+
+  def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] =
+    actor ? IsRemoteInteresting(remoteHave)
 }
 
 object DispatcherLive {
   def make: ZLayer[ActorSystem with DirectBufferPool with FileIO with Clock with Console, Throwable, Dispatcher] = {
     val effect = for {
-      system        <- ZIO.service[ActorSystem.Service]
       fileIO        <- ZIO.service[FileIO.Service]
       metaInfo      <- fileIO.metaInfo
       filesAreFresh <- fileIO.freshFilesWereAllocated
@@ -44,16 +49,23 @@ object DispatcherLive {
                        _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
                      } yield res
 
-      actor     <- system.system.make(
-                     "DispatcherLive",
-                     actors.Supervisor.none,
-                     Actor.State(metaInfo, localHave),
-                     Actor.stateful
-                   )
+      res       <- make(Actor.State(metaInfo, localHave))
 
-    } yield DispatcherLive(actor)
+    } yield res
 
     effect.toLayer
+  }
+
+  private[dispatcher] def make(state: Actor.State): RIO[ActorSystem with Clock, DispatcherLive] = {
+    for {
+      system <- ZIO.service[ActorSystem.Service]
+      actor  <- system.system.make(
+                  "DispatcherLive",
+                  actors.Supervisor.none,
+                  state,
+                  Actor.stateful
+                )
+    } yield DispatcherLive(actor)
   }
 
   private def checkTorrent(

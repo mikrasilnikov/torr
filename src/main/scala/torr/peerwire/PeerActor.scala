@@ -15,11 +15,12 @@ object PeerActor {
   sealed trait Command[+_]
   case class Send(message: Message)                                                extends Command[Unit]
   case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
+  case class Poll(messageTypes: List[Class[_]])                                    extends Command[Option[Message]]
+  case object GetState                                                             extends Command[State]
+  case object GetContext                                                           extends Command[Context]
 
   private[peerwire] case class OnMessage(message: Message)    extends Command[Unit]
   private[peerwire] case class StartFailing(error: Throwable) extends Command[Unit]
-  private[peerwire] case object GetState                      extends Command[State]
-  private[peerwire] case object GetContext                    extends Command[Context]
 
   case class State(
       channel: ByteChannel,
@@ -40,6 +41,7 @@ object PeerActor {
       msg match {
         case Send(m)             => send(state, m).map(p => (state, p))
         case Receive(classes, p) => receive(state, classes, p).map(p => (state, p))
+        case Poll(classes)       => poll(state, classes).map(res => (state, res))
         case OnMessage(m)        =>
           m match {
             case Message.Fail => ZIO.fail(new IllegalArgumentException(s"Boom!"))
@@ -88,6 +90,13 @@ object PeerActor {
             }
             ZIO.unit
         }
+      }
+    }
+
+    private[peerwire] def poll(state: State, classes: List[Class[_]]): Task[Option[Message]] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case None    => ZIO.succeed(state.mailbox.dequeue(classes))
       }
     }
 

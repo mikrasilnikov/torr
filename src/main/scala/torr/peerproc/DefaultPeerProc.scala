@@ -13,9 +13,6 @@ import torr.fileio.FileIO
 
 object DefaultPeerProc {
 
-  private val maxConcurrentRequests: Int = 32
-  private val requestSize: Int           = 16 * 1024
-
   final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
   final case class UploadState(amChoking: Boolean, peerInterested: Boolean)
 
@@ -69,30 +66,32 @@ object DefaultPeerProc {
     }
   }
 
-  //noinspection SimplifyUnlessInspection
-
   /**
     * @return true if being choked by remote peer
     */
+  //noinspection SimplifyUnlessInspection
   private[peerproc] def downloadUntilChokedOrCompleted(
       peerHandle: PeerHandle,
       job: DownloadJob,
       requestOffset: Int = 0,
-      pendingRequests: Map[Int, Message.Request] = Map.empty[Int, Message.Request]
-  ): RIO[Dispatcher with FileIO with DirectBufferPool, Boolean] = {
+      pendingRequests: Map[Int, Message.Request] = Map.empty[Int, Message.Request],
+      concurrentRequests: Int = 128,
+      requestSize: Int = 16 * 1024
+  ): RIO[FileIO with DirectBufferPool, Boolean] = {
 
     val remaining = job.pieceLength - requestOffset
 
     if (remaining <= 0 && pendingRequests.isEmpty) {
       ZIO.succeed(false)
 
-    } else if (remaining > 0 && pendingRequests.size < maxConcurrentRequests) {
+    } else if (remaining > 0 && pendingRequests.size < concurrentRequests) {
       // We must maintain a queue of unfulfilled requests for performance reasons.
       // See https://wiki.theory.org/BitTorrentSpecification#Queuing
 
       // We should not send requests if remote peer has choked us.
       peerHandle.poll[Choke].flatMap {
-        case Some(_) => ZIO.succeed(true)
+        case Some(_) =>
+          ZIO.succeed(true)
         case None    =>
           val amount  = math.min(requestSize, remaining)
           val request = Message.Request(job.pieceId, requestOffset, amount)
@@ -102,13 +101,15 @@ object DefaultPeerProc {
                      peerHandle,
                      job,
                      requestOffset + amount,
-                     pendingRequests + (request.offset -> request)
+                     pendingRequests + (request.offset -> request),
+                     concurrentRequests,
+                     requestSize
                    )
           } yield res
       }
     } else {
       for {
-        msg <- peerHandle.receive[Choke, Piece]
+        msg <- peerHandle.receive[Piece, Choke]
         res <- msg match {
                  case Message.Choke => ZIO.succeed(true)
 
@@ -117,7 +118,14 @@ object DefaultPeerProc {
                      _   <- validateReceivedBlock(block, pendingRequests)
                      _   <- job.hashBlock(offset, data)
                      _   <- FileIO.store(pieceIndex, offset, Chunk(data))
-                     res <- downloadUntilChokedOrCompleted(peerHandle, job, requestOffset, pendingRequests - offset)
+                     res <- downloadUntilChokedOrCompleted(
+                              peerHandle,
+                              job,
+                              requestOffset,
+                              pendingRequests - offset,
+                              concurrentRequests,
+                              requestSize
+                            )
                    } yield res
                }
       } yield res

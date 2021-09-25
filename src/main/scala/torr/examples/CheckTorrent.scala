@@ -13,7 +13,7 @@ import torr.fileio.{FileIO, FileIOLive}
 object CheckTorrent extends App {
   val metaInfoFile      =
     "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
-  val dataDirectoryName = "c:\\!temp\\CopyTest\\"
+  val dataDirectoryName = "c:\\!temp\\CopyTest1\\"
   //val dataDirectoryName = "d:\\Torrents\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе)\\"
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {

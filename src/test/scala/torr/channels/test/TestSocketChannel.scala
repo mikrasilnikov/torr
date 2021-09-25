@@ -25,6 +25,8 @@ case class TestSocketChannel(incoming: Queue[Byte], outgoing: Queue[Byte], rando
     } yield bytesToWrite
   }
 
+  def outgoingSize: Task[Int] = outgoing.size
+
   def isOpen: Task[Boolean] = ZIO.succeed(true)
 
   val remote = new ByteChannel {
