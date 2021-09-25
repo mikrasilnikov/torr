@@ -60,8 +60,6 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
               handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             requestOffset = 0,
-                             pendingRequests = Map.empty[Int, Message.Request],
                              concurrentRequests = 1,
                              requestSize = 16
                            ).fork
@@ -97,8 +95,6 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
               handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             requestOffset = 0,
-                             pendingRequests = Map.empty[Int, Message.Request],
                              concurrentRequests = 1,
                              requestSize = 16
                            ).fork
@@ -140,8 +136,6 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
               handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             requestOffset = 0,
-                             pendingRequests = Map.empty[Int, Message.Request],
                              concurrentRequests = 2,
                              requestSize = 16
                            ).fork
@@ -183,8 +177,6 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
               handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             requestOffset = 0,
-                             pendingRequests = Map.empty[Int, Message.Request],
                              concurrentRequests = 2,
                              requestSize = 16
                            ).fork
@@ -200,7 +192,9 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
 
               outgoing <- channel.outgoingSize
             } yield assert(actual)(
-              fails(hasMessage(equalTo("Blocks must be hashed in order. Current offset = 0, receivedOffset = 16")))
+              fails(hasMessage(containsString(
+                "Received piece does not correspond to sent request."
+              )))
             )
         }
 

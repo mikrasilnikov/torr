@@ -11,6 +11,8 @@ import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{AcquireSuccess, Dispatcher, DownloadJob, NotInterested}
 import torr.fileio.FileIO
 
+import scala.collection.immutable
+
 object DefaultPeerProc {
 
   final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
@@ -38,8 +40,8 @@ object DefaultPeerProc {
     Dispatcher.isDownloadCompleted.flatMap {
       case true  => ZIO.unit
       case false =>
-        remoteHaveRef.get.flatMap { have =>
-          Dispatcher.isRemoteInteresting(have).flatMap {
+        remoteHaveRef.get.flatMap { remoteHave =>
+          Dispatcher.isRemoteInteresting(remoteHave).flatMap {
             // Download is not completed and remote peer does not have pieces that we are interested in.
             case false => download(peerHandle, remoteHaveRef, state).delay(10.seconds)
             case _     =>
@@ -48,7 +50,7 @@ object DefaultPeerProc {
                 _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
                 // choked = false(?), interested = true
-                s1 <- Dispatcher.acquireJobManaged(have).use {
+                s1 <- Dispatcher.acquireJobManaged(remoteHave).use {
                         case AcquireSuccess(job) =>
                           downloadUntilChokedOrCompleted(peerHandle, job)
                             .map(choked => DownloadState(choked, amInterested = true))
@@ -73,81 +75,72 @@ object DefaultPeerProc {
   private[peerproc] def downloadUntilChokedOrCompleted(
       peerHandle: PeerHandle,
       job: DownloadJob,
-      requestOffset: Int = 0,
-      pendingRequests: Map[Int, Message.Request] = Map.empty[Int, Message.Request],
       concurrentRequests: Int = 128,
       requestSize: Int = 16 * 1024
   ): RIO[FileIO with DirectBufferPool, Boolean] = {
 
-    val remaining = job.pieceLength - requestOffset
+    def loop(
+        requestOffset: Int = 0,
+        pendingRequests: immutable.Queue[Message.Request] = immutable.Queue.empty[Message.Request]
+    ): RIO[FileIO with DirectBufferPool, Boolean] = {
+      val remaining = job.pieceLength - requestOffset
 
-    if (remaining <= 0 && pendingRequests.isEmpty) {
-      ZIO.succeed(false)
+      if (remaining <= 0 && pendingRequests.isEmpty) {
+        ZIO.succeed(false)
 
-    } else if (remaining > 0 && pendingRequests.size < concurrentRequests) {
-      // We must maintain a queue of unfulfilled requests for performance reasons.
-      // See https://wiki.theory.org/BitTorrentSpecification#Queuing
+      } else if (remaining > 0 && pendingRequests.size < concurrentRequests) {
+        // We must maintain a queue of unfulfilled requests for performance reasons.
+        // See https://wiki.theory.org/BitTorrentSpecification#Queuing
 
-      // We should not send requests if remote peer has choked us.
-      peerHandle.poll[Choke].flatMap {
-        case Some(_) =>
-          ZIO.succeed(true)
-        case None    =>
-          val amount  = math.min(requestSize, remaining)
-          val request = Message.Request(job.pieceId, requestOffset, amount)
-          for {
-            _   <- peerHandle.send(request)
-            res <- downloadUntilChokedOrCompleted(
-                     peerHandle,
-                     job,
-                     requestOffset + amount,
-                     pendingRequests + (request.offset -> request),
-                     concurrentRequests,
-                     requestSize
-                   )
-          } yield res
+        // We should not send requests if remote peer has choked us.
+        peerHandle.poll[Choke].flatMap {
+          case Some(_) =>
+            ZIO.succeed(true)
+          case None    =>
+            val amount  = math.min(requestSize, remaining)
+            val request = Message.Request(job.pieceId, requestOffset, amount)
+            for {
+              _   <- peerHandle.send(request)
+              res <- loop(
+                       requestOffset + amount,
+                       pendingRequests :+ request
+                     )
+            } yield res
+        }
+      } else {
+        for {
+          msg <- peerHandle.receive[Piece, Choke]
+          res <- msg match {
+                   case Message.Choke => ZIO.succeed(true)
+
+                   case response @ Message.Piece(pieceIndex, offset, data) =>
+                     for {
+                       _   <- validateResponse(response, pendingRequests.head)
+                       _   <- job.hashBlock(offset, data)
+                       _   <- FileIO.store(pieceIndex, offset, Chunk(data))
+                       res <- loop(requestOffset, pendingRequests.tail)
+                     } yield res
+                 }
+        } yield res
       }
-    } else {
-      for {
-        msg <- peerHandle.receive[Piece, Choke]
-        res <- msg match {
-                 case Message.Choke => ZIO.succeed(true)
-
-                 case block @ Message.Piece(pieceIndex, offset, data) =>
-                   for {
-                     _   <- validateReceivedBlock(block, pendingRequests)
-                     _   <- job.hashBlock(offset, data)
-                     _   <- FileIO.store(pieceIndex, offset, Chunk(data))
-                     res <- downloadUntilChokedOrCompleted(
-                              peerHandle,
-                              job,
-                              requestOffset,
-                              pendingRequests - offset,
-                              concurrentRequests,
-                              requestSize
-                            )
-                   } yield res
-               }
-      } yield res
     }
+
+    loop()
   }
 
-  private def validateReceivedBlock(piece: Message.Piece, pendingRequests: Map[Int, Message.Request]): Task[Unit] = {
-    pendingRequests.get(piece.offset) match {
-      case None          => ZIO.fail(new ProtocolException(s"Received piece has not been requested: $piece"))
-      case Some(request) =>
-        for {
-          dataSize <- piece.block.remaining
-          _        <- ZIO.fail(new ProtocolException(
-                        s"Received piece does not correspond to sent request. $piece $request"
-                      ))
-                        .unless(
-                          piece.index == request.index &&
-                            piece.offset == request.offset &&
-                            dataSize == request.length
-                        )
-        } yield ()
-    }
+  private def validateResponse(response: Message.Piece, request: Message.Request): Task[Unit] = {
+    for {
+      dataSize <- response.block.remaining
+      _        <- ZIO.fail(new ProtocolException(
+                    s"Received piece does not correspond to sent request. $response $request"
+                  ))
+                    .unless(
+                      response.index == request.index &&
+                        response.offset == request.offset &&
+                        dataSize == request.length
+                    )
+    } yield ()
+
   }
 
   private[peerproc] def waitUntilRemoteIsInteresting(
@@ -208,5 +201,4 @@ object DefaultPeerProc {
       ZIO.fail(new ProtocolException(s"pieceIndex < 0 || pieceIndex >= metaInfo.pieceHashes.length ($pieceIndex)"))
     else ZIO.unit
   }
-
 }
