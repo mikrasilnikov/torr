@@ -24,7 +24,7 @@ object InMemoryChannelSpec extends DefaultRunnableSpec {
           r3      <- buf.flip *> buf.getChunk()
           n4      <- buf.clear *> channel.read(buf)
           r4      <- buf.flip *> buf.getChunk()
-        } yield assert()(anything) &&
+        } yield assert(())(anything) &&
           assert(n1, n2, n3, n4)(equalTo(3, 3, 3, 1)) &&
           assert(r1 ++ r2 ++ r3 ++ r4)(equalTo(Chunk[Byte](0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
       },
@@ -39,7 +39,7 @@ object InMemoryChannelSpec extends DefaultRunnableSpec {
           n2      <- buf.clear *> channel.read(buf, 8)
           r2      <- buf.flip *> buf.getChunk()
           p2      <- channel.state.get.map(_.position)
-        } yield assert()(anything) &&
+        } yield assert(())(anything) &&
           assert(n1, n2)(equalTo(3, 2)) &&
           assert(r1, r2)(equalTo(Chunk[Byte](1, 2, 3), Chunk[Byte](8, 9))) &&
           assert(p1, p2)(equalTo(4, 10))

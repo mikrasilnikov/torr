@@ -75,14 +75,14 @@ object PeerActor {
     ): Task[Unit] = {
 
       if (state.isFailingWith.isDefined)
-        p.fail(state.isFailingWith.get).as()
+        p.fail(state.isFailingWith.get).unit
       else {
         state.mailbox.dequeue(classes) match {
-          case Some(m) => p.succeed(m).as()
+          case Some(m) => p.succeed(m).unit
           case None    => classes.foreach { t =>
               state.expectedMessages.get(t) match {
                 case Some(_) =>
-                  p.fail(new IllegalStateException(s"Message of type $t is already expected by another proc")).as()
+                  p.fail(new IllegalStateException(s"Message of type $t is already expected by another proc")).unit
                 case None    =>
                   state.expectedMessages.put(t, p)
                   state.givenPromises.put(p, classes)

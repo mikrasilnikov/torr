@@ -277,7 +277,7 @@ object Actor {
     if (state.cache.entryIsValid(entry)) {
       clock.currentDateTime.flatMap { now =>
         if (entry.expirationDateTime.compareTo(now) <= 0) {
-          makeReadEntryFromWriteEntry(state, entry).as()
+          makeReadEntryFromWriteEntry(state, entry).unit
         } else {
           for {
             _     <- entry.writeOutFiber.get.join
@@ -311,7 +311,7 @@ object Actor {
       entry: WriteEntry
   ): ZIO[Clock, Throwable, Unit] = {
     if (entry.isFull) {
-      makeReadEntryFromWriteEntry(state, entry).as()
+      makeReadEntryFromWriteEntry(state, entry).unit
     } else
       for {
         now <- clock.currentDateTime

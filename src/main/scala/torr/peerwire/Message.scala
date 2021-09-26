@@ -74,6 +74,7 @@ object Message {
       case Cancel(index, begin, length)  => sendCancel(index, begin, length, channel, buf)
       case Piece(index, begin, data)     => sendPiece(index, begin, data, channel, buf)
       case Handshake(infoHash, peerId)   => sendHandshake(infoHash, peerId, channel, buf)
+      case Fail                          => ???
     }
 
   def receive(channel: ByteChannel, buf: ByteBuffer): RIO[DirectBufferPool with Clock, Message] = {

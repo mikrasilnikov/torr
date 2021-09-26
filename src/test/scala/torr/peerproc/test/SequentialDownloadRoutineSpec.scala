@@ -10,7 +10,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 import torr.fileio.test.FileIOMock._
-import torr.peerproc.DefaultPeerProc
+import torr.peerproc.{DefaultPeerRoutine, SequentialDownloadRoutine}
 import torr.peerwire.{Message, PeerActor, PeerHandle}
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -20,9 +20,9 @@ import zio.test.environment.TestClock
 import zio.test.mock.Expectation._
 import zio.test.mock.MockSystem
 
-object DefaultPeerProcSpec extends DefaultRunnableSpec {
+object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
   def spec =
-    suite("DefaultPeerProcSpec")(
+    suite("SequentialDownloadRoutineSpec")(
       //
       test("123") {
         val l0 = FileIOMock.Fetch(
@@ -31,7 +31,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
         )
         val l1 = FileIOMock.Store(anything, unit)
 
-        assert()(anything)
+        assert(())(anything)
       },
       //
       testM("downloadUntilChokedOrCompleted - being choked before first request") {
@@ -39,7 +39,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
           case (channel, handle) =>
             for {
               _        <- handle.onMessage(Message.Choke)
-              actual   <- DefaultPeerProc.downloadUntilChokedOrCompleted(handle, DownloadJob(0, 128))
+              actual   <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(handle, DownloadJob(0, 128))
               outgoing <- channel.outgoingSize
             } yield assert(actual)(isTrue) && assert(outgoing)(equalTo(0))
         }
@@ -57,7 +57,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
             for {
               buf       <- Buffer.byte(1024)
               job        = DownloadJob(0, 128)
-              handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
+              handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
                              concurrentRequests = 1,
@@ -92,7 +92,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
             for {
               buf       <- Buffer.byte(1024)
               job        = DownloadJob(0, 31)
-              handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
+              handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
                              concurrentRequests = 1,
@@ -133,7 +133,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
             for {
               buf       <- Buffer.byte(1024)
               job        = DownloadJob(0, 31)
-              handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
+              handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
                              concurrentRequests = 2,
@@ -174,7 +174,7 @@ object DefaultPeerProcSpec extends DefaultRunnableSpec {
             for {
               buf       <- Buffer.byte(1024)
               job        = DownloadJob(0, 31)
-              handleFib <- DefaultPeerProc.downloadUntilChokedOrCompleted(
+              handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
                              concurrentRequests = 2,

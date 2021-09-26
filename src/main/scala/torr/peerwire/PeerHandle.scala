@@ -56,7 +56,7 @@ object PeerHandle {
       localPeerId: Chunk[Byte]
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
-      nioChannel <- AsynchronousSocketChannel.open
+      nioChannel <- AsynchronousSocketChannel.open()
       _          <- nioChannel.connect(address).toManaged_
       channel     = AsyncSocketChannel(nioChannel)
       msgBuf     <- Buffer.byteDirect(1024).toManaged_

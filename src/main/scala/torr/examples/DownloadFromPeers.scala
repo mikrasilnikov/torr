@@ -5,7 +5,7 @@ import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
-import torr.peerproc.DefaultPeerProc
+import torr.peerproc.DefaultPeerRoutine
 import torr.peerwire.{Message, PeerHandle}
 import torr.peerwire.MessageTypes._
 import zio._
@@ -37,7 +37,7 @@ object DownloadFromPeers extends App {
                         for {
                           address <- InetSocketAddress.hostName(host, port)
                           _       <- PeerHandle.fromAddress(address, metaInfo.infoHash, localPeerId)
-                                       .use(handle => DefaultPeerProc.run(handle))
+                                       .use(handle => DefaultPeerRoutine.run(handle))
                         } yield ()
                     }
       _          <- FileIO.flush
