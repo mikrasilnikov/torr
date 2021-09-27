@@ -12,7 +12,7 @@ final case class DownloadJob(
     pieceId: PieceId,
     pieceLength: Int,
     private var hashOffset: Int = 0
-) {
+) { self =>
   def isCompleted: Boolean  = hashOffset >= pieceLength
   val digest: MessageDigest = MessageDigest.getInstance("SHA-1")
 
@@ -33,4 +33,12 @@ final case class DownloadJob(
   }
 
   def getOffset: Int = hashOffset
+
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case that @ DownloadJob(_, _, _) => that.pieceId == self.pieceId
+      case _                           => false
+    }
+
+  override def hashCode(): Int = pieceId.hashCode()
 }

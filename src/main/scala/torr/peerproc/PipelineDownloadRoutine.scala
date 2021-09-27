@@ -74,7 +74,7 @@ object PipelineDownloadRoutine {
                for {
                  _ <- sender.interrupt
                  // receiveResponses function is responsible for releasing jobs.
-                 // However it is only aware of jobs that have arrived from the requests queue.
+                 // However it is only aware of jobs that have arrived from the `requests` queue.
                  // If there is a job that had been allocated by the sender and has not been seen by the
                  // receiveResponses function we have to release it after interruption of the sender.
                  _ <- sndJobOpt.get.flatMap {
@@ -158,22 +158,22 @@ object PipelineDownloadRoutine {
   /**
     * For each sent request in `requestQueue` receives and processes one response from the remote peer.
     * If responses appear out of order, it reorders them by storing each response in `receivedResponses`.
-    * @return Last seen job on the `requestQueue`
+    * @return Last job that has been dequeued from the `requestQueue`.
     */
   private def receiveResponses(
-      handle: PeerHandle,
+      peerHandle: PeerHandle,
       requestQueue: Queue[Option[SentRequest]],
-      lastSeenJob: Option[DownloadJob] = None,
-      lastProcessedJob: Option[DownloadJob] = None,
-      // Reordering buffers.
-      requestInOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
+      lastSeenJob: Option[DownloadJob] = None,      // Last job that has been dequeued from the requestQueue.
+      lastProcessedJob: Option[DownloadJob] = None, // Last job a request has been processed from.
+      // Response reordering buffers.
+      requestsInOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
       receivedResponses: immutable.HashMap[(Int, Int), Message.Piece] =
         immutable.HashMap.empty[(Int, Int), Message.Piece]
   ): RIO[Dispatcher with FileIO, ReceiverResult] = {
 
     // Next response in order to process if available.
     val nextResponseInOrderOption = for {
-      req  <- requestInOrder.headOption
+      req  <- requestsInOrder.headOption
       key   = (req.request.index, req.request.offset)
       resp <- receivedResponses.get(key)
     } yield (resp, key, req)
@@ -182,27 +182,29 @@ object PipelineDownloadRoutine {
       val (response, responseKey, request) = nextResponseInOrderOption.get
 
       for {
-        // If response being processed is related to the next job, we must release the previous one.
+        // If the response being processed is related to the next job, we must release the previous one.
         _   <- Dispatcher.releaseJob(lastProcessedJob.get)
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
         _   <- validateResponse(response, request.request)
         _   <- request.job.hashBlock(response.offset, response.block)
         _   <- FileIO.store(response.index, response.offset, Chunk(response.block))
         res <- receiveResponses(
-                 handle,
+                 peerHandle,
                  requestQueue,
                  lastSeenJob,
                  Some(request.job),
-                 requestInOrder.tail,
+                 requestsInOrder.tail,
                  receivedResponses - responseKey
                )
       } yield res
-    } else
+    } else {
+      // We don't have any responses to process in order so let's receive another one.
       requestQueue.take.flatMap {
+
         case None       =>
           // We must have received all responses already.
           // So there must be enough responses to process them in order.
-          if (requestInOrder.nonEmpty || receivedResponses.nonEmpty) {
+          if (requestsInOrder.nonEmpty || receivedResponses.nonEmpty) {
             ZIO.fail(new ProtocolException(s"Unable to correctly reorder received responses"))
           } else {
             lastSeenJob match {
@@ -210,43 +212,31 @@ object PipelineDownloadRoutine {
               case None      => ZIO.succeed(ReceiverResult.Completed)
             }
           }
+
         case Some(sent) =>
-          handle.receive[Piece, Choke].flatMap {
+          peerHandle.receive[Piece, Choke].flatMap {
 
-            case Message.Choke                             =>
-              lastSeenJob match {
-                case Some(job) if job.pieceId != sent.job.pieceId =>
-                  Dispatcher.releaseJob(job) *>
-                    Dispatcher.releaseJob(sent.job) *>
-                    ZIO.succeed(ReceiverResult.Choked(sent.job))
-
-                case Some(job)                                    =>
-                  Dispatcher.releaseJob(job) *>
-                    ZIO.succeed(ReceiverResult.Choked(job))
-
-                case None                                         =>
-                  ZIO.succeed(ReceiverResult.Choked(sent.job))
-              }
-
-            case resp @ Message.Piece(index, offset, data) =>
+            case resp @ Message.Piece(_, _, _) =>
               val responseKey = (resp.index, resp.offset)
-
-              /*if (receivedResponses.nonEmpty && receivedResponses.size % 100 == 0) {
-                println(receivedResponses.size)
-              }*/
-
               receiveResponses(
-                handle,
+                peerHandle,
                 requestQueue,
                 Some(sent.job),
                 lastProcessedJob,
-                requestInOrder :+ sent,
+                requestsInOrder :+ sent,
                 receivedResponses + (responseKey -> resp)
               )
 
-            case _                                         => ???
+            case Message.Choke                 =>
+              val currentlyProcessedJobs = requestsInOrder.map(_.job).distinct.toSet + sent.job
+              for {
+                _ <- ZIO.foreach_(currentlyProcessedJobs)(Dispatcher.releaseJob(_))
+              } yield ReceiverResult.Choked(sent.job)
+
+            case _                             => ???
           }
       }
+    }
   }
 
   private def validateResponse(response: Message.Piece, request: Message.Request): Task[Unit] = {

@@ -19,7 +19,7 @@ package object dispatcher {
       def isDownloadCompleted: Task[Boolean]
       def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean]
       def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult]
-      def releaseJob(job: DownloadJob): Task[Unit]
+      def releaseJob(job: => DownloadJob): Task[Unit]
 
       def acquireJobManaged(remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(remoteHave)) {
