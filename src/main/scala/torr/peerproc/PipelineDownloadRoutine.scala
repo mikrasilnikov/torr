@@ -4,16 +4,12 @@ import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{AcquireSuccess, DownloadCompleted, Dispatcher, DownloadJob, NotInterested}
 import torr.fileio.FileIO
 import torr.peerproc.DefaultPeerRoutine.DownloadState
-import torr.peerproc.SequentialDownloadRoutine.downloadUntilChokedOrCompleted
 import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
 import torr.peerwire.{Message, PeerHandle}
 import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
 import scala.collection.immutable
-
-/**
-  */
 
 object PipelineDownloadRoutine {
 
@@ -252,5 +248,4 @@ object PipelineDownloadRoutine {
                     )
     } yield ()
   }
-
 }

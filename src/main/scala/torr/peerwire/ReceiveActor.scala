@@ -13,7 +13,6 @@ import java.time.OffsetDateTime
 object ReceiveActor {
 
   sealed trait Command[+_]
-  //case class Send(message: Message)                                                extends Command[Unit]
   case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
   case class Poll(messageTypes: List[Class[_]])                                    extends Command[Option[Message]]
   case object GetState                                                             extends Command[State]
@@ -24,7 +23,6 @@ object ReceiveActor {
 
   case class State(
       channel: ByteChannel,
-      //sendBuf: ByteBuffer,
       remotePeerId: Chunk[Byte] = Chunk.fill(20)(0.toByte),
       expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
         new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
