@@ -20,8 +20,8 @@ object DownloadFromPeers extends App {
 
   val peers = List(
     ("localhost", 57617),
-    ("localhost", 57618),
-    ("localhost", 57619)
+    ("localhost", 57618)
+    //("localhost", 57619)
   )
 
   val metaInfoFile     =

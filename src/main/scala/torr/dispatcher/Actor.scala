@@ -42,29 +42,35 @@ object Actor {
 
   private[dispatcher] def acquireJob(state: State, remoteHave: Set[PieceId]): AcquireJobResult = {
 
-    val suspended = state.suspendedJobs.view
-      .filterKeys(id => remoteHave.contains(id))
-      .headOption
+    // There is no problem having linear time complexity for this check because large torrents have ~1000 pieces.
+    val isDownloadCompleted = state.metaInfo.pieceHashes.indices.forall(i => state.localHave(i))
 
-    suspended match {
-      case Some((_, job)) => AcquireSuccess(job)
-      case None           =>
-        val idOption = remoteHave /*.toList.sorted*/ .find(remoteId =>
-          !state.activeJobs.keySet.contains(remoteId) &&
-            !state.localHave.contains(remoteId)
-        )
+    if (isDownloadCompleted) { DownloadCompleted }
+    else {
+      val suspended = state.suspendedJobs.view
+        .filterKeys(id => remoteHave.contains(id))
+        .headOption
 
-        idOption.fold[AcquireJobResult](NotInterested) { pieceId =>
-          val pieceSize =
-            if (pieceId == state.metaInfo.pieceHashes.size - 1)
-              state.metaInfo.torrentSize - pieceId * state.metaInfo.pieceSize
-            else
-              state.metaInfo.pieceSize
+      suspended match {
+        case Some((_, job)) => AcquireSuccess(job)
+        case None           =>
+          val idOption = remoteHave /*.toList.sorted*/ .find(remoteId =>
+            !state.activeJobs.keySet.contains(remoteId) &&
+              !state.localHave.contains(remoteId)
+          )
 
-          val job = DownloadJob(pieceId, pieceSize.toInt)
-          state.activeJobs.put(job.pieceId, job)
-          AcquireSuccess(job)
-        }
+          idOption.fold[AcquireJobResult](NotInterested) { pieceId =>
+            val pieceSize =
+              if (pieceId == state.metaInfo.pieceHashes.size - 1)
+                state.metaInfo.torrentSize - pieceId * state.metaInfo.pieceSize
+              else
+                state.metaInfo.pieceSize
+
+            val job = DownloadJob(pieceId, pieceSize.toInt)
+            state.activeJobs.put(job.pieceId, job)
+            AcquireSuccess(job)
+          }
+      }
     }
   }
 

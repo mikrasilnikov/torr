@@ -1,7 +1,7 @@
 package torr.peerproc
 
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.{AcquireSuccess, Dispatcher, DownloadJob, NotInterested}
+import torr.dispatcher.{AcquireSuccess, DownloadCompleted, Dispatcher, DownloadJob, NotInterested}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import torr.peerproc.DefaultPeerRoutine.DownloadState
@@ -44,6 +44,11 @@ object SequentialDownloadRoutine {
                               for {
                                 _ <- peerHandle.send(Message.NotInterested)
                                 _ <- ZIO.sleep(10.seconds)
+                              } yield DownloadState(peerChoking = false, amInterested = false)
+
+                            case DownloadCompleted   =>
+                              for {
+                                _ <- peerHandle.send(Message.NotInterested)
                               } yield DownloadState(peerChoking = false, amInterested = false)
                           }
                 _      <- download(peerHandle, remoteHaveRef, state1, maxConcurrentRequests)

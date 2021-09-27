@@ -21,14 +21,14 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
     } yield ()
   }
 
-  def receive[M <: Message](implicit tag: ClassTag[M]): Task[Message] =
-    receiveCore(tag.runtimeClass)
+  def receive[M <: Message](implicit tag: ClassTag[M]): Task[M] =
+    receiveCore(tag.runtimeClass).map(_.asInstanceOf[M])
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
     receiveCore(tag1.runtimeClass, tag2.runtimeClass)
 
-  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[Message]] =
-    pollCore(tag.runtimeClass)
+  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
+    pollCore(tag.runtimeClass).map(_.map(_.asInstanceOf[M]))
 
   def onMessage(msg: Message): Task[Unit] =
     actor ? OnMessage(msg)

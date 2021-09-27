@@ -1,7 +1,7 @@
 package torr.peerproc
 
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.{AcquireSuccess, Completed, Dispatcher, DownloadJob, NotInterested}
+import torr.dispatcher.{AcquireSuccess, DownloadCompleted, Dispatcher, DownloadJob, NotInterested}
 import torr.fileio.FileIO
 import torr.peerproc.DefaultPeerRoutine.DownloadState
 import torr.peerproc.SequentialDownloadRoutine.downloadUntilChokedOrCompleted
@@ -11,6 +11,9 @@ import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
 import scala.collection.immutable
+
+/**
+  */
 
 object PipelineDownloadRoutine {
 
@@ -40,13 +43,13 @@ object PipelineDownloadRoutine {
           Dispatcher.isRemoteInteresting(remoteHave).flatMap {
             // Download is not completed and remote peer does not have pieces that we are interested in.
             case false => download(peerHandle, remoteHaveRef, state, maxConcurrentRequests).delay(10.seconds)
-            case _     => downloadInterested(peerHandle, remoteHaveRef, state, maxConcurrentRequests)
+            case _     => downloadWhileInterested(peerHandle, remoteHaveRef, state, maxConcurrentRequests)
           }
         }
     }
   }
 
-  def downloadInterested(
+  def downloadWhileInterested(
       peerHandle: PeerHandle,
       remoteHaveRef: Ref[Set[Int]],
       state: DownloadState,
@@ -78,7 +81,7 @@ object PipelineDownloadRoutine {
                         case Some(sndJob) => Dispatcher.releaseJob(sndJob).unless(sndJob.pieceId == rcvJob.pieceId)
                         case None         => ZIO.unit
                       }
-                 _ <- downloadInterested(
+                 _ <- downloadWhileInterested(
                         peerHandle,
                         remoteHaveRef,
                         DownloadState(amInterested = true, peerChoking = true),
@@ -145,7 +148,7 @@ object PipelineDownloadRoutine {
         case NotInterested       =>
           currentJobRef.set(None) *>
             requestQueue.offer(None).as(SenderResult.NotInterested)
-        case Completed           =>
+        case DownloadCompleted   =>
           currentJobRef.set(None) *>
             requestQueue.offer(None).as(SenderResult.Completed)
       }
@@ -153,6 +156,8 @@ object PipelineDownloadRoutine {
   }
 
   /**
+    * For each sent request in `requestQueue` receives and processes one response from the remote peer.
+    * If responses appear out of order, it reorders them by storing each response in `receivedResponses`.
     * @return Last seen job on the `requestQueue`
     */
   private def receiveResponses(
@@ -160,33 +165,35 @@ object PipelineDownloadRoutine {
       requestQueue: Queue[Option[SentRequest]],
       lastSeenJob: Option[DownloadJob] = None,
       lastProcessedJob: Option[DownloadJob] = None,
-      requestOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
+      // Reordering buffers.
+      requestInOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
       receivedResponses: immutable.HashMap[(Int, Int), Message.Piece] =
         immutable.HashMap.empty[(Int, Int), Message.Piece]
   ): RIO[Dispatcher with FileIO, ReceiverResult] = {
-    // process responses in order
 
-    val responseDataOption = for {
-      sentReq <- requestOrder.headOption
-      respKey  = (sentReq.request.index, sentReq.request.offset)
-      resp    <- receivedResponses.get(respKey)
-    } yield (resp, respKey, sentReq)
+    // Next response in order to process if available.
+    val nextResponseInOrderOption = for {
+      req  <- requestInOrder.headOption
+      key   = (req.request.index, req.request.offset)
+      resp <- receivedResponses.get(key)
+    } yield (resp, key, req)
 
-    if (responseDataOption.isDefined) {
-      val (response, responseKey, sentRequest) = responseDataOption.get
+    if (nextResponseInOrderOption.isDefined) {
+      val (response, responseKey, request) = nextResponseInOrderOption.get
 
-      val currentJob = lastProcessedJob.getOrElse(sentRequest.job)
       for {
-        _   <- Dispatcher.releaseJob(currentJob).when(currentJob.pieceId != sentRequest.job.pieceId)
-        _   <- validateResponse(response, sentRequest.request)
-        _   <- sentRequest.job.hashBlock(response.offset, response.block)
+        // If response being processed is related to the next job, we must release the previous one.
+        _   <- Dispatcher.releaseJob(lastProcessedJob.get)
+                 .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
+        _   <- validateResponse(response, request.request)
+        _   <- request.job.hashBlock(response.offset, response.block)
         _   <- FileIO.store(response.index, response.offset, Chunk(response.block))
         res <- receiveResponses(
                  handle,
                  requestQueue,
                  lastSeenJob,
-                 Some(sentRequest.job),
-                 requestOrder.tail,
+                 Some(request.job),
+                 requestInOrder.tail,
                  receivedResponses - responseKey
                )
       } yield res
@@ -194,12 +201,15 @@ object PipelineDownloadRoutine {
       requestQueue.take.flatMap {
         case None       =>
           // We must have received all responses already.
-          // So we must fail if any requests are present in the ordering buffers
-          lastSeenJob match {
-            case Some(job) => Dispatcher.releaseJob(job) *> ZIO.succeed(ReceiverResult.Completed)
-            case None      => ZIO.succeed(ReceiverResult.Completed)
+          // So there must be enough responses to process them in order.
+          if (requestInOrder.nonEmpty || receivedResponses.nonEmpty) {
+            ZIO.fail(new ProtocolException(s"Unable to correctly reorder received responses"))
+          } else {
+            lastSeenJob match {
+              case Some(job) => Dispatcher.releaseJob(job) *> ZIO.succeed(ReceiverResult.Completed)
+              case None      => ZIO.succeed(ReceiverResult.Completed)
+            }
           }
-
         case Some(sent) =>
           handle.receive[Piece, Choke].flatMap {
 
@@ -221,14 +231,16 @@ object PipelineDownloadRoutine {
             case resp @ Message.Piece(index, offset, data) =>
               val responseKey = (resp.index, resp.offset)
 
-              if (receivedResponses.nonEmpty && receivedResponses.size % 100 == 0) { println(receivedResponses.size) }
+              /*if (receivedResponses.nonEmpty && receivedResponses.size % 100 == 0) {
+                println(receivedResponses.size)
+              }*/
 
               receiveResponses(
                 handle,
                 requestQueue,
                 Some(sent.job),
                 lastProcessedJob,
-                requestOrder :+ sent,
+                requestInOrder :+ sent,
                 receivedResponses + (responseKey -> resp)
               )
 

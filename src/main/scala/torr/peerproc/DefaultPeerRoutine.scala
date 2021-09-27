@@ -20,10 +20,12 @@ object DefaultPeerRoutine {
 
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     for {
-      remoteHaveRef <- Ref.make(Set.empty[Int])
-      metaInfo      <- FileIO.metaInfo
-      haveFib       <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
-      aliveFib      <- handleKeepAlive(peerHandle).fork
+      bitField      <- peerHandle.receive[BitField]
+      remoteHaveRef <- Ref.make[Set[Int]](HashSet.from(bitField.bits.set))
+
+      metaInfo <- FileIO.metaInfo
+      haveFib  <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
+      aliveFib <- handleKeepAlive(peerHandle).fork
 
       _ <- PipelineDownloadRoutine.download(
              peerHandle,
@@ -43,13 +45,8 @@ object DefaultPeerRoutine {
       remoteHaveRef: Ref[Set[Int]]
   ): Task[Unit] = {
     for {
-      msg <- peerHandle.receive[BitField, Have]
+      msg <- peerHandle.receive[Have]
       _   <- msg match {
-               case Message.BitField(bitSet) =>
-                 for {
-                   _ <- validateRemoteBitSet(metaInfo, bitSet)
-                   _ <- remoteHaveRef.set(HashSet.from(bitSet.set))
-                 } yield ()
                case Message.Have(pieceIndex) =>
                  for {
                    _ <- validatePieceIndex(metaInfo, pieceIndex)

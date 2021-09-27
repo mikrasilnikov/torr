@@ -1,5 +1,6 @@
 package torr.dispatcher.test
 
+import torr.dispatcher
 import torr.dispatcher.{AcquireSuccess, Actor, DownloadJob, PieceId}
 import torr.metainfo.{FileEntry, MetaInfo}
 import torr.metainfo.test.MetaInfoSpec.toBytes
@@ -65,6 +66,29 @@ object DispatcherSpec extends DefaultRunnableSpec {
         assert(actual)(equalTo(expected))
       },
       //
+      test("allocates job - not interested") {
+        val localHave  = new mutable.HashSet[PieceId]()
+        localHave.add(0)
+        val state      = Actor.State(metaInfo, localHave)
+        val remoteHave = HashSet[PieceId](0)
+
+        val actual = Actor.acquireJob(state, remoteHave).asInstanceOf[dispatcher.NotInterested.type]
+
+        assert(actual)(equalTo(dispatcher.NotInterested))
+      },
+      //
+      test("allocates job - download completed") {
+        val localHave  = new mutable.HashSet[PieceId]()
+        localHave.add(0)
+        localHave.add(1)
+        val state      = Actor.State(metaInfo, localHave)
+        val remoteHave = HashSet[PieceId](0)
+
+        val actual = Actor.acquireJob(state, remoteHave).asInstanceOf[dispatcher.DownloadCompleted.type]
+
+        assert(actual)(equalTo(dispatcher.DownloadCompleted))
+      },
+      //
       test("releases inactive job") {
         val state = Actor.State(metaInfo, new mutable.HashSet[PieceId])
 
@@ -75,7 +99,6 @@ object DispatcherSpec extends DefaultRunnableSpec {
       },
       //
       test("releases completed job") {
-
         val mi = MetaInfo(
           announce = "udp://tracker.openbittorrent.com:80/announce",
           pieceSize = 262144,
