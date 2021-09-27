@@ -19,7 +19,8 @@ object SequentialDownloadRoutine {
   def download(
       peerHandle: PeerHandle,
       remoteHaveRef: Ref[Set[Int]],
-      state: DownloadState
+      state: DownloadState,
+      maxConcurrentRequests: Int
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case true  => ZIO.unit
@@ -27,25 +28,25 @@ object SequentialDownloadRoutine {
         remoteHaveRef.get.flatMap { remoteHave =>
           Dispatcher.isRemoteInteresting(remoteHave).flatMap {
             // Download is not completed and remote peer does not have pieces that we are interested in.
-            case false => download(peerHandle, remoteHaveRef, state).delay(10.seconds)
+            case false => download(peerHandle, remoteHaveRef, state, maxConcurrentRequests).delay(10.seconds)
             case _     =>
               for {
                 _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
                 _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
                 // choked = false(?), interested = true
-                s1 <- Dispatcher.acquireJobManaged(remoteHave).use {
-                        case AcquireSuccess(job) =>
-                          downloadUntilChokedOrCompleted(peerHandle, job)
-                            .map(choked => DownloadState(choked, amInterested = true))
+                state1 <- Dispatcher.acquireJobManaged(remoteHave).use {
+                            case AcquireSuccess(job) =>
+                              downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
+                                .map(choked => DownloadState(choked, amInterested = true))
 
-                        case NotInterested       =>
-                          for {
-                            _ <- peerHandle.send(Message.NotInterested)
-                            _ <- ZIO.sleep(10.seconds)
-                          } yield DownloadState(peerChoking = false, amInterested = false)
-                      }
-                _  <- download(peerHandle, remoteHaveRef, s1)
+                            case NotInterested       =>
+                              for {
+                                _ <- peerHandle.send(Message.NotInterested)
+                                _ <- ZIO.sleep(10.seconds)
+                              } yield DownloadState(peerChoking = false, amInterested = false)
+                          }
+                _      <- download(peerHandle, remoteHaveRef, state1, maxConcurrentRequests)
               } yield ()
           }
         }
@@ -59,7 +60,7 @@ object SequentialDownloadRoutine {
   private[peerproc] def downloadUntilChokedOrCompleted(
       peerHandle: PeerHandle,
       job: DownloadJob,
-      concurrentRequests: Int = 32,
+      maxConcurrentRequests: Int,
       requestSize: Int = 16 * 1024
   ): RIO[FileIO with DirectBufferPool, Boolean] = {
 
@@ -72,7 +73,7 @@ object SequentialDownloadRoutine {
       if (remaining <= 0 && pendingRequests.isEmpty) {
         ZIO.succeed(false)
 
-      } else if (remaining > 0 && pendingRequests.size < concurrentRequests) {
+      } else if (remaining > 0 && pendingRequests.size < maxConcurrentRequests) {
         // We must maintain a queue of unfulfilled requests for performance reasons.
         // See https://wiki.theory.org/BitTorrentSpecification#Queuing
 
@@ -126,7 +127,6 @@ object SequentialDownloadRoutine {
                         dataSize == request.length
                     )
     } yield ()
-
   }
 
   //noinspection SimplifyUnlessInspection

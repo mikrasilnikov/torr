@@ -49,7 +49,7 @@ object Actor {
     suspended match {
       case Some((_, job)) => AcquireSuccess(job)
       case None           =>
-        val idOption = remoteHave.find(remoteId =>
+        val idOption = remoteHave /*.toList.sorted*/ .find(remoteId =>
           !state.activeJobs.keySet.contains(remoteId) &&
             !state.localHave.contains(remoteId)
         )

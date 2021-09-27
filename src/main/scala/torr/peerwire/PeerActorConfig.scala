@@ -10,5 +10,5 @@ case class PeerActorConfig(
 )
 
 object PeerActorConfig {
-  val default: PeerActorConfig = PeerActorConfig(100, 30.seconds)
+  val default: PeerActorConfig = PeerActorConfig(1024, 30.seconds)
 }

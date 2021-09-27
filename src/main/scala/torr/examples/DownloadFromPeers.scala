@@ -5,7 +5,7 @@ import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
-import torr.peerproc.DefaultPeerRoutine
+import torr.peerproc.{DefaultPeerRoutine, PipelineDownloadRoutine}
 import torr.peerwire.{Message, PeerHandle}
 import torr.peerwire.MessageTypes._
 import zio._
@@ -19,7 +19,9 @@ import scala.collection.immutable.HashMap
 object DownloadFromPeers extends App {
 
   val peers = List(
-    ("localhost", 57617)
+    ("localhost", 57617),
+    ("localhost", 57618),
+    ("localhost", 57619)
   )
 
   val metaInfoFile     =
@@ -46,7 +48,7 @@ object DownloadFromPeers extends App {
     effect.injectCustom(
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
-      DirectBufferPoolLive.make(32),
+      DirectBufferPoolLive.make(4096),
       FileIOLive.make(metaInfoFile, dstDirectoryName),
       DispatcherLive.make
     ).exitCode

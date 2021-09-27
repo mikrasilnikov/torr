@@ -18,11 +18,7 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 
   def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult] = actor ? AcquireJob(remoteHave)
 
-  def releaseJob(acquireResult: AcquireJobResult): Task[Unit] =
-    acquireResult match {
-      case NotInterested       => ZIO.unit
-      case AcquireSuccess(job) => actor ! ReleaseJob(job)
-    }
+  def releaseJob(job: DownloadJob): Task[Unit] = actor ! ReleaseJob(job)
 
   def isDownloadCompleted: Task[Boolean] =
     actor ? IsDownloadCompleted

@@ -25,10 +25,11 @@ object DefaultPeerRoutine {
       haveFib       <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
       aliveFib      <- handleKeepAlive(peerHandle).fork
 
-      _ <- SequentialDownloadRoutine.download(
+      _ <- PipelineDownloadRoutine.download(
              peerHandle,
              remoteHaveRef,
-             DownloadState(peerChoking = true, amInterested = false)
+             DownloadState(peerChoking = true, amInterested = false),
+             maxConcurrentRequests = 128
            )
 
       _ <- haveFib.interrupt

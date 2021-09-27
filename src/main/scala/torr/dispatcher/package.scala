@@ -11,6 +11,7 @@ package object dispatcher {
   sealed trait AcquireJobResult
   case class AcquireSuccess(job: DownloadJob) extends AcquireJobResult
   case object NotInterested                   extends AcquireJobResult
+  case object Completed                       extends AcquireJobResult
 
   @accessible
   object Dispatcher {
@@ -18,9 +19,13 @@ package object dispatcher {
       def isDownloadCompleted: Task[Boolean]
       def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean]
       def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult]
-      def releaseJob(acquireResult: AcquireJobResult): Task[Unit]
+      def releaseJob(job: DownloadJob): Task[Unit]
+
       def acquireJobManaged(remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
-        ZManaged.make(acquireJob(remoteHave))(releaseJob(_).orDie)
+        ZManaged.make(acquireJob(remoteHave)) {
+          case NotInterested       => ZIO.unit
+          case AcquireSuccess(job) => releaseJob(job).orDie
+        }
     }
   }
 }

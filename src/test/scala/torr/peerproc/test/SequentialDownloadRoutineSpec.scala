@@ -23,23 +23,16 @@ import zio.test.mock.MockSystem
 object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
   def spec =
     suite("SequentialDownloadRoutineSpec")(
-      //
-      test("123") {
-        val l0 = FileIOMock.Fetch(
-          equalTo(0, 0, 128),
-          valueM { case (_, _, amount) => Buffer.byte(amount).map(Chunk(_)) }
-        )
-        val l1 = FileIOMock.Store(anything, unit)
-
-        assert(())(anything)
-      },
-      //
       testM("downloadUntilChokedOrCompleted - being choked before first request") {
         val effect = makePeerHandleHandle("Test").use {
           case (channel, handle) =>
             for {
               _        <- handle.onMessage(Message.Choke)
-              actual   <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(handle, DownloadJob(0, 128))
+              actual   <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
+                            handle,
+                            DownloadJob(0, 128),
+                            maxConcurrentRequests = 1
+                          )
               outgoing <- channel.outgoingSize
             } yield assert(actual)(isTrue) && assert(outgoing)(equalTo(0))
         }
@@ -60,7 +53,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             concurrentRequests = 1,
+                             maxConcurrentRequests = 1,
                              requestSize = 16
                            ).fork
 
@@ -95,7 +88,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             concurrentRequests = 1,
+                             maxConcurrentRequests = 1,
                              requestSize = 16
                            ).fork
 
@@ -136,7 +129,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             concurrentRequests = 2,
+                             maxConcurrentRequests = 2,
                              requestSize = 16
                            ).fork
 
@@ -177,7 +170,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
-                             concurrentRequests = 2,
+                             maxConcurrentRequests = 2,
                              requestSize = 16
                            ).fork
 
@@ -203,6 +196,16 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
           FileIOMock.empty,
           DirectBufferPoolMock.empty
         )
+      },
+      //
+      test("123") {
+        val l0 = FileIOMock.Fetch(
+          equalTo(0, 0, 128),
+          valueM { case (_, _, amount) => Buffer.byte(amount).map(Chunk(_)) }
+        )
+        val l1 = FileIOMock.Store(anything, unit)
+
+        assert(())(anything)
       }
     )
 
