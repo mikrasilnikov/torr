@@ -8,16 +8,18 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
-import torr.peerwire.PeerActor.{Command, OnMessage, StartFailing, State, stateful}
-
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
-case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Throwable, Unit]) {
+case class PeerHandle(
+    sendActor: ActorRef[SendActor.Command],
+    receiveActor: ActorRef[ReceiveActor.Command],
+    receiveFiber: Fiber[Throwable, Unit]
+) {
 
   def send(msg: Message): Task[Unit] = {
     for {
-      _ <- actor ! PeerActor.Send(msg)
+      _ <- sendActor ! SendActor.Send(msg)
     } yield ()
   }
 
@@ -31,24 +33,24 @@ case class PeerHandle(actor: ActorRef[PeerActor.Command], receiveFiber: Fiber[Th
     pollCore(tag.runtimeClass).map(_.map(_.asInstanceOf[M]))
 
   def onMessage(msg: Message): Task[Unit] =
-    actor ? OnMessage(msg)
+    receiveActor ? ReceiveActor.OnMessage(msg)
 
   private def receiveCore(classes: Class[_]*): Task[Message] = {
     for {
       p   <- Promise.make[Throwable, Message]
-      _   <- actor ? PeerActor.Receive(classes.toList, p)
+      _   <- receiveActor ? ReceiveActor.Receive(classes.toList, p)
       res <- p.await
     } yield res
   }
 
   private def pollCore(classes: Class[_]*): Task[Option[Message]] = {
-    actor ? PeerActor.Poll(classes.toList)
+    receiveActor ? ReceiveActor.Poll(classes.toList)
   }
 }
 
 object PeerHandle {
 
-  private type PendingMessage[A] = (Command[A], Promise[Throwable, A])
+  private type PendingMessage[A] = (ReceiveActor.Command[A], Promise[Throwable, A])
 
   def fromAddress(
       address: InetSocketAddress,
@@ -86,57 +88,79 @@ object PeerHandle {
       actorConfig: PeerActorConfig = PeerActorConfig.default
   ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
-      actorP       <- Promise.make[Nothing, ActorRef[PeerActor.Command]].toManaged_
+      actorP       <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
       receiveFiber <- receiveProc(channel, msgBuf, actorP).fork.toManaged(_.interrupt)
-      actor        <- createPeerActor(channel, channelName, remotePeerId, actorConfig).toManaged(shutdownPeerActor)
-      _            <- actorP.succeed(actor).toManaged_
-    } yield PeerHandle(actor, receiveFiber)
+      receiveActor <- createReceiveActor(channel, channelName, remotePeerId, actorConfig)
+                        .toManaged(shutdownReceiveActor)
+      sendActor    <- createSendActor(channel, channelName, receiveActor).toManaged(_.stop.orDie)
+      _            <- actorP.succeed(receiveActor).toManaged_
+    } yield PeerHandle(sendActor, receiveActor, receiveFiber)
   }
 
-  private def createPeerActor(
+  private def createSendActor(
+      channel: ByteChannel,
+      channelName: String,
+      receiveActor: ActorRef[ReceiveActor.Command]
+  ): RIO[ActorSystem with Clock, ActorRef[SendActor.Command]] = {
+
+    val supervisor =
+      actors.Supervisor.retryOrElse(
+        Schedule.stop,
+        (e, _: Unit) =>
+          for {
+            _ <- (receiveActor ! ReceiveActor.StartFailing(e)).orDie
+          } yield ()
+      )
+
+    for {
+      system  <- ZIO.service[ActorSystem.Service]
+      sendBuf <- Buffer.byteDirect(1024)
+      state    = SendActor.State(
+                   channel,
+                   sendBuf,
+                   receiveActor
+                 )
+      actor   <- system.system.make(actorName = s"Snd-$channelName", supervisor, state, SendActor.stateful)
+    } yield actor
+  }
+
+  private def createReceiveActor(
       channel: ByteChannel,
       channelName: String,
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig
-  ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[Command]] = {
-
-    def makeState(sendBuf: ByteBuffer) =
-      PeerActor.State(
-        channel,
-        sendBuf,
-        remotePeerId,
-        new mutable.HashMap[Class[_], Promise[Throwable, Message]],
-        new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]](),
-        actorConfig = actorConfig
-      )
+  ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[ReceiveActor.Command]] = {
 
     // Supervisor that sends message StartFailing(...) to actor after first error.
-    def makeSupervisor(promise: Promise[Nothing, ActorRef[PeerActor.Command]]) =
+    def makeSupervisor(promise: Promise[Nothing, ActorRef[ReceiveActor.Command]]) =
       actors.Supervisor.retryOrElse(
         Schedule.stop,
         (e, _: Unit) =>
           for {
             actor <- promise.await
-            _     <- (actor ! StartFailing(e)).orDie
+            _     <- (actor ! ReceiveActor.StartFailing(e)).orDie
           } yield ()
       )
 
     for {
-      actorP    <- Promise.make[Nothing, ActorRef[PeerActor.Command]]
+      actorP    <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]]
       system    <- ZIO.service[ActorSystem.Service]
       supervisor = makeSupervisor(actorP)
-      sendBuf   <- Buffer.byteDirect(1024)
-      state      = makeState(sendBuf)
-      actor     <- system.system.make(actorName = channelName, supervisor, state, stateful)
+      state      = ReceiveActor.State(
+                     channel,
+                     remotePeerId,
+                     actorConfig = actorConfig
+                   )
+      actor     <- system.system.make(actorName = s"Rcv-$channelName", supervisor, state, ReceiveActor.stateful)
       _         <- actorP.succeed(actor)
     } yield actor
   }
 
-  private def shutdownPeerActor(actor: ActorRef[Command]): URIO[DirectBufferPool with Clock, Unit] = {
+  private def shutdownReceiveActor(actor: ActorRef[ReceiveActor.Command]): URIO[DirectBufferPool with Clock, Unit] = {
     for {
-      state    <- (actor ? PeerActor.GetState)
+      state    <- (actor ? ReceiveActor.GetState)
                     .orDieWith(_ => new IllegalStateException("Could not get state from actor"))
-      context  <- (actor ? PeerActor.GetContext)
+      context  <- (actor ? ReceiveActor.GetContext)
                     .orDieWith(_ => new IllegalStateException("Could not get context from actor"))
       messages <- actor.stop.orElseSucceed(List[PendingMessage[_]]())
       _        <- processRemainingMessages(state, context, messages.asInstanceOf[List[PendingMessage[_]]])
@@ -144,7 +168,7 @@ object PeerHandle {
   }
 
   private def processRemainingMessages(
-      state: State,
+      state: ReceiveActor.State,
       context: Context,
       messages: List[PendingMessage[_]]
   ): ZIO[DirectBufferPool with Clock, Nothing, Unit] = {
@@ -152,7 +176,7 @@ object PeerHandle {
       case Nil          => ZIO.unit
       case (m, _) :: ms =>
         for {
-          sa <- stateful.receive(state, m, context).orDieWith(e =>
+          sa <- ReceiveActor.stateful.receive(state, m, context).orDieWith(e =>
                   new Exception(s"Could not process remaining message $m ($e)")
                 )
           _  <- processRemainingMessages(sa._1, context, ms)
@@ -163,15 +187,15 @@ object PeerHandle {
   private[peerwire] def receiveProc(
       channel: ByteChannel,
       rcvBuf: ByteBuffer,
-      actorP: Promise[Nothing, ActorRef[Command]]
+      actorP: Promise[Nothing, ActorRef[ReceiveActor.Command]]
   ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
     for {
       actor <- actorP.await
       _     <- Message.receive(channel, rcvBuf).interruptible
-                 .flatMap(m => actor ! OnMessage(m))
+                 .flatMap(m => actor ! ReceiveActor.OnMessage(m))
                  .forever
                  .foldM(
-                   e => actor ! StartFailing(e),
+                   e => actor ! ReceiveActor.StartFailing(e),
                    _ => ZIO.unit
                  )
     } yield ()

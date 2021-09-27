@@ -11,8 +11,6 @@ import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{AcquireSuccess, Dispatcher, DownloadJob, NotInterested}
 import torr.fileio.FileIO
 
-import scala.collection.immutable
-
 object DefaultPeerRoutine {
 
   final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
@@ -20,10 +18,11 @@ object DefaultPeerRoutine {
 
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     for {
+      metaInfo      <- FileIO.metaInfo
       bitField      <- peerHandle.receive[BitField]
+      _             <- validateRemoteBitSet(metaInfo, bitField.bits)
       remoteHaveRef <- Ref.make[Set[Int]](HashSet.from(bitField.bits.set))
 
-      metaInfo <- FileIO.metaInfo
       haveFib  <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
       aliveFib <- handleKeepAlive(peerHandle).fork
 

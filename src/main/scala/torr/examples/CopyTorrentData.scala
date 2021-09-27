@@ -2,7 +2,7 @@ package torr.examples
 
 import torr.actorsystem._
 import torr.channels.AsyncFileChannel
-import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
+import torr.directbuffers.{DirectBufferPool, FixedBufferPool}
 import torr.fileio.Actor._
 import torr.fileio._
 import torr.metainfo._
@@ -48,7 +48,7 @@ object CopyTorrentData extends App {
     val actorSystem = ActorSystemLive.make("Test")
     val env         =
       (Clock.live ++ actorSystem ++ Slf4jLogger.make((_, message) => message)) >>>
-        DirectBufferPoolLive.make(1, 32 * 1024) ++
+        FixedBufferPool.make(1, 32 * 1024) ++
           actorSystem
 
     effect.provideCustomLayer(env).exitCode

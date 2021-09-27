@@ -15,7 +15,7 @@ object Hasher {
       piece: Int
   ): RIO[FileIO with DirectBufferPool with Clock, Chunk[Byte]] = {
     for {
-      queue      <- Queue.unbounded[Option[Chunk[ByteBuffer]]]
+      queue      <- Queue.bounded[Option[Chunk[ByteBuffer]]](128)
       digest      = MessageDigest.getInstance("SHA-1")
       torrentSize = metaInfo.entries.map(_.size).sum
       pieceSize   = math.min(metaInfo.pieceSize.toLong, torrentSize - piece.toLong * metaInfo.pieceSize)

@@ -21,7 +21,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
       //
       testM("GetNumAvailable - 1 available") {
         val effect = DirectBufferPool.numAvailable
-        val env    = env0 >>> DirectBufferPoolLive.make(1)
+        val env    = env0 >>> FixedBufferPool.make(1)
         assertM(effect.provideCustomLayer(env))(equalTo(1))
       },
       //
@@ -32,7 +32,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           res <- DirectBufferPool.numAvailable
         } yield res
 
-        val env = env0 >>> DirectBufferPoolLive.make(1)
+        val env = env0 >>> FixedBufferPool.make(1)
         assertM(effect.provideCustomLayer(env))(equalTo(0))
       },
       //
@@ -45,7 +45,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           _   <- f.interrupt
         } yield res
 
-        val env = env0 >>> DirectBufferPoolLive.make(1)
+        val env = env0 >>> FixedBufferPool.make(1)
         assertM(effect.provideCustomLayer(env))(equalTo(-1))
       },
       //
@@ -56,7 +56,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           (ix1, ix2) <- buf1.getInt <*> buf2.getInt
         } yield (ix1, ix2)
 
-        val env = env0 >>> DirectBufferPoolLive.make(2)
+        val env = env0 >>> FixedBufferPool.make(2)
         assertM(effect.provideCustomLayer(env))(equalTo(1, 2))
       },
       //
@@ -69,7 +69,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           avail2 <- DirectBufferPool.numAvailable
         } yield (ix1, avail1, avail2)
 
-        val env = env0 >>> DirectBufferPoolLive.make(2)
+        val env = env0 >>> FixedBufferPool.make(2)
         assertM(effect.provideCustomLayer(env))(equalTo(1, 1, 2))
       },
       //
@@ -86,7 +86,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           res4 <- f4.await.flatMap { case Success(buf) => buf.getInt; case _ => ??? }
         } yield (res3, res4)
 
-        val env = env0 >>> DirectBufferPoolLive.make(2)
+        val env = env0 >>> FixedBufferPool.make(2)
         assertM(effect.provideCustomLayer(env))(equalTo(2, 1))
       }
     ) @@ sequential

@@ -3,13 +3,13 @@ package torr.directbuffers
 import zio._
 import zio.actors.ActorRef
 import zio.nio.core._
-import Actor._
+import FixedPoolActor._
 import torr.actorsystem.ActorSystem
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.logging.Logging
 
-case class DirectBufferPoolLive(private val actor: ActorRef[Command]) extends DirectBufferPool.Service {
+case class FixedBufferPool(private val actor: ActorRef[Command]) extends DirectBufferPool.Service {
 
   def allocate: ZIO[Clock, Throwable, ByteBuffer] = {
     for {
@@ -27,7 +27,7 @@ case class DirectBufferPoolLive(private val actor: ActorRef[Command]) extends Di
   def numAvailable: Task[Int]           = actor ? GetNumAvailable
 }
 
-object DirectBufferPoolLive {
+object FixedBufferPool {
 
   def make(
       maxBuffers: Int,
@@ -38,12 +38,12 @@ object DirectBufferPoolLive {
       system  <- ZIO.service[ActorSystem.Service]
       buffers <- ZIO.foreach(1 to maxBuffers)(i => createIndexedBuf(i, bufSize))
       actor   <- system.system.make(
-                   "DirectBufferPoolLive",
+                   "FixedBufferPool",
                    actors.Supervisor.none,
-                   Actor.Available(buffers.toList),
-                   Actor.stateful
+                   FixedPoolActor.Available(buffers.toList),
+                   FixedPoolActor.stateful
                  )
-    } yield DirectBufferPoolLive(actor)
+    } yield FixedBufferPool(actor)
 
     effect.toLayer
   }

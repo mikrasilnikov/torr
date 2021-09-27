@@ -8,7 +8,7 @@ import zio.test.Assertion._
 import zio.test.TestAspect.sequential
 import torr.actorsystem.ActorSystemLive
 import torr.channels.{InMemoryChannel, SeekableByteChannel}
-import torr.directbuffers.DirectBufferPoolLive
+import torr.directbuffers.FixedBufferPool
 import torr.fileio.{Actor, EntryAddr, ReadEntry}
 import zio.magic.ZioProvideMagicOps
 import zio.test.environment.TestClock
@@ -55,7 +55,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -73,7 +73,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -91,7 +91,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -116,7 +116,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -141,7 +141,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -172,7 +172,7 @@ object ReadSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       }
     ) @@ sequential

@@ -2,7 +2,7 @@ package torr.fileio.test
 
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.InMemoryChannel
-import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
+import torr.directbuffers.{DirectBufferPool, FixedBufferPool}
 import zio._
 import zio.test._
 import zio.test.Assertion._
@@ -130,7 +130,7 @@ object WriteSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(2, 8)
+          FixedBufferPool.make(2, 8)
         )
       },
       //
@@ -214,7 +214,7 @@ object WriteSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(1, 8)
+          FixedBufferPool.make(1, 8)
         )
       }
     ) @@ sequential
@@ -226,7 +226,7 @@ object WriteSpec extends DefaultRunnableSpec {
     val actorSystem = ActorSystemLive.make("Test")
     val logging     = Slf4jLogger.make((_, message) => message)
     val clock       = TestClock.default
-    val bufferPool  = (actorSystem ++ logging ++ clock) >>> DirectBufferPoolLive.make(directBuffersNum, directBufferSize)
+    val bufferPool  = (actorSystem ++ logging ++ clock) >>> FixedBufferPool.make(directBuffersNum, directBufferSize)
     clock ++ bufferPool ++ actorSystem
   }
 

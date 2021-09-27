@@ -11,7 +11,7 @@ import zio.test._
 import zio.test.Assertion._
 import torr.fileio.test.FileIOMock._
 import torr.peerproc.{DefaultPeerRoutine, SequentialDownloadRoutine}
-import torr.peerwire.{Message, PeerActor, PeerHandle}
+import torr.peerwire.{Message, ReceiveActor, PeerHandle}
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.magic.ZioProvideMagicOps

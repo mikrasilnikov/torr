@@ -7,7 +7,7 @@ import zio.logging._
 import zio.nio.core.ByteBuffer
 import scala.collection.mutable
 
-object Actor {
+object FixedPoolActor {
 
   sealed trait Command[+_]         extends Any
   case object Allocate             extends Command[Promise[Nothing, ByteBuffer]]

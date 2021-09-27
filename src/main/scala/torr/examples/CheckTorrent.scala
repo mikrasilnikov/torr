@@ -6,7 +6,7 @@ import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import java.time.Duration
 import torr.actorsystem.ActorSystemLive
-import torr.directbuffers.DirectBufferPoolLive
+import torr.directbuffers.FixedBufferPool
 import torr.dispatcher.Hasher
 import torr.fileio.{FileIO, FileIOLive}
 
@@ -38,7 +38,7 @@ object CheckTorrent extends App {
     effect.injectCustom(
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
-      DirectBufferPoolLive.make(32),
+      FixedBufferPool.make(32),
       FileIOLive.make(metaInfoFile, dataDirectoryName, allocateFiles = false)
     )
       .catchAll(e => putStrLn(e.getMessage))

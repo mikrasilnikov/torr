@@ -2,8 +2,8 @@ package torr.peerwire.test
 
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
-import torr.directbuffers.DirectBufferPoolLive
-import torr.peerwire.PeerActor.GetState
+import torr.directbuffers.FixedBufferPool
+import torr.peerwire.ReceiveActor.GetState
 import torr.peerwire.{Message, PeerActorConfig, PeerHandle}
 import zio._
 import zio.duration.durationInt
@@ -27,7 +27,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                        for {
                          buf           <- Buffer.byte(1024)
                          _             <- Message.send(expected, channel.remote, buf)
-                         getMailboxSize = (h.actor ? GetState).map(s => s.mailbox.size)
+                         getMailboxSize = (h.receiveActor ? GetState).map(s => s.mailbox.size)
                          _             <- getMailboxSize.repeatUntil(_ == 1)
                          mailboxSize   <- getMailboxSize
                          actual        <- h.receive[Message.Have]
@@ -38,7 +38,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -63,7 +63,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -84,7 +84,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8)
+          FixedBufferPool.make(8)
         )
       },
       //
@@ -109,7 +109,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect1 = effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8, 100)
+          FixedBufferPool.make(8, 100)
         )
 
         assertM(effect1.run)(fails(hasMessage(equalTo("Unknown message id 100"))))
@@ -143,7 +143,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8, 100)
+          FixedBufferPool.make(8, 100)
         )
       },
       //
@@ -185,7 +185,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8, 100)
+          FixedBufferPool.make(8, 100)
         )
       },
       //
@@ -222,7 +222,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
-          DirectBufferPoolLive.make(8, 100)
+          FixedBufferPool.make(8, 100)
         )
       }
     )

@@ -5,7 +5,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 import torr.channels._
-import torr.directbuffers.DirectBufferPoolLive
+import torr.directbuffers.FixedBufferPool
 import torr.metainfo.test.MetaInfoSpec
 import torr.peerwire.{Message, TorrBitSet}
 import zio.logging.slf4j.Slf4jLogger
@@ -85,7 +85,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //
@@ -114,7 +114,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //
@@ -139,7 +139,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //
@@ -164,7 +164,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //
@@ -189,7 +189,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //
@@ -230,7 +230,7 @@ object MessageSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           Slf4jLogger.make((_, message) => message),
           ActorSystemLive.make("Test"),
-          DirectBufferPoolLive.make(1, 1024)
+          FixedBufferPool.make(1, 1024)
         )
       },
       //

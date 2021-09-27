@@ -1,7 +1,7 @@
 package torr.examples
 
 import torr.actorsystem.ActorSystemLive
-import torr.directbuffers.{DirectBufferPool, DirectBufferPoolLive}
+import torr.directbuffers.{DirectBufferPool, FixedBufferPool, GrowableBufferPool}
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
@@ -47,8 +47,8 @@ object DownloadFromPeers extends App {
 
     effect.injectCustom(
       ActorSystemLive.make("Test"),
-      Slf4jLogger.make((_, message) => message),
-      DirectBufferPoolLive.make(4096),
+      //Slf4jLogger.make((_, message) => message),
+      GrowableBufferPool.make(512),
       FileIOLive.make(metaInfoFile, dstDirectoryName),
       DispatcherLive.make
     ).exitCode

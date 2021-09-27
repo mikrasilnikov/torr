@@ -10,10 +10,10 @@ import torr.directbuffers.DirectBufferPool
 import zio.nio.core.ByteBuffer
 import java.time.OffsetDateTime
 
-object PeerActor {
+object ReceiveActor {
 
   sealed trait Command[+_]
-  case class Send(message: Message)                                                extends Command[Unit]
+  //case class Send(message: Message)                                                extends Command[Unit]
   case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
   case class Poll(messageTypes: List[Class[_]])                                    extends Command[Option[Message]]
   case object GetState                                                             extends Command[State]
@@ -24,7 +24,7 @@ object PeerActor {
 
   case class State(
       channel: ByteChannel,
-      sendBuf: ByteBuffer,
+      //sendBuf: ByteBuffer,
       remotePeerId: Chunk[Byte] = Chunk.fill(20)(0.toByte),
       expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
         new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
@@ -39,7 +39,7 @@ object PeerActor {
 
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
-        case Send(m)             => send(state, m).map(p => (state, p))
+        //case Send(m)             => send(state, m).map(p => (state, p))
         case Receive(classes, p) => receive(state, classes, p).map(p => (state, p))
         case Poll(classes)       => poll(state, classes).map(res => (state, res))
         case OnMessage(m)        =>
@@ -50,21 +50,6 @@ object PeerActor {
         case GetContext          => ZIO.succeed(state, context)
         case GetState            => ZIO.succeed(state, state)
         case StartFailing(error) => startFailing(state, error).as(state, ())
-      }
-    }
-
-    private[peerwire] def send(
-        state: State,
-        msg: Message
-    ): RIO[DirectBufferPool with Clock, Unit] = {
-      state.isFailingWith match {
-        case Some(_) => ZIO.unit
-        case None    =>
-          Message.send(msg, state.channel, state.sendBuf)
-            .foldM(
-              e => startFailing(state, e),
-              _ => ZIO.unit
-            )
       }
     }
 
