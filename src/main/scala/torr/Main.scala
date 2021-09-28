@@ -9,6 +9,7 @@ import zio.console.putStrLn
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 
+import java.security.MessageDigest
 import scala.collection.immutable.HashSet
 
 object Main extends App {
@@ -19,18 +20,27 @@ object Main extends App {
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
+    val digest1 = MessageDigest.getInstance("SHA-1")
+    digest1.update(Array[Byte](1, 2, 3, 4, 5))
+    println(digest1.digest().mkString(" "))
+
+    val digest2 = MessageDigest.getInstance("SHA-1")
+    digest2.update(Array[Byte](1, 2, 3))
+    println(digest2.clone().asInstanceOf[MessageDigest].digest().mkString(" "))
+    digest2.update(Array[Byte](4, 5))
+    println(digest2.digest().mkString(" "))
+
     val effect = for {
-      job <- Dispatcher.acquireJob(HashSet[PieceId](0, 1, 2))
-      _   <- putStrLn(s"$job")
+      _ <- putStrLn(s"job")
     } yield ()
 
-    effect.injectCustom(
+    effect /*.injectCustom(
       ActorSystemLive.make("Test"),
       Slf4jLogger.make((_, message) => message),
       FixedBufferPool.make(32),
       FileIOLive.make(metaInfoFile, dataDirectoryName, allocateFiles = true),
       DispatcherLive.make
-    )
+    )*/
       .catchAll(e => putStrLn(e.getMessage))
       .exitCode
 

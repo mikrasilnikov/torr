@@ -17,62 +17,62 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
       //
       test("ProgressBar - empty (10 pcs)") {
         val expected = "Downloading [          ]   0%"
-        val state    = DispatcherState(metaInfo(10), new mutable.BitSet())
+        val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - empty (1 pcs)") {
         val expected = "Downloading [          ]   0%"
-        val state    = DispatcherState(metaInfo(1), new mutable.BitSet())
+        val state    = DispatcherState(metaInfo(1), new Array[Boolean](1))
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - full (10 pcs)") {
         val expected = "Downloading [==========] 100%"
-        val state    = DispatcherState(metaInfo(10), new mutable.BitSet())
-        (0 until 10).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
+        (0 until 10).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - full (1 pcs)") {
         val expected = "Downloading [==========] 100%"
-        val state    = DispatcherState(metaInfo(1), new mutable.BitSet())
-        (0 until 1).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(1), new Array[Boolean](1))
+        (0 until 1).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - left 50% (10 pcs)") {
         val expected = "Downloading [=====     ]  50%"
-        val state    = DispatcherState(metaInfo(10), new mutable.BitSet())
-        (0 to 4).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
+        (0 to 4).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - right 50% (10 pcs)") {
         val expected = "Downloading [     =====]  50%"
-        val state    = DispatcherState(metaInfo(10), new mutable.BitSet())
-        (5 to 9).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
+        (5 to 9).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - center 10% (10 pcs)") {
         val expected = "Downloading [    =     ]  10%"
-        val state    = DispatcherState(metaInfo(10), new mutable.BitSet())
-        (4 to 4).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
+        (4 to 4).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - center 5% (10 pcs)") {
         val expected = "Downloading [          ]   5%"
-        val state    = DispatcherState(metaInfo(20), new mutable.BitSet())
-        (10 to 10).foreach(state.localHave.add)
+        val state    = DispatcherState(metaInfo(20), new Array[Boolean](20))
+        (10 to 10).foreach(state.localHave(_) = true)
         val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       }

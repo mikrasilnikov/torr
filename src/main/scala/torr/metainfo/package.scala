@@ -24,6 +24,7 @@ package object metainfo {
     }
 
     val torrentSize: Long = entries.map(_.size).sum
+    def numPieces: Int    = pieceHashes.length
   }
 
   final case class FileEntry(path: Path, size: Long)

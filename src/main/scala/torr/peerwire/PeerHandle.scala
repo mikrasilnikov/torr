@@ -8,10 +8,12 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
+import torr.dispatcher.PeerId
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
 case class PeerHandle(
+    peerId: PeerId,
     sendActor: ActorRef[SendActor.Command],
     receiveActor: ActorRef[ReceiveActor.Command],
     receiveFiber: Fiber[Throwable, Unit]
@@ -94,7 +96,7 @@ object PeerHandle {
                         .toManaged(shutdownReceiveActor)
       sendActor    <- createSendActor(channel, channelName, receiveActor).toManaged(_.stop.orDie)
       _            <- actorP.succeed(receiveActor).toManaged_
-    } yield PeerHandle(sendActor, receiveActor, receiveFiber)
+    } yield PeerHandle(remotePeerId, sendActor, receiveActor, receiveFiber)
   }
 
   private def createSendActor(

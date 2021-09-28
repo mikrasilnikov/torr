@@ -5,6 +5,7 @@ import zio.macros.accessible
 
 package object dispatcher {
 
+  type PeerId     = Chunk[Byte]
   type PieceId    = Int
   type Dispatcher = Has[Dispatcher.Service]
 
@@ -18,12 +19,14 @@ package object dispatcher {
     trait Service {
       def isDownloadCompleted: Task[Boolean]
       def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean]
-      def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult]
-      def releaseJob(job: => DownloadJob): Task[Unit]
+      def registerPeer(peerId: PeerId): Task[Unit]
+      def unregisterPeer(peerId: PeerId): Task[Unit]
+      def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult]
+      def releaseJob(peerId: PeerId, job: => DownloadJob): Task[Unit]
 
-      def acquireJobManaged(remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
-        ZManaged.make(acquireJob(remoteHave)) {
-          case AcquireSuccess(job) => releaseJob(job).orDie
+      def acquireJobManaged(peerId: PeerId, remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
+        ZManaged.make(acquireJob(peerId, remoteHave)) {
+          case AcquireSuccess(job) => releaseJob(peerId, job).orDie
           case _                   => ZIO.unit
         }
     }

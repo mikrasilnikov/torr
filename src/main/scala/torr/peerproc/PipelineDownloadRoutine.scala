@@ -74,7 +74,8 @@ object PipelineDownloadRoutine {
                  // If there is a job that had been allocated by the sender and has not been seen by the
                  // receiveResponses function we have to release it after interruption of the sender.
                  _ <- sndJobOpt.get.flatMap {
-                        case Some(sndJob) => Dispatcher.releaseJob(sndJob).unless(sndJob.pieceId == rcvJob.pieceId)
+                        case Some(sndJob) =>
+                          Dispatcher.releaseJob(peerHandle.peerId, sndJob).unless(sndJob.pieceId == rcvJob.pieceId)
                         case None         => ZIO.unit
                       }
                  _ <- downloadWhileInterested(
@@ -134,7 +135,7 @@ object PipelineDownloadRoutine {
     }
 
     remoteHaveRef.get.flatMap { remoteHave =>
-      Dispatcher.acquireJob(remoteHave).flatMap {
+      Dispatcher.acquireJob(handle.peerId, remoteHave).flatMap {
 
         case AcquireSuccess(job) =>
           currentJobRef.set(Some(job)) *>
@@ -179,7 +180,7 @@ object PipelineDownloadRoutine {
 
       for {
         // If the response being processed is related to the next job, we must release the previous one.
-        _   <- Dispatcher.releaseJob(lastProcessedJob.get)
+        _   <- Dispatcher.releaseJob(peerHandle.peerId, lastProcessedJob.get)
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
         _   <- validateResponse(response, request.request)
         _   <- request.job.hashBlock(response.offset, response.block)
@@ -204,7 +205,7 @@ object PipelineDownloadRoutine {
             ZIO.fail(new ProtocolException(s"Unable to correctly reorder received responses"))
           } else {
             lastSeenJob match {
-              case Some(job) => Dispatcher.releaseJob(job) *> ZIO.succeed(ReceiverResult.Completed)
+              case Some(job) => Dispatcher.releaseJob(peerHandle.peerId, job) *> ZIO.succeed(ReceiverResult.Completed)
               case None      => ZIO.succeed(ReceiverResult.Completed)
             }
           }
@@ -226,7 +227,7 @@ object PipelineDownloadRoutine {
             case Message.Choke                 =>
               val currentlyProcessedJobs = requestsInOrder.map(_.job).distinct.toSet + sent.job
               for {
-                _ <- ZIO.foreach_(currentlyProcessedJobs)(Dispatcher.releaseJob(_))
+                _ <- ZIO.foreach_(currentlyProcessedJobs)(Dispatcher.releaseJob(peerHandle.peerId, _))
               } yield ReceiverResult.Choked(sent.job)
 
             case _                             => ???

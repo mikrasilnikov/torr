@@ -16,15 +16,21 @@ import scala.collection.mutable
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
-  def acquireJob(remoteHave: Set[PieceId]): Task[AcquireJobResult] = actor ? AcquireJob(remoteHave)
+  def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] =
+    actor ? AcquireJob(peerId, remoteHave)
 
-  def releaseJob(job: => DownloadJob): Task[Unit] = actor ! ReleaseJob(job)
+  def releaseJob(peerId: PeerId, job: => DownloadJob): Task[Unit] = actor ! ReleaseJob(peerId, job)
 
   def isDownloadCompleted: Task[Boolean] =
     actor ? IsDownloadCompleted
 
   def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] =
     actor ? IsRemoteInteresting(remoteHave)
+
+  def registerPeer(peerId: PeerId): Task[Unit] = ???
+
+  def unregisterPeer(peerId: PeerId): Task[Unit] = ???
+  
 }
 
 object DispatcherLive {
@@ -34,7 +40,8 @@ object DispatcherLive {
       metaInfo      <- fileIO.metaInfo
       filesAreFresh <- fileIO.freshFilesWereAllocated
 
-      localHave <- if (filesAreFresh) ZIO.succeed(new mutable.HashSet[PieceId]())
+      localHave <- if (filesAreFresh)
+                     ZIO.succeed(new Array[Boolean](metaInfo.pieceHashes.length))
                    else
                      for {
                        pieceRef    <- Ref.make[Int](0)
@@ -67,15 +74,15 @@ object DispatcherLive {
   private def checkTorrent(
       metaInfo: MetaInfo,
       pieceRef: Ref[Int]
-  ): RIO[FileIO with DirectBufferPool with Clock, mutable.Set[PieceId]] = {
+  ): RIO[FileIO with DirectBufferPool with Clock, Array[Boolean]] = {
     for {
       actualHashes <- ZIO.foreach(metaInfo.pieceHashes.indices.toVector) { pieceId =>
                         Hasher.hashPiece(metaInfo, pieceId) <* pieceRef.set(pieceId + 1)
                       }
-      result        = new mutable.HashSet[PieceId]()
+      result        = new Array[Boolean](metaInfo.pieceHashes.length)
       _             = metaInfo.pieceHashes.indices.foreach { i =>
                         if (actualHashes(i) == metaInfo.pieceHashes(i))
-                          result.add(i)
+                          result(i) = true
                       }
     } yield result
   }

@@ -35,7 +35,7 @@ object SequentialDownloadRoutine {
                 _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
                 // choked = false(?), interested = true
-                state1 <- Dispatcher.acquireJobManaged(remoteHave).use {
+                state1 <- Dispatcher.acquireJobManaged(peerHandle.peerId, remoteHave).use {
                             case AcquireSuccess(job) =>
                               downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
                                 .map(choked => DownloadState(choked, amInterested = true))
