@@ -1,7 +1,7 @@
 package torr.peerproc
 
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.{AcquireSuccess, DownloadCompleted, Dispatcher, DownloadJob, NotInterested}
+import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import torr.peerproc.DefaultPeerRoutine.DownloadState
@@ -36,17 +36,17 @@ object SequentialDownloadRoutine {
 
                 // choked = false(?), interested = true
                 state1 <- Dispatcher.acquireJobManaged(peerHandle.peerId, remoteHave).use {
-                            case AcquireSuccess(job) =>
+                            case AcquireJobResult.AcquireSuccess(job) =>
                               downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
                                 .map(choked => DownloadState(choked, amInterested = true))
 
-                            case NotInterested       =>
+                            case AcquireJobResult.NotInterested       =>
                               for {
                                 _ <- peerHandle.send(Message.NotInterested)
                                 _ <- ZIO.sleep(10.seconds)
                               } yield DownloadState(peerChoking = false, amInterested = false)
 
-                            case DownloadCompleted   =>
+                            case AcquireJobResult.DownloadCompleted   =>
                               for {
                                 _ <- peerHandle.send(Message.NotInterested)
                               } yield DownloadState(peerChoking = false, amInterested = false)
@@ -73,7 +73,7 @@ object SequentialDownloadRoutine {
         requestOffset: Int = 0,
         pendingRequests: immutable.Queue[Message.Request] = immutable.Queue.empty[Message.Request]
     ): RIO[FileIO with DirectBufferPool, Boolean] = {
-      val remaining = job.pieceLength - requestOffset
+      val remaining = job.length - requestOffset
 
       if (remaining <= 0 && pendingRequests.isEmpty) {
         ZIO.succeed(false)

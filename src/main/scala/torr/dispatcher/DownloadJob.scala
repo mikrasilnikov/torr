@@ -4,16 +4,36 @@ import zio._
 import zio.nio.core.ByteBuffer
 import java.security.MessageDigest
 
+sealed trait JobCompletionStatus
+object JobCompletionStatus {
+  case object Complete   extends JobCompletionStatus
+  case object Incomplete extends JobCompletionStatus
+  case object Failed     extends JobCompletionStatus
+}
+
 /**
   * `Peer routine` is expected to update `digest` while downloading a piece by calling `hashBlock`.
   * When `offset` becomes equal to `length`, `digest` should contain SHA-1 hash of the downloaded piece.
   */
 final case class DownloadJob(
     pieceId: PieceId,
-    pieceLength: Int,
+    length: Int,
+    hash: Chunk[Byte],
     private var hashOffset: Int = 0
 ) { self =>
-  def isCompleted: Boolean  = hashOffset >= pieceLength
+  def completionStatus: JobCompletionStatus = {
+    if (hashOffset < length) {
+      JobCompletionStatus.Incomplete
+    } else {
+      val actualHash = Chunk.fromArray(digest.clone().asInstanceOf[MessageDigest].digest())
+      if (hash == actualHash) {
+        JobCompletionStatus.Complete
+      } else {
+        JobCompletionStatus.Failed
+      }
+    }
+  }
+
   val digest: MessageDigest = MessageDigest.getInstance("SHA-1")
 
   def hashBlock(dataOffset: Int, data: ByteBuffer): Task[Unit] = {
@@ -36,8 +56,8 @@ final case class DownloadJob(
 
   override def equals(obj: Any): Boolean =
     obj match {
-      case that @ DownloadJob(_, _, _) => that.pieceId == self.pieceId
-      case _                           => false
+      case that @ DownloadJob(_, _, _, _) => that.pieceId == self.pieceId
+      case _                              => false
     }
 
   override def hashCode(): Int = pieceId.hashCode()

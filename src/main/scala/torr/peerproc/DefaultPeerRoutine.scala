@@ -8,7 +8,7 @@ import zio.clock.Clock
 import zio.duration.durationInt
 import scala.collection.immutable.HashSet
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.{AcquireSuccess, Dispatcher, DownloadJob, NotInterested}
+import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob}
 import torr.fileio.FileIO
 
 object DefaultPeerRoutine {

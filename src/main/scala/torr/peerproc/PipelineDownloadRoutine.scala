@@ -1,7 +1,7 @@
 package torr.peerproc
 
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.{AcquireSuccess, DownloadCompleted, Dispatcher, DownloadJob, NotInterested}
+import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob, ReleaseJobStatus}
 import torr.fileio.FileIO
 import torr.peerproc.DefaultPeerRoutine.DownloadState
 import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
@@ -9,6 +9,7 @@ import torr.peerwire.{Message, PeerHandle}
 import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
+
 import scala.collection.immutable
 
 object PipelineDownloadRoutine {
@@ -19,6 +20,7 @@ object PipelineDownloadRoutine {
   object SenderResult {
     case object NotInterested extends SenderResult
     case object Completed     extends SenderResult
+    case object ChokedOnQueue extends SenderResult
   }
 
   sealed trait ReceiverResult
@@ -75,7 +77,8 @@ object PipelineDownloadRoutine {
                  // receiveResponses function we have to release it after interruption of the sender.
                  _ <- sndJobOpt.get.flatMap {
                         case Some(sndJob) =>
-                          Dispatcher.releaseJob(peerHandle.peerId, sndJob).unless(sndJob.pieceId == rcvJob.pieceId)
+                          Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Choked(sndJob))
+                            .unless(sndJob.pieceId == rcvJob.pieceId)
                         case None         => ZIO.unit
                       }
                  _ <- downloadWhileInterested(
@@ -101,10 +104,11 @@ object PipelineDownloadRoutine {
                                       DownloadState(amInterested = false, peerChoking = false),
                                       maxConcurrentRequests
                                     )
-                                      .delay(10.seconds)
 
                                 // Download has been completed.
                                 case SenderResult.Completed     => ZIO.unit
+
+                                // TODO check if sender was choked (add new return value)
                               }
                } yield ()
            }
@@ -121,7 +125,7 @@ object PipelineDownloadRoutine {
   ): RIO[Dispatcher, SenderResult] = {
 
     def sendRequestsForJob(job: DownloadJob, offset: Int): Task[Unit] = {
-      val remaining = job.pieceLength - offset
+      val remaining = job.length - offset
       if (remaining <= 0) ZIO.unit
       else {
         val amount  = math.min(requestSize, remaining)
@@ -137,15 +141,22 @@ object PipelineDownloadRoutine {
     remoteHaveRef.get.flatMap { remoteHave =>
       Dispatcher.acquireJob(handle.peerId, remoteHave).flatMap {
 
-        case AcquireSuccess(job) =>
+        // TODO poll for Choked before sending first request (+function arg)
+        // TODO do not poll after first request (check arg)
+        // TODO do not start sending requests if choked
+        // TODO enqueue None - receiver terminates
+        // TODO release job
+        // TODO return Choked
+
+        case AcquireJobResult.AcquireSuccess(job) =>
           currentJobRef.set(Some(job)) *>
             sendRequestsForJob(job, 0) *>
             sendRequests(handle, remoteHaveRef, requestQueue, currentJobRef)
 
-        case NotInterested       =>
+        case AcquireJobResult.NotInterested       =>
           currentJobRef.set(None) *>
             requestQueue.offer(None).as(SenderResult.NotInterested)
-        case DownloadCompleted   =>
+        case AcquireJobResult.DownloadCompleted   =>
           currentJobRef.set(None) *>
             requestQueue.offer(None).as(SenderResult.Completed)
       }
@@ -180,7 +191,7 @@ object PipelineDownloadRoutine {
 
       for {
         // If the response being processed is related to the next job, we must release the previous one.
-        _   <- Dispatcher.releaseJob(peerHandle.peerId, lastProcessedJob.get)
+        _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloading(lastProcessedJob.get))
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
         _   <- validateResponse(response, request.request)
         _   <- request.job.hashBlock(response.offset, response.block)
@@ -205,13 +216,15 @@ object PipelineDownloadRoutine {
             ZIO.fail(new ProtocolException(s"Unable to correctly reorder received responses"))
           } else {
             lastSeenJob match {
-              case Some(job) => Dispatcher.releaseJob(peerHandle.peerId, job) *> ZIO.succeed(ReceiverResult.Completed)
+              case Some(job) =>
+                Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloading(job)) *>
+                  ZIO.succeed(ReceiverResult.Completed)
               case None      => ZIO.succeed(ReceiverResult.Completed)
             }
           }
 
         case Some(sent) =>
-          peerHandle.receive[Piece, Choke].flatMap {
+          peerHandle.receive[Piece, Choke].flatMap { // TODO timeoutFail
 
             case resp @ Message.Piece(_, _, _) =>
               val responseKey = (resp.index, resp.offset)
@@ -227,7 +240,12 @@ object PipelineDownloadRoutine {
             case Message.Choke                 =>
               val currentlyProcessedJobs = requestsInOrder.map(_.job).distinct.toSet + sent.job
               for {
-                _ <- ZIO.foreach_(currentlyProcessedJobs)(Dispatcher.releaseJob(peerHandle.peerId, _))
+                _ <- ZIO.foreach_(currentlyProcessedJobs)(j =>
+                       Dispatcher.releaseJob(
+                         peerHandle.peerId,
+                         ReleaseJobStatus.Choked(j)
+                       )
+                     )
               } yield ReceiverResult.Choked(sent.job)
 
             case _                             => ???

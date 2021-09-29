@@ -30,7 +30,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               _        <- handle.onMessage(Message.Choke)
               actual   <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                             handle,
-                            DownloadJob(0, 128),
+                            DownloadJob(0, 128, Chunk.fill(20)(123.toByte)),
                             maxConcurrentRequests = 1
                           )
               outgoing <- channel.outgoingSize
@@ -49,7 +49,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
-              job        = DownloadJob(0, 128)
+              job        = DownloadJob(0, 128, Chunk.fill(20)(123.toByte))
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
@@ -84,7 +84,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
-              job        = DownloadJob(0, 31)
+              job        = DownloadJob(0, 31, Chunk.fill(20)(123.toByte))
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
@@ -106,7 +106,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               assert(req1)(equalTo(Message.Request(0, 0, 16))) &&
               assert(req2)(equalTo(Message.Request(0, 16, 15))) &&
               assert(outgoing)(equalTo(0)) &&
-              assert(job.isCompleted)(isTrue)
+              assert(job.getOffset)(equalTo(job.length))
         }
 
         val fileIOMock =
@@ -125,7 +125,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
-              job        = DownloadJob(0, 31)
+              job        = DownloadJob(0, 31, Chunk.fill(20)(123.toByte))
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,
@@ -147,7 +147,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               assert(req1)(equalTo(Message.Request(0, 0, 16))) &&
               assert(req2)(equalTo(Message.Request(0, 16, 15))) &&
               assert(outgoing)(equalTo(0)) &&
-              assert(job.isCompleted)(isTrue)
+              assert(job.getOffset)(equalTo(job.length))
         }
 
         val fileIOMock =
@@ -166,7 +166,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
-              job        = DownloadJob(0, 31)
+              job        = DownloadJob(0, 31, Chunk.fill(20)(123.toByte))
               handleFib <- SequentialDownloadRoutine.downloadUntilChokedOrCompleted(
                              handle,
                              job,

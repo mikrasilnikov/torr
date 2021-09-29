@@ -11,15 +11,20 @@ import torr.metainfo.MetaInfo
 import zio.clock.Clock
 import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
-
 import scala.collection.mutable
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
-  def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] =
-    actor ? AcquireJob(peerId, remoteHave)
+  def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] = {
+    for {
+      p   <- Promise.make[Throwable, AcquireJobResult]
+      _   <- actor ? AcquireJob(peerId, remoteHave, p)
+      res <- p.await
+    } yield res
+  }
 
-  def releaseJob(peerId: PeerId, job: => DownloadJob): Task[Unit] = actor ! ReleaseJob(peerId, job)
+  def releaseJob(peerId: PeerId, job: => ReleaseJobStatus): Task[Unit] =
+    actor ! ReleaseJob(peerId, job)
 
   def isDownloadCompleted: Task[Boolean] =
     actor ? IsDownloadCompleted
@@ -30,7 +35,7 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def registerPeer(peerId: PeerId): Task[Unit] = ???
 
   def unregisterPeer(peerId: PeerId): Task[Unit] = ???
-  
+
 }
 
 object DispatcherLive {
