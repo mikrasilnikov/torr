@@ -158,7 +158,7 @@ object Actor {
         val peerJobIndex = peerJobs.indexOf(job)
 
         releaseStatus match {
-          case ReleaseJobStatus.Downloading(_) =>
+          case ReleaseJobStatus.Active(_) =>
             for {
               _ <- handleReleasedJob(state, releaseStatus)
               _  = peerJobs.remove(peerJobIndex)
@@ -168,7 +168,7 @@ object Actor {
                    )
             } yield ()
 
-          case ReleaseJobStatus.Choked(_)      =>
+          case ReleaseJobStatus.Choked(_) =>
             if (peerJobs.length > 1) {
               ZIO.fail(new IllegalStateException(
                 s"Peer $peerIdStr is releasing $releaseStatus while having multiple jobs allocated: ${peerJobs.mkString(",")}"
@@ -238,13 +238,14 @@ object Actor {
     val completionStatus = job.completionStatus
 
     (releaseStatus, completionStatus) match {
-      case (Downloading(job), Complete) =>
+
+      case (Active(job), Complete)   =>
         ZIO.succeed(state.localHave(job.pieceId) = true)
 
-      case (Choked(job), Incomplete)    =>
+      case (Choked(job), Incomplete) =>
         ZIO.succeed(state.suspendedJobs.put(job.pieceId, job))
 
-      case (_, Failed)                  => ZIO.unit
+      case (_, Failed)               => ZIO.unit
 
       case _ =>
         ZIO.fail(new IllegalStateException(

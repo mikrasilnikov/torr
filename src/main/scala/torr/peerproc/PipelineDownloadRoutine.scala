@@ -191,7 +191,7 @@ object PipelineDownloadRoutine {
 
       for {
         // If the response being processed is related to the next job, we must release the previous one.
-        _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloading(lastProcessedJob.get))
+        _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Active(lastProcessedJob.get))
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
         _   <- validateResponse(response, request.request)
         _   <- request.job.hashBlock(response.offset, response.block)
@@ -217,7 +217,7 @@ object PipelineDownloadRoutine {
           } else {
             lastSeenJob match {
               case Some(job) =>
-                Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloading(job)) *>
+                Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Active(job)) *>
                   ZIO.succeed(ReceiverResult.Completed)
               case None      => ZIO.succeed(ReceiverResult.Completed)
             }

@@ -307,7 +307,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
           _       <- Actor.releaseJob( // releasing job with active status
                        state,
                        peerId1,
-                       ReleaseJobStatus.Downloading(completedJob)
+                       ReleaseJobStatus.Active(completedJob)
                      )
 
           p1      <- Promise.make[Throwable, AcquireJobResult]
@@ -371,7 +371,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         state.localHave(1) = false
 
         for {
-          _ <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Downloading(currentJob))
+          _ <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Active(currentJob))
         } yield assert(())(anything) &&
           assert(state.activeJobs)(equalTo(mutable.HashMap[DownloadJob, PeerId]())) &&
           assert(state.activePeers)(equalTo(mutable.HashMap(peerId -> ArrayBuffer[DownloadJob]()))) && // stays active
@@ -449,7 +449,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
                 requestPromise
               )) // has pending request
 
-          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Downloading(job))
+          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Active(job))
                       .fork.flatMap(_.await)
         } yield assert(actual)(fails(hasMessage(
           equalTo("Active peer zzz can not have a pending job request")
@@ -513,7 +513,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         )
 
         for {
-          _ <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Downloading(job))
+          _ <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Active(job))
         } yield assert(state.activeJobs.size)(equalTo(0)) &&
           assert(state.localHave(0))(isTrue)
       },
@@ -533,7 +533,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         )
 
         for {
-          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Downloading(incompleteJob))
+          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Active(incompleteJob))
                       .fork.flatMap(_.await)
         } yield assert(actual)(
           fails(hasMessage(equalTo(
