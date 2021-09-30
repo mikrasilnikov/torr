@@ -36,7 +36,7 @@ object Actor {
   case class State(
       metaInfo: MetaInfo,
       localHave: Array[Boolean],
-      maxConcurrentDownloads: Int = 5,
+      maxActivePeers: Int = 5, // Number of simultaneous downloads.
       registeredPeers: mutable.Set[PeerId] = new mutable.HashSet[PeerId](),
       activeJobs: mutable.Map[DownloadJob, PeerId] = new mutable.HashMap[DownloadJob, PeerId](),
       activePeers: mutable.Map[PeerId, ArrayBuffer[DownloadJob]] =
@@ -94,10 +94,10 @@ object Actor {
     val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
 
     if (!state.registeredPeers.contains(peerId)) {
-      throw new IllegalStateException(s"Peer $peerIdStr is not registered")
+      promise.fail(new IllegalStateException(s"Peer $peerIdStr is not registered")).unit
 
     } else if (state.pendingJobRequests.exists(req => req.peerId == peerId)) {
-      ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is already waiting for a job"))
+      promise.fail(new IllegalStateException(s"Peer $peerIdStr is already waiting for a job")).unit
 
     } else if (isDownloadCompleted(state)) {
       promise.succeed(AcquireJobResult.DownloadCompleted).unit
@@ -106,7 +106,6 @@ object Actor {
       val suitableJobOption = tryGetSuitableJob(state, remoteHave)
       if (suitableJobOption.isEmpty) {
         promise.succeed(AcquireJobResult.NotInterested).unit
-
       } else {
         val job = suitableJobOption.get
 
@@ -118,7 +117,7 @@ object Actor {
           state.activePeers(peerId).append(job)
           promise.succeed(AcquireJobResult.AcquireSuccess(job)).unit
 
-        } else if (state.activePeers.size < state.maxConcurrentDownloads) {
+        } else if (state.activePeers.size < state.maxActivePeers) {
           state.activeJobs.put(job, peerId)
           state.activePeers.put(peerId, ArrayBuffer[DownloadJob](job))
           promise.succeed(AcquireJobResult.AcquireSuccess(job)).unit
@@ -141,9 +140,15 @@ object Actor {
     } else if (peerJobsOption.isEmpty) {
       ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is releasing job $releaseStatus while not being active"))
 
+    } else if (state.pendingJobRequests.exists(req => req.peerId == peerId)) {
+      ZIO.fail(new IllegalStateException(s"Active peer $peerIdStr can not have a pending job request"))
+
     } else {
       val peerJobs = peerJobsOption.get
-      if (!peerJobs.contains(releaseStatus.job)) {
+      if (
+        !state.activeJobs.contains(releaseStatus.job) ||
+        !peerJobs.contains(releaseStatus.job)
+      ) {
         ZIO.fail(new IllegalStateException(
           s"Peer $peerIdStr is releasing job $releaseStatus that has not been acquired"
         ))
@@ -152,78 +157,99 @@ object Actor {
         val job          = releaseStatus.job
         val peerJobIndex = peerJobs.indexOf(job)
 
-        handleReleasedJob(state, releaseStatus)
-
         releaseStatus match {
           case ReleaseJobStatus.Downloading(_) =>
-            peerJobs.remove(peerJobIndex)
+            for {
+              _ <- handleReleasedJob(state, releaseStatus)
+              _  = peerJobs.remove(peerJobIndex)
+              _ <- handlePendingJobRequests(
+                     state,
+                     jobsToAcquire = state.maxActivePeers - state.activePeers.size
+                   )
+            } yield ()
 
           case ReleaseJobStatus.Choked(_)      =>
             if (peerJobs.length > 1) {
-              throw new IllegalStateException(
+              ZIO.fail(new IllegalStateException(
                 s"Peer $peerIdStr is releasing $releaseStatus while having multiple jobs allocated: ${peerJobs.mkString(",")}"
-              )
+              ))
             } else {
-              peerJobs.remove(peerJobIndex)
-              state.activePeers.remove(peerId)
+              for {
+                _ <- handleReleasedJob(state, releaseStatus)
+                _  = peerJobs.remove(peerJobIndex)
+                _  = state.activePeers.remove(peerId)
+                _ <- handlePendingJobRequests(
+                       state,
+                       jobsToAcquire = state.maxActivePeers - state.activePeers.size
+                     )
+              } yield ()
             }
         }
-
-        processPendingJobRequests(state)
       }
     }
   }
 
+  /**
+    * Checks every pending job request if it is still must wait for a response.
+    *   - may acquire at most `jobsToAcquire` jobs (and fulfill corresponding requests)
+    *   - responds to everyone if download is completed
+    *   - aborts requests to peers that are not interesting anymore
+    */
   //noinspection SimplifyUnlessInspection
-  private def processPendingJobRequests(state: State, i: Int = 0, fulfilled: Boolean = false): Task[Unit] = {
+  private def handlePendingJobRequests(state: State, jobsToAcquire: Int = 1, i: Int = 0): Task[Unit] = {
 
     if (i >= state.pendingJobRequests.length) ZIO.unit
     else {
-      val pendingRequest = state.pendingJobRequests(i)
-
-      // A peer can not be active and have a pending request at the same time.
-      // All incoming job requests for active peers must be fulfilled immediately.
-      if (
-        state.activePeers.contains(pendingRequest.peerId) ||
-        state.activeJobs.exists { case (_, pid) => pid == pendingRequest.peerId }
-      ) {
-        val peerIdStr = new String(pendingRequest.peerId.toArray, StandardCharsets.US_ASCII)
-        ZIO.fail(s"Active peer $peerIdStr can not have a pending job request")
-      }
-
+      val pendingRequest    = state.pendingJobRequests(i)
       val downloadCompleted = isDownloadCompleted(state)
       val suitableJobOption = tryGetSuitableJob(state, pendingRequest.remoteHave)
 
       suitableJobOption match {
-        case Some(job) if !fulfilled   =>
+        case Some(job) if jobsToAcquire > 0 =>
           state.activeJobs.put(job, pendingRequest.peerId)
           state.activePeers.put(pendingRequest.peerId, ArrayBuffer(job))
           state.pendingJobRequests.remove(i)
 
           pendingRequest.promise.succeed(AcquireJobResult.AcquireSuccess(job)) *>
-            processPendingJobRequests(state, i, fulfilled = true)
+            handlePendingJobRequests(state, jobsToAcquire - 1, i)
 
-        case Some(_)                   =>
-          processPendingJobRequests(state, i + 1, fulfilled)
+        case Some(_)                        =>
+          handlePendingJobRequests(state, jobsToAcquire, i + 1)
 
-        case None if downloadCompleted =>
+        case None if downloadCompleted      =>
+          state.pendingJobRequests.remove(i)
           pendingRequest.promise.succeed(AcquireJobResult.DownloadCompleted) *>
-            processPendingJobRequests(state, i + 1, fulfilled)
+            handlePendingJobRequests(state, jobsToAcquire, i)
 
-        case None                      =>
+        case None                           =>
+          state.pendingJobRequests.remove(i)
           pendingRequest.promise.succeed(AcquireJobResult.NotInterested) *>
-            processPendingJobRequests(state, i + 1, fulfilled)
+            handlePendingJobRequests(state, jobsToAcquire, i)
       }
     }
   }
 
-  private def handleReleasedJob(state: State, releaseStatus: ReleaseJobStatus): Unit = {
+  private def handleReleasedJob(state: State, releaseStatus: ReleaseJobStatus): Task[Unit] = {
     val job = releaseStatus.job
     state.activeJobs.remove(job)
-    job.completionStatus match {
-      case JobCompletionStatus.Complete   => state.localHave(job.pieceId) = true
-      case JobCompletionStatus.Incomplete => state.suspendedJobs.put(job.pieceId, job)
-      case JobCompletionStatus.Failed     => ()
+
+    import ReleaseJobStatus._, JobCompletionStatus._
+
+    val completionStatus = job.completionStatus
+
+    (releaseStatus, completionStatus) match {
+      case (Downloading(job), Complete) =>
+        ZIO.succeed(state.localHave(job.pieceId) = true)
+
+      case (Choked(job), Incomplete)    =>
+        ZIO.succeed(state.suspendedJobs.put(job.pieceId, job))
+
+      case (_, Failed)                  => ZIO.unit
+
+      case _ =>
+        ZIO.fail(new IllegalStateException(
+          s"ReleaseJobStatus status does not correspond to JobCompletionStatus: ($releaseStatus, ${job.completionStatus})"
+        ))
     }
   }
 
