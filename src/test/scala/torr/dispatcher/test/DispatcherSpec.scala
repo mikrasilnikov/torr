@@ -537,7 +537,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
                       .fork.flatMap(_.await)
         } yield assert(actual)(
           fails(hasMessage(equalTo(
-            "ReleaseJobStatus status does not correspond to JobCompletionStatus: (Downloading(DownloadJob(0,16,Chunk(1,2,3),15)), Incomplete)"
+            "ReleaseJobStatus status does not correspond to JobCompletionStatus: " +
+              "(Active(DownloadJob(0,16,Chunk(1,2,3),15)), Incomplete)"
           )))
         )
       },
