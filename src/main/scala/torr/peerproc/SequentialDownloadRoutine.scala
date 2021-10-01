@@ -45,11 +45,6 @@ object SequentialDownloadRoutine {
                                 _ <- peerHandle.send(Message.NotInterested)
                                 _ <- ZIO.sleep(10.seconds)
                               } yield DownloadState(peerChoking = false, amInterested = false)
-
-                            case AcquireJobResult.DownloadCompleted   =>
-                              for {
-                                _ <- peerHandle.send(Message.NotInterested)
-                              } yield DownloadState(peerChoking = false, amInterested = false)
                           }
                 _      <- download(peerHandle, remoteHaveRef, state1, maxConcurrentRequests)
               } yield ()

@@ -4,8 +4,8 @@ import zio.duration.{Duration, durationInt}
 import scala.collection.mutable
 
 case class Cache(
-    entrySize: Int = 128 * 1024,
-    cacheEntriesNum: Int = 100,
+    entrySize: Int = 256 * 1024,
+    cacheEntriesNum: Int = 50,
     writeOutDelay: Duration = 30.seconds,
     addrToEntry: mutable.HashMap[EntryAddr, CacheEntry] = new mutable.HashMap[EntryAddr, CacheEntry],
     addrToRelevance: mutable.HashMap[EntryAddr, Long] = new mutable.HashMap[EntryAddr, Long],

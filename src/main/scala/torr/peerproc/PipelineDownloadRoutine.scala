@@ -19,7 +19,6 @@ object PipelineDownloadRoutine {
   sealed trait SenderResult
   object SenderResult {
     case object NotInterested extends SenderResult
-    case object Completed     extends SenderResult
     case object ChokedOnQueue extends SenderResult
   }
 
@@ -105,9 +104,6 @@ object PipelineDownloadRoutine {
                                       maxConcurrentRequests
                                     )
 
-                                // Download has been completed.
-                                case SenderResult.Completed     => ZIO.unit
-
                                 // TODO check if sender was choked (add new return value)
                               }
                } yield ()
@@ -156,9 +152,6 @@ object PipelineDownloadRoutine {
         case AcquireJobResult.NotInterested       =>
           currentJobRef.set(None) *>
             requestQueue.offer(None).as(SenderResult.NotInterested)
-        case AcquireJobResult.DownloadCompleted   =>
-          currentJobRef.set(None) *>
-            requestQueue.offer(None).as(SenderResult.Completed)
       }
     }
   }

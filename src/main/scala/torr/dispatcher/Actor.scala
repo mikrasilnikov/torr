@@ -99,9 +99,6 @@ object Actor {
     } else if (state.pendingJobRequests.exists(req => req.peerId == peerId)) {
       promise.fail(new IllegalStateException(s"Peer $peerIdStr is already waiting for a job")).unit
 
-    } else if (isDownloadCompleted(state)) {
-      promise.succeed(AcquireJobResult.DownloadCompleted).unit
-
     } else {
       val suitableJobOption = tryGetSuitableJob(state, remoteHave)
       if (suitableJobOption.isEmpty) {
@@ -201,7 +198,6 @@ object Actor {
     if (i >= state.pendingJobRequests.length) ZIO.unit
     else {
       val pendingRequest    = state.pendingJobRequests(i)
-      val downloadCompleted = isDownloadCompleted(state)
       val suitableJobOption = tryGetSuitableJob(state, pendingRequest.remoteHave)
 
       suitableJobOption match {
@@ -215,12 +211,7 @@ object Actor {
 
         case Some(_)                        =>
           handlePendingJobRequests(state, jobsToAcquire, i + 1)
-
-        case None if downloadCompleted      =>
-          state.pendingJobRequests.remove(i)
-          pendingRequest.promise.succeed(AcquireJobResult.DownloadCompleted) *>
-            handlePendingJobRequests(state, jobsToAcquire, i)
-
+          
         case None                           =>
           state.pendingJobRequests.remove(i)
           pendingRequest.promise.succeed(AcquireJobResult.NotInterested) *>

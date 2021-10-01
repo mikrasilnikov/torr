@@ -13,13 +13,12 @@ package object dispatcher {
   object AcquireJobResult {
     case class AcquireSuccess(job: DownloadJob) extends AcquireJobResult
     case object NotInterested                   extends AcquireJobResult
-    case object DownloadCompleted               extends AcquireJobResult
   }
 
   sealed trait ReleaseJobStatus { def job: DownloadJob }
   object ReleaseJobStatus       {
     case class Active(job: DownloadJob) extends ReleaseJobStatus
-    case class Choked(job: DownloadJob)      extends ReleaseJobStatus
+    case class Choked(job: DownloadJob) extends ReleaseJobStatus
   }
 
   @accessible

@@ -166,7 +166,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(AcquireJobResult.NotInterested))
       },
       //
-      testM("acquire - download completed") {
+      testM("acquire - not interested when download completed") {
         val localHave  = new Array[Boolean](metaInfo.numPieces)
         localHave(0) = true
         localHave(1) = true
@@ -178,8 +178,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         for {
           p      <- Promise.make[Throwable, AcquireJobResult]
           _      <- Actor.acquireJob(state, peerId, remoteHave, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.DownloadCompleted.type])
-        } yield assert(actual)(equalTo(AcquireJobResult.DownloadCompleted))
+          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.NotInterested.type])
+        } yield assert(actual)(equalTo(AcquireJobResult.NotInterested))
       },
       //
       testM("acquire - fails if a peer is already waiting or a job") {
@@ -263,7 +263,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
           registeredPeers = mutable.Set(peerId1, peerId2),
           maxActivePeers = 1,
           activePeers = mutable.HashMap(peerId1 -> ArrayBuffer(job)),
-          activeJobs = mutable.HashMap[DownloadJob, PeerId](job -> peerId1)
+          activeJobs = mutable.HashMap(job -> peerId1)
         )
 
         state.localHave(0) = false
@@ -278,6 +278,60 @@ object DispatcherSpec extends DefaultRunnableSpec {
           _       <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Choked(job))
           actual  <- p.await
         } yield assert(enqueued)(isTrue) && assert(actual)(equalTo(AcquireJobResult.AcquireSuccess(job)))
+      },
+      //
+      testM("acquire - delayed NotInterested") {
+        val metaInfo3 = MetaInfo(
+          announce = "udp://tracker.openbittorrent.com:80/announce",
+          pieceSize = 16,
+          entries = FileEntry(Path("file1.dat"), 48) :: Nil,
+          pieceHashes = Vector(
+            // hashes of empty array
+            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709")
+          ),
+          infoHash = Chunk[Byte](1, 2, 3)
+        )
+
+        val peerId1 = Chunk.fill(3)('x'.toByte)
+        val peerId2 = Chunk.fill(3)('y'.toByte)
+
+        val state = Actor.State(
+          metaInfo3,
+          localHave = new Array[Boolean](metaInfo3.numPieces),
+          registeredPeers = mutable.Set(peerId1, peerId2),
+          maxActivePeers = 1,
+          activePeers = mutable.HashMap[PeerId, ArrayBuffer[DownloadJob]](),
+          activeJobs = mutable.HashMap[DownloadJob, PeerId]()
+        )
+
+        val remoteHave = HashSet[PieceId](0, 1)
+
+        for {
+          p0   <- Promise.make[Throwable, AcquireJobResult]
+          _    <- Actor.acquireJob(state, peerId1, remoteHave, p0)
+          job0 <- p0.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+
+          p1 <- Promise.make[Throwable, AcquireJobResult]
+          _  <- Actor.acquireJob(state, peerId2, remoteHave, p1)
+
+          p2   <- Promise.make[Throwable, AcquireJobResult]
+          _    <- Actor.acquireJob(state, peerId1, remoteHave, p2)
+          job1 <- p2.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+
+          completedJob0 = DownloadJob(0, metaInfo3.pieceSize, metaInfo3.pieceHashes(0), metaInfo3.pieceSize)
+          completedJob1 = DownloadJob(1, metaInfo3.pieceSize, metaInfo3.pieceHashes(1), metaInfo3.pieceSize)
+          _            <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Active(completedJob0))
+          _            <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Active(completedJob1))
+
+          actual <- p1.await
+
+        } yield assert(())(anything) &&
+          assert(job0)(equalTo(DownloadJob(0, metaInfo3.pieceSize, metaInfo3.pieceHashes(0), 0))) &&
+          assert(job1)(equalTo(DownloadJob(1, metaInfo3.pieceSize, metaInfo3.pieceHashes(1), 0))) &&
+          assert(actual)(equalTo(AcquireJobResult.NotInterested)) &&
+          assert(state.localHave)(equalTo(Array(true, true, false)))
       },
       //
       testM("acquire - immediate success when active even if other peer is waiting") {
