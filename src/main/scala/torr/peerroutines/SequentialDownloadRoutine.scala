@@ -1,10 +1,10 @@
-package torr.peerproc
+package torr.peerroutines
 
 import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
-import torr.peerproc.DefaultPeerRoutine.DownloadState
+import torr.peerroutines.DefaultPeerRoutine.DownloadState
 import torr.peerwire.MessageTypes.{BitField, Choke, Have, KeepAlive, Piece, Unchoke}
 import torr.peerwire.{Message, PeerHandle, TorrBitSet}
 import zio.{Chunk, RIO, Ref, Task, ZIO}
@@ -57,7 +57,7 @@ object SequentialDownloadRoutine {
     * @return true if being choked by remote peer
     */
   //noinspection SimplifyUnlessInspection
-  private[peerproc] def downloadUntilChokedOrCompleted(
+  private[peerroutines] def downloadUntilChokedOrCompleted(
       peerHandle: PeerHandle,
       job: DownloadJob,
       maxConcurrentRequests: Int,

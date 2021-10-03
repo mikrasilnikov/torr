@@ -4,7 +4,7 @@ import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.FixedBufferPool
 import torr.peerwire.ReceiveActor.GetState
-import torr.peerwire.{Message, PeerActorConfig, PeerHandle}
+import torr.peerwire.{Message, PeerActorConfig, PeerHandle, PeerHandleLive}
 import zio._
 import zio.duration.durationInt
 import zio.logging.slf4j.Slf4jLogger
@@ -13,7 +13,7 @@ import zio.nio.core.Buffer
 import zio.test._
 import zio.test.Assertion._
 
-object PeerHandleSpec extends DefaultRunnableSpec {
+object PeerHandleLiveSpec extends DefaultRunnableSpec {
   override def spec =
     suite("PeerHandleSpec")(
       //
@@ -22,7 +22,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect   = for {
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf           <- Buffer.byte(1024)
@@ -47,7 +47,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect   = for {
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          actualFib <- h.receive[Message.Have].fork
@@ -72,7 +72,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect   = for {
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          _      <- h.send(expected)
@@ -93,7 +93,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
         val effect = for {
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf <- Buffer.byte(5)
@@ -121,7 +121,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
           for {
             channel    <- TestSocketChannel.make
             msgBuf     <- Buffer.byte(64)
-            handle      = PeerHandle.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+            handle      = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
             (e1, e2)   <- handle.use { h =>
                             for {
                               client1 <- h.receive[Message.Choke.type].fork
@@ -157,7 +157,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                             maxMessageProcessingLatency = 30.seconds
                           )
             msgBuf     <- Buffer.byte(64)
-            handle      = PeerHandle.fromChannel(
+            handle      = PeerHandleLive.fromChannel(
                             channel,
                             msgBuf,
                             "Test",
@@ -199,7 +199,7 @@ object PeerHandleSpec extends DefaultRunnableSpec {
                             maxMessageProcessingLatency = 30.seconds
                           )
             msgBuf     <- Buffer.byte(64)
-            handle      = PeerHandle.fromChannel(
+            handle      = PeerHandleLive.fromChannel(
                             channel,
                             msgBuf,
                             "Test",

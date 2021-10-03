@@ -1,4 +1,4 @@
-package torr.peerproc
+package torr.peerroutines
 
 import zio._
 import torr.metainfo.MetaInfo
@@ -38,7 +38,7 @@ object DefaultPeerRoutine {
     } yield ()
   }
 
-  private[peerproc] def handleRemoteHave(
+  private[peerroutines] def handleRemoteHave(
       peerHandle: PeerHandle,
       metaInfo: MetaInfo,
       remoteHaveRef: Ref[Set[Int]]
@@ -57,7 +57,7 @@ object DefaultPeerRoutine {
     } yield ()
   }
 
-  private[peerproc] def handleKeepAlive(peerHandle: PeerHandle): Task[Unit] = {
+  private[peerroutines] def handleKeepAlive(peerHandle: PeerHandle): Task[Unit] = {
     for {
       _ <- peerHandle.receive[KeepAlive]
       _ <- peerHandle.send(Message.KeepAlive)

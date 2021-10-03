@@ -1,4 +1,4 @@
-package torr.peerproc.test
+package torr.peerroutines.test
 
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.test.TestSocketChannel
@@ -6,19 +6,15 @@ import torr.directbuffers.DirectBufferPool
 import torr.directbuffers.test.DirectBufferPoolMock
 import torr.dispatcher.DownloadJob
 import torr.fileio.test.FileIOMock
+import torr.peerroutines.SequentialDownloadRoutine
+import torr.peerwire.{Message, PeerHandle, PeerHandleLive}
 import zio._
-import zio.test._
-import zio.test.Assertion._
-import torr.fileio.test.FileIOMock._
-import torr.peerproc.{DefaultPeerRoutine, SequentialDownloadRoutine}
-import torr.peerwire.{Message, ReceiveActor, PeerHandle}
 import zio.clock.Clock
-import zio.duration.durationInt
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core._
-import zio.test.environment.TestClock
+import zio.test.Assertion._
+import zio.test._
 import zio.test.mock.Expectation._
-import zio.test.mock.MockSystem
 
 object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
   def spec =
@@ -217,7 +213,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
     for {
       channel <- TestSocketChannel.make.toManaged_
       msgBuf  <- Buffer.byte(128).toManaged_
-      handle  <- PeerHandle.fromChannel(channel, msgBuf, channelName, remotePeerId = Chunk.fill(20)(0.toByte))
+      handle  <- PeerHandleLive.fromChannel(channel, msgBuf, channelName, remotePeerId = Chunk.fill(20)(0.toByte))
     } yield (channel, handle)
   }
 

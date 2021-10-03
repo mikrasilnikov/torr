@@ -12,8 +12,8 @@ package object directbuffers {
   @accessible
   object DirectBufferPool {
     trait Service {
-      def allocate: ZIO[Clock, Throwable, ByteBuffer]
-      def allocateManaged: ZManaged[Clock, Throwable, ByteBuffer]
+      def allocate: Task[ByteBuffer]
+      def allocateManaged: ZManaged[Any, Throwable, ByteBuffer]
       def free(buf: ByteBuffer): Task[Unit]
       def numAvailable: Task[Int]
     }
