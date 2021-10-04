@@ -1,12 +1,13 @@
 package torr.misc
 
+import zio._
 import scala.annotation.tailrec
 
 object URLEncode {
 
   private val extra = Array[Byte]('-', '_', '.', '~')
 
-  def encode(data: Array[Byte]): String = {
+  def encode(data: Chunk[Byte]): String = {
 
     @tailrec
     def loop(i: Int, acc: StringBuilder): String = {

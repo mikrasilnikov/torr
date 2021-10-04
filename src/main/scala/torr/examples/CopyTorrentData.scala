@@ -40,7 +40,7 @@ object CopyTorrentData extends App {
                for {
                  metaInfo <- src.get.metaInfo
                  res      <- copyRandom(metaInfo.pieceSize, metaInfo.torrentSize, src.get, dst.get)
-                 //copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
+                 //res      <- copySequential(0, 0, metaInfo.pieces.length, metaInfo.pieceSize, torrentSize, src, dst)
                } yield res
            }
     } yield ()

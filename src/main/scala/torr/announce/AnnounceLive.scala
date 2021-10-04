@@ -13,7 +13,7 @@ import zio.logging._
 
 import java.io.IOException
 
-case class TrackerLive(client: HttpClient) extends Announce.Service {
+case class AnnounceLive(client: HttpClient) extends Announce.Service {
 
   private val announceRetries = 10
 
@@ -59,9 +59,9 @@ case class TrackerLive(client: HttpClient) extends Announce.Service {
   }
 }
 
-object TrackerLive {
+object AnnounceLive {
   def make(proxy: Option[InetSocketAddress]): ZLayer[Any, Throwable, Announce] = {
-    ZIO(buildClient(proxy)).map(client => TrackerLive(client)).toLayer
+    ZIO(buildClient(proxy)).map(client => AnnounceLive(client)).toLayer
   }
 
   private def buildClient(proxy: Option[InetSocketAddress]): HttpClient = {

@@ -20,7 +20,7 @@ object DefaultPeerRoutine {
     for {
       metaInfo      <- FileIO.metaInfo
       bitField      <- peerHandle.receive[BitField]
-      _             <- validateRemoteBitSet(metaInfo, bitField.bits)
+      _             <- validateRemoteBitSet(metaInfo, bitField.bits).ignore
       remoteHaveRef <- Ref.make[Set[Int]](HashSet.from(bitField.bits.set))
 
       haveFib  <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
@@ -68,7 +68,9 @@ object DefaultPeerRoutine {
   //noinspection SimplifyUnlessInspection
   private def validateRemoteBitSet(metaInfo: MetaInfo, bitSet: TorrBitSet): Task[Unit] = {
     if (metaInfo.pieceHashes.length != bitSet.length)
-      ZIO.fail(new ProtocolException("metaInfo.pieceHashes.length != torrBitSet.length"))
+      ZIO.fail(new ProtocolException(
+        s"metaInfo.pieceHashes.length(${metaInfo.pieceHashes.length}) != bitSet.length(${bitSet.length})"
+      ))
     else ZIO.unit
   }
 
