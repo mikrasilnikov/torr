@@ -3,6 +3,10 @@ package torr.peerwire.test
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.FixedBufferPool
+import torr.dispatcher.DispatcherLive
+import torr.fileio.test.FileIOMock
+import torr.metainfo.{FileEntry, MetaInfo}
+import torr.metainfo.test.MetaInfoSpec.toBytes
 import torr.peerwire.ReceiveActor.GetState
 import torr.peerwire.{Message, PeerActorConfig, PeerHandle, PeerHandleLive}
 import zio._
@@ -10,12 +14,14 @@ import zio.duration.durationInt
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
+import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
+import zio.test.mock.Expectation._
 
 object PeerHandleLiveSpec extends DefaultRunnableSpec {
   override def spec =
-    suite("PeerHandleSpec")(
+    suite("PeerHandleLiveSpec")(
       //
       testM("Receives a message stored in mailbox") {
         val expected = Message.Have(12345)
@@ -36,6 +42,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         } yield res
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -61,6 +69,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         } yield res
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -82,6 +92,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         } yield res
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -107,6 +119,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         } yield ()
 
         val effect1 = effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -141,6 +155,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
             assert(e2)(fails(hasMessage(equalTo(expectedMsg))))
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -183,6 +199,8 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
             assert(e2)(fails(hasMessage(containsString(expectedMsg))))
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -220,10 +238,24 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           } yield assert(e)(fails(hasMessage(equalTo("Boom!"))))
 
         effect.injectCustom(
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
         )
       }
     )
+
+  private val metaInfo = MetaInfo(
+    announce = "udp://tracker.openbittorrent.com:80/announce",
+    pieceSize = 2 * 16 * 1024,
+    entries = FileEntry(Path("file1.dat"), 4 * 16 * 1024) :: Nil,
+    pieceHashes = Vector(
+      // hashes of empty array
+      toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+      toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709")
+    ),
+    infoHash = Chunk[Byte](1, 2, 3)
+  )
 }

@@ -8,7 +8,8 @@ import zio.nio.core.channels.AsynchronousSocketChannel
 import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
-import torr.dispatcher.PeerId
+import torr.dispatcher.{Dispatcher, PeerId}
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -26,28 +27,39 @@ case class PeerHandleLive(
   }
 
   def receive[M <: Message](implicit tag: ClassTag[M]): Task[M] =
-    receiveCore(tag.runtimeClass).map(_.asInstanceOf[M])
+    for {
+      p   <- Promise.make[Throwable, M]
+      _   <- receiveActor ? ReceiveActor.Receive1(tag.runtimeClass, p)
+      res <- p.await
+    } yield res
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
-    receiveCore(tag1.runtimeClass, tag2.runtimeClass)
-
-  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
-    pollCore(tag.runtimeClass).map(_.map(_.asInstanceOf[M]))
-
-  def onMessage(msg: Message): Task[Unit] =
-    receiveActor ? ReceiveActor.OnMessage(msg)
-
-  private def receiveCore(classes: Class[_]*): Task[Message] = {
     for {
       p   <- Promise.make[Throwable, Message]
-      _   <- receiveActor ? ReceiveActor.Receive(classes.toList, p)
+      _   <- receiveActor ? ReceiveActor.Receive2(tag1.runtimeClass, tag2.runtimeClass, p)
+      res <- p.await
+    } yield res
+
+  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
+    receiveActor ? ReceiveActor.Poll1(tag.runtimeClass)
+
+  def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] =
+    receiveActor ? ReceiveActor.Poll2(tag1.runtimeClass, tag2.runtimeClass)
+
+  def receiveMany(classes: Class[_]*): Task[Message] = {
+    for {
+      p   <- Promise.make[Throwable, Message]
+      _   <- receiveActor ? ReceiveActor.ReceiveMany(classes.toList, p)
       res <- p.await
     } yield res
   }
 
-  private def pollCore(classes: Class[_]*): Task[Option[Message]] = {
-    receiveActor ? ReceiveActor.Poll(classes.toList)
+  def pollMany(classes: Class[_]*): Task[Option[Message]] = {
+    receiveActor ? ReceiveActor.PollMany(classes.toList)
   }
+
+  def onMessage(msg: Message): Task[Unit] =
+    receiveActor ? ReceiveActor.OnMessage(msg)
 }
 
 object PeerHandleLive {
@@ -58,7 +70,7 @@ object PeerHandleLive {
       address: InetSocketAddress,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
-  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       nioChannel <- AsynchronousSocketChannel.open()
       _          <- nioChannel.connect(address).toManaged_
@@ -74,7 +86,7 @@ object PeerHandleLive {
       channelName: String,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
-  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
       _         <- Message.sendHandshake(infoHash, localPeerId, channel, msgBuf).toManaged_
       handshake <- Message.receiveHandshake(channel, msgBuf).toManaged_
@@ -88,8 +100,10 @@ object PeerHandleLive {
       channelName: String,
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig = PeerActorConfig.default
-  ): ZManaged[ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
     for {
+      _            <- Dispatcher.registerPeer(remotePeerId)
+                        .toManaged(_ => Dispatcher.unregisterPeer(remotePeerId).orDie)
       actorP       <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
       receiveFiber <- receiveProc(channel, msgBuf, actorP).fork.toManaged(_.interrupt)
       receiveActor <- createReceiveActor(channel, channelName, remotePeerId, actorConfig)

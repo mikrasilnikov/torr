@@ -40,23 +40,26 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
             Send(Message.Interested) ::
             Receive(Message.Unchoke) ::
             Fork(
-              left = Poll(None) ::
+              left =
                 AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job1)) ::
-                Poll(None) ::
-                Send(Message.Request(0, 0, 16 * 1024)) ::
-                Send(Message.Request(0, 16 * 1024, 16 * 1024)) ::
-                AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job2)) ::
-                Send(Message.Request(1, 0, 16 * 1024)) ::
-                Send(Message.Request(1, 16 * 1024, 16 * 1024)) ::
-                Nil,
-              right = ReceiveBlock(0, 0, 16 * 1024) ::
-                ReceiveBlock(0, 16 * 1024, 16 * 1024) ::
-                ReleaseJob(peerId, ReleaseJobStatus.Choked(job1)) ::
-                ReceiveBlock(1, 0, 16 * 1024) ::
-                ReceiveBlock(1, 16 * 1024, 16 * 1024) ::
-                ReleaseJob(peerId, ReleaseJobStatus.Choked(job2)) ::
-                Nil
+                  Poll(None) ::
+                  Send(Message.Request(0, 0, 16 * 1024)) ::
+                  Send(Message.Request(0, 16 * 1024, 16 * 1024)) ::
+                  AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job2)) ::
+                  Send(Message.Request(1, 0, 16 * 1024)) ::
+                  Send(Message.Request(1, 16 * 1024, 16 * 1024)) ::
+                  AcquireJob(peerId, remoteHave, AcquireJobResult.NotInterested) ::
+                  Nil,
+              right =
+                ReceiveBlock(0, 0, 16 * 1024) ::
+                  ReceiveBlock(0, 16 * 1024, 16 * 1024) ::
+                  ReceiveBlock(1, 0, 16 * 1024) ::
+                  ReleaseJob(peerId, ReleaseJobStatus.Active(job1)) ::
+                  ReceiveBlock(1, 16 * 1024, 16 * 1024) ::
+                  ReleaseJob(peerId, ReleaseJobStatus.Active(job2)) ::
+                  Nil
             ) ::
+            Send(Message.NotInterested) ::
             IsDownloadCompleted(true) ::
             Nil
 
@@ -73,7 +76,11 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
             } yield assert(())(anything)
         }
 
-        val fileIOMock = FileIOMock.Store(anything) ++ FileIOMock.Store(anything)
+        val fileIOMock =
+          FileIOMock.Store(anything) ++
+            FileIOMock.Store(anything) ++
+            FileIOMock.Store(anything) ++
+            FileIOMock.Store(anything)
 
         effect.injectCustom(fileIOMock, DirectBufferPoolMock.empty)
 

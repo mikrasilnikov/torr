@@ -22,41 +22,63 @@ object PeerHandleAndDispatcherMock {
   case class Fork(left: List[Expectation[_]], right: List[Expectation[_]])  extends Expectation[Unit]
 
   def makeMocks(mockPeerId: PeerId, expectations: List[Expectation[_]]): UIO[(Dispatcher.Service, PeerHandle)] = {
+
+    def removeEmptyFork(expectations: List[Expectation[_]]): List[Expectation[_]] =
+      expectations match {
+        case Fork(Nil, Nil) :: tail => tail
+        case _                      => expectations
+      }
+
     RefM.make(expectations).map { expectationsRef =>
       val dispatcher = new Dispatcher.Service {
 
         def isDownloadCompleted: Task[Boolean] = {
-          expectationsRef.modify {
-            case IsDownloadCompleted(res) :: tail => ZIO.succeed(res, tail)
-            case exp                              =>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(IsDownloadCompleted(res) :: tl, right) :: tail => ZIO.succeed(res, Fork(tl, right) :: tail)
+            case Fork(left, IsDownloadCompleted(res) :: tr) :: tail  => ZIO.succeed(res, Fork(left, tr) :: tail)
+            case IsDownloadCompleted(res) :: tail                    => ZIO.succeed(res, tail)
+            case exp                                                 =>
               ZIO.fail(new Exception(s"Expected ${exp.head}, got isDownloadCompleted()"))
           }
         }
 
         def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] = {
-          expectationsRef.modify {
-            case IsRemoteInteresting(rh: Set[PieceId], res) :: tail if (remoteHave == rh) => ZIO.succeed(res, tail)
-            case exp                                                                      =>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(IsRemoteInteresting(have: Set[PieceId], res) :: tl, right) :: tail if (remoteHave == have) =>
+              ZIO.succeed(res, Fork(tl, right) :: tail)
+            case Fork(left, IsRemoteInteresting(have: Set[PieceId], res) :: tr) :: tail if (remoteHave == have)  =>
+              ZIO.succeed(res, Fork(left, tr) :: tail)
+            case IsRemoteInteresting(rh: Set[PieceId], res) :: tail if (remoteHave == rh)                        => ZIO.succeed(res, tail)
+            case exp                                                                                             =>
               ZIO.fail(new Exception(s"Expected ${exp.head}, got isRemoteInteresting($remoteHave)"))
           }
         }
 
         def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] = {
-          ZIO(println(s"-- acquireJob($peerId, $remoteHave)")) *>
-            expectationsRef.modify {
-              case AcquireJob(pid, rh, res) :: tail if peerId == pid && remoteHave == rh => ZIO.succeed(res, tail)
-              case exp                                                                   =>
-                ZIO.fail(new Exception(s"Expected ${exp.head}, got acquireJob($peerId, $remoteHave)"))
-            }
+          //ZIO(println(s"-- acquireJob($peerId, $remoteHave)")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(AcquireJob(pid, rh, res) :: tl, right) :: tail if peerId == pid && remoteHave == rh =>
+              ZIO.succeed(res, Fork(tl, right) :: tail)
+            case Fork(left, AcquireJob(pid, rh, res) :: tr) :: tail if peerId == pid && remoteHave == rh  =>
+              ZIO.succeed(res, Fork(left, tr) :: tail)
+            case AcquireJob(pid, rh, res) :: tail if peerId == pid && remoteHave == rh                    =>
+              ZIO.succeed(res, tail)
+            case exp                                                                                      =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got acquireJob($peerId, $remoteHave)"))
+          }
         }
 
         def releaseJob(peerId: PeerId, releaseStatus: => ReleaseJobStatus): Task[Unit] =
-          ZIO(println(s"-- releaseJob($peerId, $releaseStatus)")) *>
-            expectationsRef.modify {
-              case ReleaseJob(pid, rs) :: tail if peerId == pid && releaseStatus == rs => ZIO.succeed((), tail)
-              case exp                                                                 =>
-                ZIO.fail(new Exception(s"Expected ${exp.head}, got releaseJob($peerId, $releaseStatus)"))
-            }
+          //ZIO(println(s"-- releaseJob($peerId, $releaseStatus)")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(ReleaseJob(pid, rs) :: tl, right) :: tail if peerId == pid && releaseStatus == rs =>
+              ZIO.succeed((), Fork(tl, right) :: tail)
+            case Fork(left, ReleaseJob(pid, rs) :: tr) :: tail if peerId == pid && releaseStatus == rs  =>
+              ZIO.succeed((), Fork(left, tr) :: tail)
+            case ReleaseJob(pid, rs) :: tail if peerId == pid && releaseStatus == rs                    => ZIO.succeed((), tail)
+            case exp                                                                                    =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got releaseJob($peerId, $releaseStatus)"))
+          }
 
         def registerPeer(peerId: PeerId): Task[Unit]   = ???
         def unregisterPeer(peerId: PeerId): Task[Unit] = ???
@@ -65,51 +87,88 @@ object PeerHandleAndDispatcherMock {
       val peerHandle = new PeerHandle {
 
         def send(msg: Message): Task[Unit] = {
-          ZIO(println(s"-> $msg")) *>
-            expectationsRef.modify {
-              case Send(m) :: tail if msg == m => ZIO.succeed((), tail)
-              case exp                         =>
-                ZIO.fail(new Exception(s"Expected ${exp.head}, got send($msg)"))
-            }
+          //ZIO(println(s"-> $msg")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(Send(m) :: tl, right) :: tail if msg == m => ZIO.succeed((), Fork(tl, right) :: tail)
+            case Fork(left, Send(m) :: tr) :: tail if msg == m  => ZIO.succeed((), Fork(left, tr) :: tail)
+            case Send(m) :: tail if msg == m                    => ZIO.succeed((), tail)
+            case exp                                            =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got send($msg)"))
+          }
         }
 
         def receive[M <: Message](implicit tag: ClassTag[M]): Task[M] = {
-          ZIO(println(s"<- ${tag.runtimeClass}")) *>
-            expectationsRef.modify {
-              case ReceiveBlock(p, o, s) :: tail                        =>
-                Buffer.byte(s).map(b => (Message.Piece(p, o, b).asInstanceOf[M], tail))
-              case Receive(m) :: tail if tag.runtimeClass == m.getClass =>
-                ZIO.succeed((m.asInstanceOf[M], tail))
-              case exp                                                  =>
-                ZIO.fail(new Exception(s"Expected ${exp.head}, got receive[${tag.runtimeClass}]()"))
-            }
+          //ZIO(println(s"<- ${tag.runtimeClass}")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(ReceiveBlock(p, o, s) :: tl, right) :: tail     =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b).asInstanceOf[M], Fork(tl, right) :: tail))
+            case Fork(left, ReceiveBlock(p, o, s) :: tr) :: tail      =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b).asInstanceOf[M], Fork(left, tr) :: tail))
+
+            case Fork(Receive(m) :: tl, right) :: tail                =>
+              ZIO.succeed(m.asInstanceOf[M], Fork(tl, right) :: tail)
+            case Fork(left, Receive(m) :: tr) :: tail                 =>
+              ZIO.succeed(m.asInstanceOf[M], Fork(left, tr) :: tail)
+
+            case ReceiveBlock(p, o, s) :: tail                        =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b).asInstanceOf[M], tail))
+            case Receive(m) :: tail if tag.runtimeClass == m.getClass =>
+              ZIO.succeed((m.asInstanceOf[M], tail))
+            case exp                                                  =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got receive[${tag.runtimeClass}]()"))
+          }
         }
 
         def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] = {
-          ZIO(println(s"<- ${tag1.runtimeClass} | ${tag2.runtimeClass}")) *>
-            expectationsRef.modify {
-              case ReceiveBlock(p, o, s) :: tail                                                            =>
-                Buffer.byte(s).map(b => (Message.Piece(p, o, b), tail))
-              case Receive(m) :: tail if tag1.runtimeClass == m.getClass || tag2.runtimeClass == m.getClass =>
-                ZIO.succeed(m, tail)
-              case exp                                                                                      =>
-                ZIO.fail(
-                  new Exception(s"Expected ${exp.head}, got receive[${tag1.runtimeClass}, ${tag2.runtimeClass}]()")
-                )
-            }
+          //ZIO(println(s"<- ${tag1.runtimeClass} | ${tag2.runtimeClass}")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+            case Fork(ReceiveBlock(p, o, s) :: tl, right) :: tail                                         =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b), Fork(tl, right) :: tail))
+            case Fork(left, ReceiveBlock(p, o, s) :: tr) :: tail                                          =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b), Fork(left, tr) :: tail))
+            case ReceiveBlock(p, o, s) :: tail                                                            =>
+              Buffer.byte(s).map(b => (Message.Piece(p, o, b), tail))
+
+            case Fork(Receive(m) :: tl, right) :: tail
+                if tag1.runtimeClass == m.getClass || tag2.runtimeClass == m.getClass =>
+              ZIO.succeed(m, Fork(tl, right) :: tail)
+            case Fork(left, Receive(m) :: tr) :: tail
+                if tag1.runtimeClass == m.getClass || tag2.runtimeClass == m.getClass =>
+              ZIO.succeed(m, Fork(left, tr) :: tail)
+
+            case Receive(m) :: tail if tag1.runtimeClass == m.getClass || tag2.runtimeClass == m.getClass =>
+              ZIO.succeed(m, tail)
+            case exp                                                                                      =>
+              ZIO.fail(
+                new Exception(s"Expected ${exp.head}, got receive[${tag1.runtimeClass}, ${tag2.runtimeClass}]()")
+              )
+          }
         }
 
         def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] = {
-          ZIO(println(s"<? ${tag.runtimeClass}")) *>
-            expectationsRef.modify {
-              case Poll(Some(m)) :: tail if tag.runtimeClass == m.getClass =>
-                ZIO.succeed((Some(m).asInstanceOf[Option[M]], tail))
-              case Poll(None) :: tail                                      =>
-                ZIO.succeed((None.asInstanceOf[Option[M]], tail))
-              case exp                                                     =>
-                ZIO.fail(new Exception(s"Expected ${exp.head}, got poll[${tag.runtimeClass}]()"))
-            }
+          //ZIO(println(s"<? ${tag.runtimeClass}")) *>
+          expectationsRef.map(removeEmptyFork).modify {
+
+            case Fork(Poll(Some(m)) :: tl, right) :: tail if tag.runtimeClass == m.getClass =>
+              ZIO.succeed(Some(m).asInstanceOf[Option[M]], Fork(tl, right) :: tail)
+            case Fork(left, Poll(Some(m)) :: tr) :: tail if tag.runtimeClass == m.getClass  =>
+              ZIO.succeed(Some(m).asInstanceOf[Option[M]], Fork(left, tr) :: tail)
+            case Poll(Some(m)) :: tail if tag.runtimeClass == m.getClass                    =>
+              ZIO.succeed((Some(m).asInstanceOf[Option[M]], tail))
+
+            case Fork(Poll(None) :: tl, right) :: tail                                      =>
+              ZIO.succeed(None.asInstanceOf[Option[M]], Fork(tl, right) :: tail)
+            case Fork(left, Poll(None) :: tr) :: tail                                       =>
+              ZIO.succeed(None.asInstanceOf[Option[M]], Fork(left, tr) :: tail)
+            case Poll(None) :: tail                                                         =>
+              ZIO.succeed((None.asInstanceOf[Option[M]], tail))
+
+            case exp                                                                        =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got poll[${tag.runtimeClass}]()"))
+          }
         }
+
+        def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] = ???
 
         def peerId: PeerId = mockPeerId
 

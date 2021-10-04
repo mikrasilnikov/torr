@@ -13,7 +13,7 @@ object PeerMailboxSpec extends DefaultRunnableSpec {
       //
       test("Dequeue on empty mailbox") {
         val mailbox = new PeerMailbox
-        val actual  = mailbox.dequeue(classOf[Message.KeepAlive.type] :: Nil)
+        val actual  = mailbox.dequeue1(classOf[Message.KeepAlive.type])
         assert(actual)(isNone)
       },
       //
@@ -28,7 +28,7 @@ object PeerMailboxSpec extends DefaultRunnableSpec {
         val expected = Message.KeepAlive
         mailbox.enqueue(origin, Message.KeepAlive)
         val size1    = mailbox.size
-        val actual   = mailbox.dequeue(classOf[Message.KeepAlive.type] :: Nil)
+        val actual   = mailbox.dequeue1(classOf[Message.KeepAlive.type])
         val size0    = mailbox.size
 
         assert(actual)(isSome(equalTo(expected))) &&
@@ -43,7 +43,7 @@ object PeerMailboxSpec extends DefaultRunnableSpec {
         mailbox.enqueue(origin.plusSeconds(0), msg1)
         mailbox.enqueue(origin.plusSeconds(1), msg2)
         val size2   = mailbox.size
-        val actual  = mailbox.dequeue(classOf[Message.Have] :: Nil)
+        val actual  = mailbox.dequeue1(classOf[Message.Have])
         val size1   = mailbox.size
 
         assert(actual)(isSome(equalTo(msg1))) &&
@@ -57,7 +57,7 @@ object PeerMailboxSpec extends DefaultRunnableSpec {
         val msg2    = Message.Port(12345)
         mailbox.enqueue(origin.plusSeconds(0), msg1)
         mailbox.enqueue(origin.plusSeconds(0), msg2)
-        val actual  = mailbox.dequeue(classOf[Message.Port] :: Nil)
+        val actual  = mailbox.dequeue1(classOf[Message.Port])
         assert(actual)(isSome(equalTo(msg2)))
       },
       //
@@ -67,7 +67,7 @@ object PeerMailboxSpec extends DefaultRunnableSpec {
         val msg2    = Message.Port(12345)
         mailbox.enqueue(origin.plusSeconds(0), msg1)
         mailbox.enqueue(origin.plusSeconds(0), msg2)
-        val actual  = mailbox.dequeue(classOf[Message.KeepAlive.type] :: Nil)
+        val actual  = mailbox.dequeue1(classOf[Message.KeepAlive.type])
         assert(actual)(isNone)
       },
       //

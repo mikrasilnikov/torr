@@ -5,12 +5,21 @@ import torr.consoleui.SimpleProgressBar
 import torr.directbuffers.DirectBufferPool
 import zio._
 import zio.actors.ActorRef
-import torr.dispatcher.Actor.{AcquireJob, Command, IsDownloadCompleted, IsRemoteInteresting, ReleaseJob}
+import torr.dispatcher.Actor.{
+  AcquireJob,
+  Command,
+  IsDownloadCompleted,
+  IsRemoteInteresting,
+  RegisterPeer,
+  ReleaseJob,
+  UnregisterPeer
+}
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import zio.clock.Clock
 import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
+
 import scala.collection.mutable
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
@@ -32,9 +41,9 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] =
     actor ? IsRemoteInteresting(remoteHave)
 
-  def registerPeer(peerId: PeerId): Task[Unit] = ???
+  def registerPeer(peerId: PeerId): Task[Unit] = actor ! RegisterPeer(peerId)
 
-  def unregisterPeer(peerId: PeerId): Task[Unit] = ???
+  def unregisterPeer(peerId: PeerId): Task[Unit] = actor ! UnregisterPeer(peerId)
 
 }
 

@@ -13,10 +13,15 @@ import java.time.OffsetDateTime
 object ReceiveActor {
 
   sealed trait Command[+_]
-  case class Receive(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
-  case class Poll(messageTypes: List[Class[_]])                                    extends Command[Option[Message]]
-  case object GetState                                                             extends Command[State]
-  case object GetContext                                                           extends Command[Context]
+  case class Receive1[M <: Message](cls: Class[_], p: Promise[Throwable, M])           extends Command[Unit]
+  case class Receive2(cls1: Class[_], cls2: Class[_], p: Promise[Throwable, Message])  extends Command[Unit]
+  case class ReceiveMany(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
+
+  case class Poll1[+M <: Message](cls: Class[_])    extends Command[Option[M]]
+  case class Poll2(cls1: Class[_], cls2: Class[_])  extends Command[Option[Message]]
+  case class PollMany(messageTypes: List[Class[_]]) extends Command[Option[Message]]
+  case object GetState                              extends Command[State]
+  case object GetContext                            extends Command[Context]
 
   private[peerwire] case class OnMessage(message: Message)    extends Command[Unit]
   private[peerwire] case class StartFailing(error: Throwable) extends Command[Unit]
@@ -37,9 +42,13 @@ object ReceiveActor {
 
     def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
       msg match {
-        //case Send(m)             => send(state, m).map(p => (state, p))
-        case Receive(classes, p) => receive(state, classes, p).map(p => (state, p))
-        case Poll(classes)       => poll(state, classes).map(res => (state, res))
+        case Receive1(cls, p)        => receive1(state, cls, p).map(p => (state, p))
+        case Receive2(cls1, cls2, p) => receive2(state, cls1, cls2, p).map(p => (state, p))
+        case ReceiveMany(classes, p) => receiveMany(state, classes, p).map(p => (state, p))
+
+        case Poll1(cls)          => poll1(state, cls).map(res => (state, res))
+        case Poll2(cls1, cls2)   => poll2(state, cls1, cls2).map(res => (state, res))
+        case PollMany(classes)   => pollMany(state, classes).map(res => (state, res))
         case OnMessage(m)        =>
           m match {
             case Message.Fail => ZIO.fail(new IllegalArgumentException(s"Boom!"))
@@ -51,7 +60,56 @@ object ReceiveActor {
       }
     }
 
-    private[peerwire] def receive(
+    private[peerwire] def receive1(
+        state: State,
+        cls: Class[_],
+        p: Promise[Throwable, Message]
+    ): Task[Unit] = {
+      if (state.isFailingWith.isDefined)
+        p.fail(state.isFailingWith.get).unit
+      else {
+        state.mailbox.dequeue1(cls) match {
+          case Some(m) => p.succeed(m).unit
+          case None    =>
+            state.expectedMessages.get(cls) match {
+              case Some(_) =>
+                p.fail(new IllegalStateException(s"Message of type $cls is already expected by another proc")).unit
+              case None    =>
+                state.expectedMessages.put(cls, p)
+                state.givenPromises.put(p, List(cls))
+            }
+            ZIO.unit
+        }
+      }
+    }
+
+    private[peerwire] def receive2(
+        state: State,
+        cls1: Class[_],
+        cls2: Class[_],
+        p: Promise[Throwable, Message]
+    ): Task[Unit] = {
+      if (state.isFailingWith.isDefined)
+        p.fail(state.isFailingWith.get).unit
+      else {
+        state.mailbox.dequeue2(cls1, cls2) match {
+          case Some(m) => p.succeed(m).unit
+          case None    =>
+            state.expectedMessages.get(cls1)
+              .orElse(state.expectedMessages.get(cls2)) match {
+              case Some(c) =>
+                p.fail(new IllegalStateException(s"Message of type $c is already expected by another proc")).unit
+              case None    =>
+                state.expectedMessages.put(cls1, p)
+                state.expectedMessages.put(cls2, p)
+                state.givenPromises.put(p, List(cls1, cls2))
+            }
+            ZIO.unit
+        }
+      }
+    }
+
+    private[peerwire] def receiveMany(
         state: State,
         classes: List[Class[_]],
         p: Promise[Throwable, Message]
@@ -60,7 +118,7 @@ object ReceiveActor {
       if (state.isFailingWith.isDefined)
         p.fail(state.isFailingWith.get).unit
       else {
-        state.mailbox.dequeue(classes) match {
+        state.mailbox.dequeueMany(classes) match {
           case Some(m) => p.succeed(m).unit
           case None    => classes.foreach { t =>
               state.expectedMessages.get(t) match {
@@ -76,10 +134,24 @@ object ReceiveActor {
       }
     }
 
-    private[peerwire] def poll(state: State, classes: List[Class[_]]): Task[Option[Message]] = {
+    private[peerwire] def poll1(state: State, cls: Class[_]): Task[Option[Message]] = {
       state.isFailingWith match {
         case Some(e) => ZIO.fail(e)
-        case None    => ZIO.succeed(state.mailbox.dequeue(classes))
+        case None    => ZIO.succeed(state.mailbox.dequeue1(cls))
+      }
+    }
+
+    private[peerwire] def poll2(state: State, cls1: Class[_], cls2: Class[_]): Task[Option[Message]] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case None    => ZIO.succeed(state.mailbox.dequeue2(cls1, cls2))
+      }
+    }
+
+    private[peerwire] def pollMany(state: State, classes: List[Class[_]]): Task[Option[Message]] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case None    => ZIO.succeed(state.mailbox.dequeueMany(classes))
       }
     }
 

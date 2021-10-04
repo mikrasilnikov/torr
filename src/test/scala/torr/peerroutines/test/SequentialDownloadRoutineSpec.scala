@@ -4,14 +4,18 @@ import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.test.TestSocketChannel
 import torr.directbuffers.DirectBufferPool
 import torr.directbuffers.test.DirectBufferPoolMock
-import torr.dispatcher.DownloadJob
+import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadJob}
 import torr.fileio.test.FileIOMock
+import torr.metainfo.{FileEntry, MetaInfo}
+import torr.metainfo.test.MetaInfoSpec.toBytes
 import torr.peerroutines.SequentialDownloadRoutine
+import torr.peerwire.test.PeerHandleLiveSpec.metaInfo
 import torr.peerwire.{Message, PeerHandle, PeerHandleLive}
 import zio._
 import zio.clock.Clock
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core._
+import zio.nio.core.file.Path
 import zio.test.Assertion._
 import zio.test._
 import zio.test.mock.Expectation._
@@ -20,7 +24,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
   def spec =
     suite("SequentialDownloadRoutineSpec")(
       testM("downloadUntilChokedOrCompleted - being choked before first request") {
-        val effect = makePeerHandleHandle("Test").use {
+        val effect = makePeerHandle("Test").use {
           case (channel, handle) =>
             for {
               _        <- handle.onMessage(Message.Choke)
@@ -34,14 +38,15 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         effect.injectCustom(
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
-          FileIOMock.empty,
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DirectBufferPoolMock.empty
         )
       },
       //
       testM("downloadUntilChokedOrCompleted - stores first response") {
-        val effect = makePeerHandleHandle("Test").use {
+        val effect = makePeerHandle("Test").use {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
@@ -66,9 +71,13 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
               assert(job.getOffset)(equalTo(16))
         }
 
-        val fileIOMock = FileIOMock.Store(anything, unit)
+        val fileIOMock =
+          FileIOMock.MetaInfo(value(metaInfo)) ++
+            FileIOMock.FreshFilesWereAllocated(value(true)) ++
+            FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -76,7 +85,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
       },
       //
       testM("downloadUntilChokedOrCompleted - downloads whole piece") {
-        val effect = makePeerHandleHandle("Test").use {
+        val effect = makePeerHandle("Test").use {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
@@ -106,10 +115,13 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         val fileIOMock =
-          FileIOMock.Store(anything, unit) ++
+          FileIOMock.MetaInfo(value(metaInfo)) ++
+            FileIOMock.FreshFilesWereAllocated(value(true)) ++
+            FileIOMock.Store(anything, unit) ++
             FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -117,7 +129,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
       },
       //
       testM("downloadUntilChokedOrCompleted - downloads whole piece (2 concurrent requests)") {
-        val effect = makePeerHandleHandle("Test").use {
+        val effect = makePeerHandle("Test").use {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
@@ -147,10 +159,13 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         val fileIOMock =
-          FileIOMock.Store(anything, unit) ++
+          FileIOMock.MetaInfo(value(metaInfo)) ++
+            FileIOMock.FreshFilesWereAllocated(value(true)) ++
+            FileIOMock.Store(anything, unit) ++
             FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -158,7 +173,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
       },
       //
       testM("downloadUntilChokedOrCompleted - fails if pieces are received out of order") {
-        val effect = makePeerHandleHandle("Test").use {
+        val effect = makePeerHandle("Test").use {
           case (channel, handle) =>
             for {
               buf       <- Buffer.byte(1024)
@@ -188,8 +203,9 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         effect.injectCustom(
+          DispatcherLive.make,
           ActorSystemLive.make("Test"),
-          FileIOMock.empty,
+          FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DirectBufferPoolMock.empty
         )
       },
@@ -205,8 +221,8 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
       }
     )
 
-  def makePeerHandleHandle(channelName: String): ZManaged[
-    ActorSystem with DirectBufferPool with Clock,
+  def makePeerHandle(channelName: String): ZManaged[
+    Dispatcher with ActorSystem with DirectBufferPool with Clock,
     Throwable,
     (TestSocketChannel, PeerHandle)
   ] = {
@@ -216,5 +232,17 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
       handle  <- PeerHandleLive.fromChannel(channel, msgBuf, channelName, remotePeerId = Chunk.fill(20)(0.toByte))
     } yield (channel, handle)
   }
+
+  private val metaInfo = MetaInfo(
+    announce = "udp://tracker.openbittorrent.com:80/announce",
+    pieceSize = 2 * 16 * 1024,
+    entries = FileEntry(Path("file1.dat"), 4 * 16 * 1024) :: Nil,
+    pieceHashes = Vector(
+      // hashes of empty array
+      toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+      toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709")
+    ),
+    infoHash = Chunk[Byte](1, 2, 3)
+  )
 
 }
