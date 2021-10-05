@@ -10,16 +10,15 @@ import scala.reflect.ClassTag
 object PeerHandleAndDispatcherMock {
 
   sealed trait Expectation[+_]
-  case class Send(msg: Message)                                             extends Expectation[Unit]
-  case class Receive(msg: Message)                                          extends Expectation[Message]
-  case class ReceiveBlock(pieceId: Int, offset: Int, size: Int)             extends Expectation[Message]
-  case class Poll(result: Option[Message])                                  extends Expectation[Option[Message]]
-  case class IsDownloadCompleted(result: Boolean)                           extends Expectation[Boolean]
-  case class IsRemoteInteresting(remoteHave: Set[PieceId], result: Boolean) extends Expectation[Boolean]
-  case class AcquireJob(peerId: PeerId, remoteHave: Set[PieceId], result: AcquireJobResult)
-      extends Expectation[AcquireJobResult]
-  case class ReleaseJob(peerId: PeerId, releaseStatus: ReleaseJobStatus)    extends Expectation[Unit]
-  case class Fork(left: List[Expectation[_]], right: List[Expectation[_]])  extends Expectation[Unit]
+  case class Send(msg: Message)                                            extends Expectation[Unit]
+  case class Receive(msg: Message)                                         extends Expectation[Message]
+  case class ReceiveBlock(pieceId: Int, offset: Int, size: Int)            extends Expectation[Message]
+  case class Poll(result: Option[Message])                                 extends Expectation[Option[Message]]
+  case class IsDownloadCompleted(result: Boolean)                          extends Expectation[Boolean]
+  case class IsRemoteInteresting(peerId: PeerId, result: Boolean)          extends Expectation[Boolean]
+  case class AcquireJob(peerId: PeerId, result: AcquireJobResult)          extends Expectation[AcquireJobResult]
+  case class ReleaseJob(peerId: PeerId, releaseStatus: ReleaseJobStatus)   extends Expectation[Unit]
+  case class Fork(left: List[Expectation[_]], right: List[Expectation[_]]) extends Expectation[Unit]
 
   def makeMocks(mockPeerId: PeerId, expectations: List[Expectation[_]]): UIO[(Dispatcher.Service, PeerHandle)] = {
 
@@ -42,29 +41,30 @@ object PeerHandleAndDispatcherMock {
           }
         }
 
-        def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] = {
+        def isRemoteInteresting(peerId: PeerId): Task[Boolean] = {
           expectationsRef.map(removeEmptyFork).modify {
-            case Fork(IsRemoteInteresting(have: Set[PieceId], res) :: tl, right) :: tail if (remoteHave == have) =>
+            case Fork(IsRemoteInteresting(pid: PeerId, res) :: tl, right) :: tail if (peerId == pid) =>
               ZIO.succeed(res, Fork(tl, right) :: tail)
-            case Fork(left, IsRemoteInteresting(have: Set[PieceId], res) :: tr) :: tail if (remoteHave == have)  =>
+            case Fork(left, IsRemoteInteresting(pid, res) :: tr) :: tail if (peerId == pid)          =>
               ZIO.succeed(res, Fork(left, tr) :: tail)
-            case IsRemoteInteresting(rh: Set[PieceId], res) :: tail if (remoteHave == rh)                        => ZIO.succeed(res, tail)
-            case exp                                                                                             =>
-              ZIO.fail(new Exception(s"Expected ${exp.head}, got isRemoteInteresting($remoteHave)"))
+            case IsRemoteInteresting(pid, res) :: tail if (peerId == pid)                            =>
+              ZIO.succeed(res, tail)
+            case exp                                                                                 =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got isRemoteInteresting($peerId)"))
           }
         }
 
-        def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] = {
+        def acquireJob(peerId: PeerId): Task[AcquireJobResult] = {
           //ZIO(println(s"-- acquireJob($peerId, $remoteHave)")) *>
           expectationsRef.map(removeEmptyFork).modify {
-            case Fork(AcquireJob(pid, rh, res) :: tl, right) :: tail if peerId == pid && remoteHave == rh =>
+            case Fork(AcquireJob(pid, res) :: tl, right) :: tail if peerId == pid =>
               ZIO.succeed(res, Fork(tl, right) :: tail)
-            case Fork(left, AcquireJob(pid, rh, res) :: tr) :: tail if peerId == pid && remoteHave == rh  =>
+            case Fork(left, AcquireJob(pid, res) :: tr) :: tail if peerId == pid  =>
               ZIO.succeed(res, Fork(left, tr) :: tail)
-            case AcquireJob(pid, rh, res) :: tail if peerId == pid && remoteHave == rh                    =>
+            case AcquireJob(pid, res) :: tail if peerId == pid                    =>
               ZIO.succeed(res, tail)
-            case exp                                                                                      =>
-              ZIO.fail(new Exception(s"Expected ${exp.head}, got acquireJob($peerId, $remoteHave)"))
+            case exp                                                              =>
+              ZIO.fail(new Exception(s"Expected ${exp.head}, got acquireJob($peerId)"))
           }
         }
 
@@ -82,6 +82,9 @@ object PeerHandleAndDispatcherMock {
 
         def registerPeer(peerId: PeerId): Task[Unit]   = ???
         def unregisterPeer(peerId: PeerId): Task[Unit] = ???
+
+        def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = ???
+        def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = ???
       }
 
       val peerHandle = new PeerHandle {

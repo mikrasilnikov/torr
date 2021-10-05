@@ -25,18 +25,19 @@ package object dispatcher {
   object Dispatcher {
     trait Service {
       def isDownloadCompleted: Task[Boolean]
-      def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean]
+      def isRemoteInteresting(peerId: PeerId): Task[Boolean]
+
       def registerPeer(peerId: PeerId): Task[Unit]
       def unregisterPeer(peerId: PeerId): Task[Unit]
-      def acquireJob(
-          peerId: PeerId,
-          remoteHave: Set[PieceId]
-      ): Task[AcquireJobResult]
 
+      def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]
+      def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit]
+
+      def acquireJob(peerId: PeerId): Task[AcquireJobResult]
       def releaseJob(peerId: PeerId, releaseStatus: => ReleaseJobStatus): Task[Unit]
 
-      def acquireJobManaged(peerId: PeerId, remoteHave: Set[PieceId]): ZManaged[Any, Throwable, AcquireJobResult] =
-        ZManaged.make(acquireJob(peerId, remoteHave)) {
+      def acquireJobManaged(peerId: PeerId): ZManaged[Any, Throwable, AcquireJobResult] =
+        ZManaged.make(acquireJob(peerId)) {
           case AcquireJobResult.AcquireSuccess(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie
           case _                                    => ZIO.unit
         }

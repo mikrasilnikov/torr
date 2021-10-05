@@ -20,8 +20,8 @@ import scala.collection.immutable.HashMap
 object DownloadFromPeers extends App {
 
   val localPeers = List(
-    ("localhost", 57617),
-    ("localhost", 57618)
+    ("localhost", 57617)
+    //("localhost", 57618)
     //("localhost", 57619)
   )
 
@@ -39,12 +39,12 @@ object DownloadFromPeers extends App {
     ("182.235.166.107", 60516)
   )
 
-  /*val metaInfoFile     =
+  val metaInfoFile     =
     "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
-  val dstDirectoryName = "c:\\!temp\\CopyTest1\\"*/
+  val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
 
-  val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
-  val dstDirectoryName = "c:\\!temp\\Ubuntu\\"
+  /*val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
+  val dstDirectoryName = "c:\\!temp\\Ubuntu\\"*/
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
@@ -52,7 +52,7 @@ object DownloadFromPeers extends App {
       peerHash   <- random.nextBytes(12)
       localPeerId = Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
       metaInfo   <- FileIO.metaInfo
-      _          <- ZIO.foreachPar_(remotePeers) {
+      _          <- ZIO.foreachPar_(localPeers) {
                       case (host, port) =>
                         for {
                           address <- InetSocketAddress.hostName(host, port)

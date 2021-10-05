@@ -5,15 +5,7 @@ import torr.consoleui.SimpleProgressBar
 import torr.directbuffers.DirectBufferPool
 import zio._
 import zio.actors.ActorRef
-import torr.dispatcher.Actor.{
-  AcquireJob,
-  Command,
-  IsDownloadCompleted,
-  IsRemoteInteresting,
-  RegisterPeer,
-  ReleaseJob,
-  UnregisterPeer
-}
+import torr.dispatcher.Actor._
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
 import zio.clock.Clock
@@ -24,10 +16,10 @@ import scala.collection.mutable
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
-  def acquireJob(peerId: PeerId, remoteHave: Set[PieceId]): Task[AcquireJobResult] = {
+  def acquireJob(peerId: PeerId): Task[AcquireJobResult] = {
     for {
       p   <- Promise.make[Throwable, AcquireJobResult]
-      _   <- actor ? AcquireJob(peerId, remoteHave, p)
+      _   <- actor ? AcquireJob(peerId, p)
       res <- p.await
     } yield res
   }
@@ -35,15 +27,14 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def releaseJob(peerId: PeerId, job: => ReleaseJobStatus): Task[Unit] =
     actor ! ReleaseJob(peerId, job)
 
-  def isDownloadCompleted: Task[Boolean] =
-    actor ? IsDownloadCompleted
+  def isDownloadCompleted: Task[Boolean]                 = actor ? IsDownloadCompleted
+  def isRemoteInteresting(peerId: PeerId): Task[Boolean] = actor ? IsRemoteInteresting(peerId)
 
-  def isRemoteInteresting(remoteHave: Set[PieceId]): Task[Boolean] =
-    actor ? IsRemoteInteresting(remoteHave)
-
-  def registerPeer(peerId: PeerId): Task[Unit] = actor ! RegisterPeer(peerId)
-
+  def registerPeer(peerId: PeerId): Task[Unit]   = actor ! RegisterPeer(peerId)
   def unregisterPeer(peerId: PeerId): Task[Unit] = actor ! UnregisterPeer(peerId)
+
+  def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = actor ! ReportHave(peerId, piece)
+  def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = actor ! ReportHaveMany(peerId, pieces)
 
 }
 

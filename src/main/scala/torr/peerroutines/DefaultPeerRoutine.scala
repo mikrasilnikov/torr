@@ -18,17 +18,16 @@ object DefaultPeerRoutine {
 
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     for {
-      metaInfo      <- FileIO.metaInfo
-      bitField      <- peerHandle.receive[BitField]
-      _             <- validateRemoteBitSet(metaInfo, bitField.bits).ignore
-      remoteHaveRef <- Ref.make[Set[Int]](HashSet.from(bitField.bits.set))
+      metaInfo <- FileIO.metaInfo
+      bitField <- peerHandle.receive[BitField]
+      _        <- validateRemoteBitSet(metaInfo, bitField.bits)
+      _        <- Dispatcher.reportHaveMany(peerHandle.peerId, Set.from(bitField.bits.set))
 
-      haveFib  <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef).fork
+      haveFib  <- handleRemoteHave(peerHandle, metaInfo).fork
       aliveFib <- handleKeepAlive(peerHandle).fork
 
       _ <- PipelineDownloadRoutine.download(
              peerHandle,
-             remoteHaveRef,
              DownloadState(peerChoking = true, amInterested = false),
              maxConcurrentRequests = 128
            )
@@ -40,20 +39,19 @@ object DefaultPeerRoutine {
 
   private[peerroutines] def handleRemoteHave(
       peerHandle: PeerHandle,
-      metaInfo: MetaInfo,
-      remoteHaveRef: Ref[Set[Int]]
-  ): Task[Unit] = {
+      metaInfo: MetaInfo
+  ): RIO[Dispatcher, Unit] = {
     for {
       msg <- peerHandle.receive[Have]
       _   <- msg match {
                case Message.Have(pieceIndex) =>
                  for {
                    _ <- validatePieceIndex(metaInfo, pieceIndex)
-                   _ <- remoteHaveRef.update(s => s + pieceIndex)
+                   _ <- Dispatcher.reportHave(peerHandle.peerId, pieceIndex)
                  } yield ()
                case _                        => ???
              }
-      _   <- handleRemoteHave(peerHandle, metaInfo, remoteHaveRef)
+      _   <- handleRemoteHave(peerHandle, metaInfo)
     } yield ()
   }
 
@@ -65,11 +63,11 @@ object DefaultPeerRoutine {
     } yield ()
   }
 
-  //noinspection SimplifyUnlessInspection
+  //noinspection SimplifyUnlessInspection,SimplifyWhenInspection
   private def validateRemoteBitSet(metaInfo: MetaInfo, bitSet: TorrBitSet): Task[Unit] = {
-    if (metaInfo.pieceHashes.length != bitSet.length)
+    if (metaInfo.pieceHashes.length > bitSet.length)
       ZIO.fail(new ProtocolException(
-        s"metaInfo.pieceHashes.length(${metaInfo.pieceHashes.length}) != bitSet.length(${bitSet.length})"
+        s"metaInfo.pieceHashes.length(${metaInfo.pieceHashes.length}) > bitSet.length(${bitSet.length})"
       ))
     else ZIO.unit
   }

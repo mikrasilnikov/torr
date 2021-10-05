@@ -3,7 +3,6 @@ package torr.peerroutines.test
 import torr.directbuffers.DirectBufferPool
 import torr.directbuffers.test.DirectBufferPoolMock
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob, PieceId, ReleaseJobStatus}
-import torr.dispatcher.Actor.AcquireJobRequest
 import torr.dispatcher.test.DispatcherSpec.metaInfo
 import torr.fileio.FileIO
 import torr.fileio.test.FileIOMock
@@ -36,19 +35,19 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
 
         val expectations =
           IsDownloadCompleted(false) ::
-            IsRemoteInteresting(remoteHave, true) ::
+            IsRemoteInteresting(peerId, true) ::
             Send(Message.Interested) ::
             Receive(Message.Unchoke) ::
             Fork(
               left =
-                AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job1)) ::
+                AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job1)) ::
                   Poll(None) ::
                   Send(Message.Request(0, 0, 16 * 1024)) ::
                   Send(Message.Request(0, 16 * 1024, 16 * 1024)) ::
-                  AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job2)) ::
+                  AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job2)) ::
                   Send(Message.Request(1, 0, 16 * 1024)) ::
                   Send(Message.Request(1, 16 * 1024, 16 * 1024)) ::
-                  AcquireJob(peerId, remoteHave, AcquireJobResult.NotInterested) ::
+                  AcquireJob(peerId, AcquireJobResult.NotInterested) ::
                   Nil,
               right =
                 ReceiveBlock(0, 0, 16 * 1024) ::
@@ -67,10 +66,9 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
           case (dispatcher, peerHandle) =>
             val initialState = DownloadState(peerChoking = true, amInterested = false)
             for {
-              remoteHaveRef <- Ref.make[Set[PieceId]](remoteHave)
 
               _ <- PipelineDownloadRoutine
-                     .download(peerHandle, remoteHaveRef, initialState, maxConcurrentRequests = 1)
+                     .download(peerHandle, initialState, maxConcurrentRequests = 1)
                      .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)
@@ -93,10 +91,10 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
 
         val expectations =
           IsDownloadCompleted(false) ::
-            IsRemoteInteresting(remoteHave, true) ::
+            IsRemoteInteresting(peerId, true) ::
             Send(Message.Interested) ::
             Receive(Message.Unchoke) ::
-            AcquireJob(peerId, remoteHave, AcquireJobResult.AcquireSuccess(job)) ::
+            AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job)) ::
             Poll(Some(Message.Choke)) ::
             ReleaseJob(peerId, ReleaseJobStatus.Choked(job)) ::
             IsDownloadCompleted(true) ::
@@ -106,10 +104,8 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
           case (dispatcher, peerHandle) =>
             val initialState = DownloadState(peerChoking = true, amInterested = false)
             for {
-              remoteHaveRef <- Ref.make[Set[PieceId]](remoteHave)
-
               _ <- PipelineDownloadRoutine
-                     .download(peerHandle, remoteHaveRef, initialState, maxConcurrentRequests = 1)
+                     .download(peerHandle, initialState, maxConcurrentRequests = 1)
                      .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)

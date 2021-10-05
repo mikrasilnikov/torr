@@ -24,31 +24,29 @@ object SequentialDownloadRoutine {
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case true  => ZIO.unit
-      case false =>
-        remoteHaveRef.get.flatMap { remoteHave =>
-          Dispatcher.isRemoteInteresting(remoteHave).flatMap {
-            // Download is not completed and remote peer does not have pieces that we are interested in.
-            case false => download(peerHandle, remoteHaveRef, state, maxConcurrentRequests).delay(10.seconds)
-            case _     =>
-              for {
-                _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
-                _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
+      case false => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
+          // Download is not completed and remote peer does not have pieces that we are interested in.
+          case false => download(peerHandle, remoteHaveRef, state, maxConcurrentRequests).delay(10.seconds)
+          case _     =>
+            for {
+              _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
+              _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
-                // choked = false(?), interested = true
-                state1 <- Dispatcher.acquireJobManaged(peerHandle.peerId, remoteHave).use {
-                            case AcquireJobResult.AcquireSuccess(job) =>
-                              downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
-                                .map(choked => DownloadState(choked, amInterested = true))
+              // choked = false(?), interested = true
+              state1 <- Dispatcher.acquireJobManaged(peerHandle.peerId).use {
+                          case AcquireJobResult.AcquireSuccess(job) =>
+                            downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
+                              .map(choked => DownloadState(choked, amInterested = true))
 
-                            case AcquireJobResult.NotInterested       =>
-                              for {
-                                _ <- peerHandle.send(Message.NotInterested)
-                                _ <- ZIO.sleep(10.seconds)
-                              } yield DownloadState(peerChoking = false, amInterested = false)
-                          }
-                _      <- download(peerHandle, remoteHaveRef, state1, maxConcurrentRequests)
-              } yield ()
-          }
+                          case AcquireJobResult.NotInterested       =>
+                            for {
+                              _ <- peerHandle.send(Message.NotInterested)
+                              _ <- ZIO.sleep(10.seconds)
+                            } yield DownloadState(peerChoking = false, amInterested = false)
+                        }
+              _      <- download(peerHandle, remoteHaveRef, state1, maxConcurrentRequests)
+            } yield ()
+
         }
     }
   }
