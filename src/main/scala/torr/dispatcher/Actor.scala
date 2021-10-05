@@ -1,10 +1,13 @@
 package torr.dispatcher
 
+import torr.consoleui.ConsoleUI
 import zio._
 import zio.actors.Actor.Stateful
 import zio.actors.Context
+
 import scala.collection.mutable
 import torr.metainfo.MetaInfo
+
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable.ArrayBuffer
 
@@ -29,6 +32,8 @@ object Actor {
   case class ReportDownloadSpeed(peerId: PeerId, value: Int)                           extends Command[Unit]
   case class ReportUploadSpeed(peerId: PeerId, value: Int)                             extends Command[Unit]
 
+  private[dispatcher] case object DrawProgress extends Command[Unit]
+
   /**
     * Code that is responsible for interacting with a remote peer (a `peer routine`) is expected to allocate,
     * execute and release download jobs. The dispatcher service keeps track of such jobs.
@@ -51,9 +56,9 @@ object Actor {
       suspendedJobs: mutable.Map[PieceId, DownloadJob] = mutable.HashMap[PieceId, DownloadJob]()
   )
 
-  val stateful = new Stateful[Any, State, Command] {
+  val stateful = new Stateful[ConsoleUI, State, Command] {
     //noinspection WrapInsteadOfLiftInspection
-    def receive[A](state: State, msg: Command[A], context: Context): RIO[Any, (State, A)] =
+    def receive[A](state: State, msg: Command[A], context: Context): RIO[ConsoleUI, (State, A)] =
       msg match {
         case RegisterPeer(peerId)               => ZIO(registerPeer(state, peerId)).as((state, ()))
         case UnregisterPeer(peerId)             => ZIO(unregisterPeer(state, peerId)).as((state, ()))
@@ -65,6 +70,7 @@ object Actor {
         case ReleaseJob(peerId, jobWithStatus)  => releaseJob(state, peerId, jobWithStatus).as(state, ())
         case IsDownloadCompleted                => ZIO(isDownloadCompleted(state)).map(res => (state, res))
         case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
+        case DrawProgress                       => drawProgress(state).as(state, ())
       }
   }
 
@@ -361,5 +367,12 @@ object Actor {
 
   private[dispatcher] def isRemoteInteresting(state: State, peerId: PeerId): Boolean = {
     state.registeredPeers(peerId).interesting.nonEmpty
+  }
+
+  private def drawProgress(state: State): RIO[ConsoleUI, Unit] = {
+    for {
+      _ <- ConsoleUI.clear
+      _ <- ConsoleUI.draw(state)
+    } yield ()
   }
 }

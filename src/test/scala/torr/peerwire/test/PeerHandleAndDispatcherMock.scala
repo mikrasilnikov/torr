@@ -5,6 +5,7 @@ import torr.peerwire.{Message, PeerHandle}
 import zio._
 import zio.nio.core.Buffer
 
+import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
 
 object PeerHandleAndDispatcherMock {
@@ -177,6 +178,8 @@ object PeerHandleAndDispatcherMock {
         def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] = ???
 
         def peerId: PeerId = mockPeerId
+
+        def peerIdStr: String = new String(mockPeerId.toArray, StandardCharsets.US_ASCII)
 
         def onMessage(msg: Message): Task[Unit] = ???
         private[peerwire] def sendActor         = ???

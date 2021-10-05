@@ -1,6 +1,7 @@
 package torr.examples
 
 import torr.actorsystem.ActorSystemLive
+import torr.consoleui.SimpleConsoleUI
 import torr.directbuffers.{DirectBufferPool, FixedBufferPool, GrowableBufferPool}
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
@@ -70,8 +71,8 @@ object DownloadFromPeers extends App {
       //Slf4jLogger.make((_, message) => message),
       GrowableBufferPool.make(512),
       FileIOLive.make(metaInfoFile, dstDirectoryName),
-      DispatcherLive.make
+      DispatcherLive.make,
+      SimpleConsoleUI.make
     ).exitCode
   }
-
 }

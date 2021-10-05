@@ -39,6 +39,8 @@ object DefaultPeerRoutine {
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt
       _ <- speedFib.interrupt
+
+      _ <- ZIO(println(s"${peerHandle.peerIdStr} exited"))
     } yield ()
   }
 
@@ -72,7 +74,7 @@ object DefaultPeerRoutine {
       peerHandle: PeerHandle,
       downSpeedAccRef: Ref[Long],
       upSpeedAccRef: Ref[Long],
-      periodSeconds: Int = 3
+      periodSeconds: Int = 1
   ): RIO[Dispatcher with Clock, Unit] = {
     for {
       dl <- downSpeedAccRef.getAndSet(0L)
@@ -84,7 +86,8 @@ object DefaultPeerRoutine {
       _ <- Dispatcher.reportDownloadSpeed(peerHandle.peerId, dlSpeed)
       _ <- Dispatcher.reportUploadSpeed(peerHandle.peerId, ulSpeed)
 
-      _ <- ZIO.sleep(periodSeconds.seconds)
+      _ <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef, periodSeconds)
+             .delay(periodSeconds.seconds)
     } yield ()
   }
 

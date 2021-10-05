@@ -4,7 +4,7 @@ import torr.dispatcher.Actor.{State => DispatcherState}
 
 import scala.annotation.tailrec
 
-object DispatcherStateUi {
+object TorrentProgressBar {
 
   def renderProgressBar(state: DispatcherState, label: String, numCells: Int): String = {
     val sb = new StringBuilder
@@ -25,7 +25,7 @@ object DispatcherStateUi {
     sb.result()
   }
 
-  private[consoleui] def renderProgressCells(state: DispatcherState, numCells: Int, acc: StringBuilder): Unit = {
+  private def renderProgressCells(state: DispatcherState, numCells: Int, acc: StringBuilder): Unit = {
     val numPieces = state.metaInfo.pieceHashes.size
 
     @tailrec

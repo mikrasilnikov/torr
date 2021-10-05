@@ -2,6 +2,7 @@ package torr.peerwire.test
 
 import torr.actorsystem.ActorSystemLive
 import torr.channels.test.TestSocketChannel
+import torr.consoleui.NullConsoleUI
 import torr.directbuffers.FixedBufferPool
 import torr.dispatcher.DispatcherLive
 import torr.fileio.test.FileIOMock
@@ -44,6 +45,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -71,6 +73,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -94,6 +97,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8)
@@ -121,6 +125,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         val effect1 = effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -157,6 +162,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -201,6 +207,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)
@@ -240,6 +247,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Slf4jLogger.make((_, message) => message),
           FixedBufferPool.make(8, 100)

@@ -1,7 +1,7 @@
 package torr.dispatcher
 
 import torr.actorsystem.ActorSystem
-import torr.consoleui.SimpleProgressBar
+import torr.consoleui.{ConsoleUI, SimpleProgressBar}
 import torr.directbuffers.DirectBufferPool
 import zio._
 import zio.actors.ActorRef
@@ -41,33 +41,42 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 }
 
 object DispatcherLive {
-  def make: ZLayer[ActorSystem with DirectBufferPool with FileIO with Clock with Console, Throwable, Dispatcher] = {
+
+  def make: ZLayer[
+    ConsoleUI with ActorSystem with DirectBufferPool with FileIO with Clock with Console,
+    Throwable,
+    Dispatcher
+  ] = {
+
     val effect = for {
-      fileIO        <- ZIO.service[FileIO.Service]
-      metaInfo      <- fileIO.metaInfo
-      filesAreFresh <- fileIO.freshFilesWereAllocated
+      fileIO        <- ZIO.service[FileIO.Service].toManaged_
+      metaInfo      <- fileIO.metaInfo.toManaged_
+      filesAreFresh <- fileIO.freshFilesWereAllocated.toManaged_
 
-      localHave <- if (filesAreFresh)
-                     ZIO.succeed(new Array[Boolean](metaInfo.pieceHashes.length))
-                   else
-                     for {
-                       pieceRef    <- Ref.make[Int](0)
-                       progressRef <- (updateProgress(pieceRef, metaInfo.pieceHashes.size) *>
-                                        ZIO.sleep(1.second))
-                                        .forever.fork
-                       res         <- checkTorrent(metaInfo, pieceRef)
-                       _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
-                     } yield res
+      localHave <- (if (filesAreFresh)
+                      ZIO.succeed(new Array[Boolean](metaInfo.pieceHashes.length))
+                    else
+                      for {
+                        pieceRef    <- Ref.make[Int](0)
+                        progressRef <- (updateProgress(pieceRef, metaInfo.pieceHashes.size) *>
+                                         ZIO.sleep(1.second))
+                                         .forever.fork
+                        res         <- checkTorrent(metaInfo, pieceRef)
+                        _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
+                      } yield res).toManaged_
 
-      res       <- make(Actor.State(metaInfo, localHave))
+      actor     <- makeActor(Actor.State(metaInfo, localHave)).toManaged(actor => actor.stop.orDie)
+      uiFiber   <- drawConsoleUI(actor).fork.toManaged(fib => fib.interrupt *> ZIO(println("progress interrupted")).orDie)
 
-    } yield res
+    } yield DispatcherLive(actor)
 
     effect.toLayer
+
   }
 
-  private[dispatcher] def make(state: Actor.State): RIO[ActorSystem with Clock, DispatcherLive] = {
-    for {
+  private[dispatcher] def makeActor(state: Actor.State)
+      : RIO[ConsoleUI with ActorSystem with Clock, ActorRef[Command]] = {
+    val effect = for {
       system <- ZIO.service[ActorSystem.Service]
       actor  <- system.system.make(
                   "DispatcherLive",
@@ -75,7 +84,9 @@ object DispatcherLive {
                   state,
                   Actor.stateful
                 )
-    } yield DispatcherLive(actor)
+    } yield actor
+
+    effect
   }
 
   private def checkTorrent(
@@ -98,8 +109,15 @@ object DispatcherLive {
     for {
       current <- currentRef.get
       progress = current * 100 / total
-      output   = SimpleProgressBar.render("Checking files", 60, progress)
+      output   = SimpleProgressBar.render("Checking files  ", 50, progress)
       _       <- (putStr("\b" * output.length) *> putStr(output)).uninterruptible
+    } yield ()
+  }
+
+  private def drawConsoleUI(actor: ActorRef[Command]): RIO[Clock, Unit] = {
+    for {
+      _ <- actor ! DrawProgress
+      _ <- drawConsoleUI(actor).delay(1.second)
     } yield ()
   }
 

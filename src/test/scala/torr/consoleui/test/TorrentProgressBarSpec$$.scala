@@ -1,6 +1,6 @@
 package torr.consoleui.test
 
-import torr.consoleui.DispatcherStateUi
+import torr.consoleui.TorrentProgressBar
 import zio._
 import zio.nio.core.file.Path
 import zio.test._
@@ -11,21 +11,21 @@ import torr.metainfo.test.MetaInfoSpec.toBytes
 
 import scala.collection.mutable
 
-object DispatcherStateUiSpec extends DefaultRunnableSpec {
+object TorrentProgressBarSpec$$ extends DefaultRunnableSpec {
   override def spec =
     suite("DispatcherStateUiSpec")(
       //
       test("ProgressBar - empty (10 pcs)") {
         val expected = "Downloading [          ]   0%"
         val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
       test("ProgressBar - empty (1 pcs)") {
         val expected = "Downloading [          ]   0%"
         val state    = DispatcherState(metaInfo(1), new Array[Boolean](1))
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -33,7 +33,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [==========] 100%"
         val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
         (0 until 10).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -41,7 +41,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [==========] 100%"
         val state    = DispatcherState(metaInfo(1), new Array[Boolean](1))
         (0 until 1).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -49,7 +49,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [=====     ]  50%"
         val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
         (0 to 4).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -57,7 +57,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [     =====]  50%"
         val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
         (5 to 9).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -65,7 +65,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [    =     ]  10%"
         val state    = DispatcherState(metaInfo(10), new Array[Boolean](10))
         (4 to 4).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       },
       //
@@ -73,7 +73,7 @@ object DispatcherStateUiSpec extends DefaultRunnableSpec {
         val expected = "Downloading [          ]   5%"
         val state    = DispatcherState(metaInfo(20), new Array[Boolean](20))
         (10 to 10).foreach(state.localHave(_) = true)
-        val actual   = DispatcherStateUi.renderProgressBar(state, "Downloading", 10)
+        val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
         assert(actual)(equalTo(expected))
       }
     )

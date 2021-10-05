@@ -10,6 +10,7 @@ import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{Dispatcher, PeerId}
 
+import java.nio.charset.StandardCharsets
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -60,6 +61,8 @@ case class PeerHandleLive(
 
   def onMessage(msg: Message): Task[Unit] =
     receiveActor ? ReceiveActor.OnMessage(msg)
+
+  def peerIdStr: String = new String(peerId.toArray, StandardCharsets.US_ASCII)
 }
 
 object PeerHandleLive {

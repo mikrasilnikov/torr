@@ -116,7 +116,7 @@ object FileIOLive {
     for {
       written <- refWritten.get
       progress = written * 100 / total
-      output   = SimpleProgressBar.render("Allocating files", 60, progress.toInt)
+      output   = SimpleProgressBar.render("Allocating files", 50, progress.toInt)
       _       <- (putStr("\b" * output.length) *> putStr(output)).uninterruptible
     } yield ()
   }

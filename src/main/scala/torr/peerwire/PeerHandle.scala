@@ -7,6 +7,7 @@ import torr.dispatcher.PeerId
 
 trait PeerHandle {
   def peerId: PeerId
+  def peerIdStr: String
   def send(msg: Message): Task[Unit]
   def receive[M <: Message](implicit tag: ClassTag[M]): Task[M]
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message]

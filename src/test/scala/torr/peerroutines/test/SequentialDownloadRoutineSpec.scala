@@ -2,6 +2,7 @@ package torr.peerroutines.test
 
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.channels.test.TestSocketChannel
+import torr.consoleui.NullConsoleUI
 import torr.directbuffers.DirectBufferPool
 import torr.directbuffers.test.DirectBufferPoolMock
 import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadJob}
@@ -39,6 +40,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DirectBufferPoolMock.empty
@@ -78,6 +80,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -122,6 +125,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -166,6 +170,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           fileIOMock,
           DirectBufferPoolMock.empty
@@ -204,6 +209,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           DispatcherLive.make,
+          NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
           DirectBufferPoolMock.empty
