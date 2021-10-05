@@ -20,8 +20,8 @@ import scala.collection.immutable.HashMap
 object DownloadFromPeers extends App {
 
   val localPeers = List(
-    ("localhost", 57617)
-    //("localhost", 57618)
+    ("localhost", 57617),
+    ("localhost", 57618)
     //("localhost", 57619)
   )
 

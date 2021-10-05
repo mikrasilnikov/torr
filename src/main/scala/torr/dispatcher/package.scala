@@ -36,6 +36,9 @@ package object dispatcher {
       def acquireJob(peerId: PeerId): Task[AcquireJobResult]
       def releaseJob(peerId: PeerId, releaseStatus: => ReleaseJobStatus): Task[Unit]
 
+      def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
+      def reportUploadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
+
       def acquireJobManaged(peerId: PeerId): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(peerId)) {
           case AcquireJobResult.AcquireSuccess(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie

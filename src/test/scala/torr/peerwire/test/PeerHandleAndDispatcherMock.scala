@@ -85,6 +85,9 @@ object PeerHandleAndDispatcherMock {
 
         def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = ???
         def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = ???
+
+        def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit] = ???
+        def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   = ???
       }
 
       val peerHandle = new PeerHandle {

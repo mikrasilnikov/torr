@@ -14,7 +14,7 @@ import scala.collection.immutable
 
 object PipelineDownloadRoutine {
 
-  final case class SentRequest(job: DownloadJob, request: Message.Request)
+  final case class SentRequest(job: DownloadJob, msg: Message.Request)
 
   sealed trait SenderResult
   object SenderResult {
@@ -31,23 +31,23 @@ object PipelineDownloadRoutine {
   def download(
       peerHandle: PeerHandle,
       state: DownloadState,
-      maxConcurrentRequests: Int
+      downSpeedAccRef: Ref[Long]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case true  => ZIO.unit
       case false => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
           // Download is not completed and remote peer does not have pieces that we are interested in.
-          case false => download(peerHandle, state, maxConcurrentRequests).delay(10.seconds)
-          case _     => downloadWhileInterested(peerHandle, state, maxConcurrentRequests)
+          case false => download(peerHandle, state, downSpeedAccRef).delay(10.seconds)
+          case _     => downloadWhileInterested(peerHandle, state, downSpeedAccRef)
         }
-
     }
   }
 
   def downloadWhileInterested(
       peerHandle: PeerHandle,
       state: DownloadState,
-      maxConcurrentRequests: Int
+      downSpeedAccRef: Ref[Long],
+      maxConcurrentRequests: Int = 192
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
     for {
       _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
@@ -63,7 +63,7 @@ object PipelineDownloadRoutine {
                      .onError(e => (ZIO(println(e)) *> requests.offer(None)).ignore)
                      .fork
 
-      rcvResult <- receiveResponses(peerHandle, requests)
+      rcvResult <- receiveResponses(peerHandle, requests, downSpeedAccRef)
 
       _ <- rcvResult match {
              // Remote peer has choked us. Sender is probably blocked by queue.Offer call.
@@ -84,7 +84,7 @@ object PipelineDownloadRoutine {
                  _ <- downloadWhileInterested(
                         peerHandle,
                         DownloadState(amInterested = true, peerChoking = true),
-                        maxConcurrentRequests
+                        downSpeedAccRef
                       )
                } yield ()
 
@@ -100,14 +100,14 @@ object PipelineDownloadRoutine {
                                     download(
                                       peerHandle,
                                       DownloadState(amInterested = false, peerChoking = false),
-                                      maxConcurrentRequests
+                                      downSpeedAccRef
                                     )
 
                                 case SenderResult.ChokedOnQueue =>
                                   download(
                                     peerHandle,
                                     DownloadState(amInterested = true, peerChoking = true),
-                                    maxConcurrentRequests
+                                    downSpeedAccRef
                                   )
                               }
                } yield ()
@@ -172,18 +172,19 @@ object PipelineDownloadRoutine {
   private def receiveResponses(
       peerHandle: PeerHandle,
       requestQueue: Queue[Option[SentRequest]],
+      downSpeedAccRef: Ref[Long],
       lastSeenJob: Option[DownloadJob] = None,      // Last job that has been dequeued from the requestQueue.
       lastProcessedJob: Option[DownloadJob] = None, // Last job a request has been processed from.
       // Response reordering buffers.
       requestsInOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
       receivedResponses: immutable.HashMap[(Int, Int), Message.Piece] =
         immutable.HashMap.empty[(Int, Int), Message.Piece]
-  ): RIO[Dispatcher with FileIO, ReceiverResult] = {
+  ): RIO[Dispatcher with FileIO with Clock, ReceiverResult] = {
 
     // Next response in order to process if available.
     val nextResponseInOrderOption = for {
       req  <- requestsInOrder.headOption
-      key   = (req.request.index, req.request.offset)
+      key   = (req.msg.index, req.msg.offset)
       resp <- receivedResponses.get(key)
     } yield (resp, key, req)
 
@@ -194,12 +195,14 @@ object PipelineDownloadRoutine {
         // If the response being processed is related to the next job, we must release the previous one.
         _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Active(lastProcessedJob.get))
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
-        _   <- validateResponse(response, request.request)
+        _   <- validateResponse(response, request.msg)
         _   <- request.job.hashBlock(response.offset, response.block)
         _   <- FileIO.store(response.index, response.offset, Chunk(response.block))
+        _   <- downSpeedAccRef.update(_ + request.msg.length)
         res <- receiveResponses(
                  peerHandle,
                  requestQueue,
+                 downSpeedAccRef,
                  lastSeenJob,
                  Some(request.job),
                  requestsInOrder.tail,
@@ -225,32 +228,35 @@ object PipelineDownloadRoutine {
           }
 
         case Some(sent) =>
-          peerHandle.receive[Piece, Choke].flatMap { // TODO timeoutFail
+          peerHandle.receive[Piece, Choke]
+            .timeoutFail(new ProtocolException("Remote peer has not responded for 10 seconds"))(10.seconds)
+            .flatMap {
 
-            case resp @ Message.Piece(_, _, _) =>
-              val responseKey = (resp.index, resp.offset)
-              receiveResponses(
-                peerHandle,
-                requestQueue,
-                Some(sent.job),
-                lastProcessedJob,
-                requestsInOrder :+ sent,
-                receivedResponses + (responseKey -> resp)
-              )
+              case resp @ Message.Piece(_, _, _) =>
+                val responseKey = (resp.index, resp.offset)
+                receiveResponses(
+                  peerHandle,
+                  requestQueue,
+                  downSpeedAccRef,
+                  Some(sent.job),
+                  lastProcessedJob,
+                  requestsInOrder :+ sent,
+                  receivedResponses + (responseKey -> resp)
+                )
 
-            case Message.Choke                 =>
-              val currentlyProcessedJobs = requestsInOrder.map(_.job).distinct.toSet + sent.job
-              for {
-                _ <- ZIO.foreach_(currentlyProcessedJobs)(j =>
-                       Dispatcher.releaseJob(
-                         peerHandle.peerId,
-                         ReleaseJobStatus.Choked(j)
+              case Message.Choke                 =>
+                val currentlyProcessedJobs = requestsInOrder.map(_.job).distinct.toSet + sent.job
+                for {
+                  _ <- ZIO.foreach_(currentlyProcessedJobs)(j =>
+                         Dispatcher.releaseJob(
+                           peerHandle.peerId,
+                           ReleaseJobStatus.Choked(j)
+                         )
                        )
-                     )
-              } yield ReceiverResult.Choked(sent.job)
+                } yield ReceiverResult.Choked(sent.job)
 
-            case _                             => ???
-          }
+              case _                             => ???
+            }
       }
     }
   }

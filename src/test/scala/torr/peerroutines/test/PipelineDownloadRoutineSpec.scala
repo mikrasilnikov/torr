@@ -66,10 +66,10 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
           case (dispatcher, peerHandle) =>
             val initialState = DownloadState(peerChoking = true, amInterested = false)
             for {
-
-              _ <- PipelineDownloadRoutine
-                     .download(peerHandle, initialState, maxConcurrentRequests = 1)
-                     .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
+              spdRef <- Ref.make(0L)
+              _      <- PipelineDownloadRoutine
+                          .download(peerHandle, initialState, spdRef)
+                          .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)
         }
@@ -104,9 +104,10 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
           case (dispatcher, peerHandle) =>
             val initialState = DownloadState(peerChoking = true, amInterested = false)
             for {
-              _ <- PipelineDownloadRoutine
-                     .download(peerHandle, initialState, maxConcurrentRequests = 1)
-                     .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
+              spdRef <- Ref.make(0L)
+              _      <- PipelineDownloadRoutine
+                          .download(peerHandle, initialState, spdRef)
+                          .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)
         }

@@ -23,17 +23,22 @@ object DefaultPeerRoutine {
       _        <- validateRemoteBitSet(metaInfo, bitField.bits)
       _        <- Dispatcher.reportHaveMany(peerHandle.peerId, Set.from(bitField.bits.set))
 
+      downSpeedAccRef <- Ref.make(0L)
+      upSpeedAccRef   <- Ref.make(0L)
+
       haveFib  <- handleRemoteHave(peerHandle, metaInfo).fork
       aliveFib <- handleKeepAlive(peerHandle).fork
+      speedFib <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
 
       _ <- PipelineDownloadRoutine.download(
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
-             maxConcurrentRequests = 128
+             downSpeedAccRef
            )
 
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt
+      _ <- speedFib.interrupt
     } yield ()
   }
 
@@ -60,6 +65,26 @@ object DefaultPeerRoutine {
       _ <- peerHandle.receive[KeepAlive]
       _ <- peerHandle.send(Message.KeepAlive)
       _ <- handleKeepAlive(peerHandle)
+    } yield ()
+  }
+
+  private def reportSpeeds(
+      peerHandle: PeerHandle,
+      downSpeedAccRef: Ref[Long],
+      upSpeedAccRef: Ref[Long],
+      periodSeconds: Int = 3
+  ): RIO[Dispatcher with Clock, Unit] = {
+    for {
+      dl <- downSpeedAccRef.getAndSet(0L)
+      ul <- upSpeedAccRef.getAndSet(0L)
+
+      dlSpeed = (dl.toDouble / periodSeconds).toInt
+      ulSpeed = (ul.toDouble / periodSeconds).toInt
+
+      _ <- Dispatcher.reportDownloadSpeed(peerHandle.peerId, dlSpeed)
+      _ <- Dispatcher.reportUploadSpeed(peerHandle.peerId, ulSpeed)
+
+      _ <- ZIO.sleep(periodSeconds.seconds)
     } yield ()
   }
 

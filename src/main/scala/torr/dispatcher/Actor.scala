@@ -12,7 +12,9 @@ object Actor {
 
   final case class RegisteredPeer(
       have: mutable.Set[PieceId] = mutable.HashSet[PieceId](),
-      interesting: mutable.Set[PieceId] = mutable.HashSet[PieceId]()
+      interesting: mutable.Set[PieceId] = mutable.HashSet[PieceId](),
+      var downloadSpeed: Int = 0,
+      var uploadSpeed: Int = 0
   )
 
   sealed trait Command[+_]
@@ -24,6 +26,8 @@ object Actor {
   case class ReleaseJob(peerId: PeerId, jobWithStatus: ReleaseJobStatus)               extends Command[Unit]
   case object IsDownloadCompleted                                                      extends Command[Boolean]
   case class IsRemoteInteresting(peerId: PeerId)                                       extends Command[Boolean]
+  case class ReportDownloadSpeed(peerId: PeerId, value: Int)                           extends Command[Unit]
+  case class ReportUploadSpeed(peerId: PeerId, value: Int)                             extends Command[Unit]
 
   /**
     * Code that is responsible for interacting with a remote peer (a `peer routine`) is expected to allocate,
@@ -51,14 +55,16 @@ object Actor {
     //noinspection WrapInsteadOfLiftInspection
     def receive[A](state: State, msg: Command[A], context: Context): RIO[Any, (State, A)] =
       msg match {
-        case RegisterPeer(peerId)              => ZIO(registerPeer(state, peerId)).as((state, ()))
-        case UnregisterPeer(peerId)            => ZIO(unregisterPeer(state, peerId)).as((state, ()))
-        case ReportHave(peerId, piece)         => ZIO(reportHave(state, peerId, piece)).as((state, ()))
-        case ReportHaveMany(peerId, pieces)    => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
-        case AcquireJob(peerId, promise)       => acquireJob(state, peerId, promise).as((state, ()))
-        case ReleaseJob(peerId, jobWithStatus) => releaseJob(state, peerId, jobWithStatus).as(state, ())
-        case IsDownloadCompleted               => ZIO(isDownloadCompleted(state)).map(res => (state, res))
-        case IsRemoteInteresting(peerId)       => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
+        case RegisterPeer(peerId)               => ZIO(registerPeer(state, peerId)).as((state, ()))
+        case UnregisterPeer(peerId)             => ZIO(unregisterPeer(state, peerId)).as((state, ()))
+        case ReportHave(peerId, piece)          => ZIO(reportHave(state, peerId, piece)).as((state, ()))
+        case ReportHaveMany(peerId, pieces)     => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
+        case ReportDownloadSpeed(peerId, value) => ZIO(reportDownloadSpeed(state, peerId, value)).as((state, ()))
+        case ReportUploadSpeed(peerId, value)   => ZIO(reportUploadSpeed(state, peerId, value)).as((state, ()))
+        case AcquireJob(peerId, promise)        => acquireJob(state, peerId, promise).as((state, ()))
+        case ReleaseJob(peerId, jobWithStatus)  => releaseJob(state, peerId, jobWithStatus).as(state, ())
+        case IsDownloadCompleted                => ZIO(isDownloadCompleted(state)).map(res => (state, res))
+        case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
       }
   }
 
@@ -118,6 +124,24 @@ object Actor {
         if (!state.localHave(piece))
           peer.interesting.add(piece)
       }
+    }
+  }
+
+  private def reportDownloadSpeed(state: State, peerId: PeerId, value: Int): Unit = {
+    state.registeredPeers.get(peerId) match {
+      case Some(peer) => peer.downloadSpeed = value
+      case None       =>
+        val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+        throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
+    }
+  }
+
+  private def reportUploadSpeed(state: State, peerId: PeerId, value: Int): Unit = {
+    state.registeredPeers.get(peerId) match {
+      case Some(peer) => peer.uploadSpeed = value
+      case None       =>
+        val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+        throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
     }
   }
 
@@ -332,7 +356,7 @@ object Actor {
   }
 
   private[dispatcher] def isDownloadCompleted(state: State): Boolean = {
-    state.metaInfo.pieceHashes.indices.forall(state.localHave)
+    state.localHave.forall(identity)
   }
 
   private[dispatcher] def isRemoteInteresting(state: State, peerId: PeerId): Boolean = {
