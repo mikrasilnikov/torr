@@ -61,6 +61,8 @@ case class InMemoryChannel(state: RefM[InMemoryChannelState]) extends SeekableBy
 
       case _                            => ???
     }
+
+  def close: Task[Unit] = ZIO.unit
 }
 
 object InMemoryChannel {

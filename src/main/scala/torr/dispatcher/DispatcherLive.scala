@@ -11,6 +11,7 @@ import torr.metainfo.MetaInfo
 import zio.clock.Clock
 import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
+import zio.logging.Logging
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
@@ -43,11 +44,10 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 object DispatcherLive {
 
   def make: ZLayer[
-    ConsoleUI with ActorSystem with DirectBufferPool with FileIO with Clock with Console,
+    ConsoleUI with ActorSystem with DirectBufferPool with FileIO with Logging with Console with Clock,
     Throwable,
     Dispatcher
   ] = {
-
     val effect = for {
       fileIO        <- ZIO.service[FileIO.Service].toManaged_
       metaInfo      <- fileIO.metaInfo.toManaged_
@@ -65,8 +65,19 @@ object DispatcherLive {
                         _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
                       } yield res).toManaged_
 
-      actor     <- makeActor(Actor.State(metaInfo, localHave)).toManaged(actor => actor.stop.orDie)
-      uiFiber   <- drawConsoleUI(actor).fork.toManaged(fib => fib.interrupt *> ZIO(println("progress interrupted")).orDie)
+      actor     <- makeActor(Actor.State(metaInfo, localHave))
+                     .toManaged(actor =>
+                       Logging.debug("dispatcher actor stopping") *>
+                         actor.stop.orDie *>
+                         Logging.debug("dispatcher actor stopped")
+                     )
+
+      _         <- drawConsoleUI(actor).interruptible.fork
+                     .toManaged(fib =>
+                       Logging.debug("DispatcherLive.drawConsoleUI interrupting") *>
+                         fib.interrupt.unit *>
+                         Logging.debug("DispatcherLive.drawConsoleUI interrupted")
+                     )
 
     } yield DispatcherLive(actor)
 

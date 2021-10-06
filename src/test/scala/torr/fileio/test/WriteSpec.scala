@@ -13,6 +13,7 @@ import torr.fileio.{Actor, EntryAddr, FileIOLive, ReadEntry}
 import zio.actors.ActorRef
 import zio.clock.Clock
 import zio.duration.durationInt
+import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.test.environment.{Live, TestClock}
@@ -45,6 +46,13 @@ object WriteSpec extends DefaultRunnableSpec {
 
         val env = createEnv(1, 8)
         effect.provideLayer(env)
+
+        /*effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(1, 8)
+        )*/
+
       },
       //
       testM("Single write - before write out") {
@@ -217,14 +225,14 @@ object WriteSpec extends DefaultRunnableSpec {
           FixedBufferPool.make(1, 8)
         )
       }
-    ) @@ sequential
+    ) //@@ sequential
 
   def createEnv(
       directBuffersNum: Int,
       directBufferSize: Int
   ) = {
-    val actorSystem = ActorSystemLive.make("Test")
     val logging     = Slf4jLogger.make((_, message) => message)
+    val actorSystem = logging >>> ActorSystemLive.make("Test")
     val clock       = TestClock.default
     val bufferPool  = (actorSystem ++ logging ++ clock) >>> FixedBufferPool.make(directBuffersNum, directBufferSize)
     clock ++ bufferPool ++ actorSystem

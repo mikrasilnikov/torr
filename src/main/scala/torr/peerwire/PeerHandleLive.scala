@@ -9,6 +9,7 @@ import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{Dispatcher, PeerId}
+import zio.logging.Logging
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable
@@ -73,7 +74,7 @@ object PeerHandleLive {
       address: InetSocketAddress,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
-  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock, Throwable, PeerHandle] = {
     for {
       nioChannel <- AsynchronousSocketChannel.open()
       _          <- nioChannel.connect(address).toManaged_
@@ -89,7 +90,7 @@ object PeerHandleLive {
       channelName: String,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
-  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock, Throwable, PeerHandle] = {
     for {
       _         <- Message.sendHandshake(infoHash, localPeerId, channel, msgBuf).toManaged_
       handshake <- Message.receiveHandshake(channel, msgBuf).toManaged_
@@ -103,15 +104,39 @@ object PeerHandleLive {
       channelName: String,
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig = PeerActorConfig.default
-  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Clock, Throwable, PeerHandle] = {
+  ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock, Throwable, PeerHandle] = {
+    val peerIdStr = new String(remotePeerId.toArray, StandardCharsets.US_ASCII)
     for {
-      _            <- Dispatcher.registerPeer(remotePeerId)
-                        .toManaged(_ => Dispatcher.unregisterPeer(remotePeerId).orDie)
-      actorP       <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
-      receiveFiber <- receiveProc(channel, msgBuf, actorP).fork.toManaged(_.interrupt)
+      _      <- Dispatcher.registerPeer(remotePeerId)
+                  .toManaged(_ =>
+                    Logging.debug(s"$peerIdStr: unregistering peer") *>
+                      Dispatcher.unregisterPeer(remotePeerId).orDie *>
+                      Logging.debug(s"$peerIdStr: unregistered peer")
+                  )
+
+      actorP <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
+
+      receiveFiber <- receiveProc(channel, msgBuf, actorP).fork
+                        .toManaged(fib =>
+                          Logging.debug(s"$peerIdStr: ReceiveActor.receiveProc interrupting") *>
+                            fib.interrupt *>
+                            Logging.debug(s"$peerIdStr: ReceiveActor.receiveProc interrupted")
+                        )
+
       receiveActor <- createReceiveActor(channel, channelName, remotePeerId, actorConfig)
-                        .toManaged(shutdownReceiveActor)
-      sendActor    <- createSendActor(channel, channelName, receiveActor).toManaged(_.stop.orDie)
+                        .toManaged(actor =>
+                          Logging.debug(s"$peerIdStr: ReceiveActor shutting down") *>
+                            shutdownReceiveActor(actor) *>
+                            Logging.debug(s"$peerIdStr: ReceiveActor shut down")
+                        )
+
+      sendActor    <- createSendActor(channel, channelName, receiveActor)
+                        .toManaged(actor =>
+                          Logging.debug(s"$peerIdStr: SendActor shutting down") *>
+                            actor.stop.orDie *>
+                            Logging.debug(s"$peerIdStr: SendActor shut down")
+                        )
+
       _            <- actorP.succeed(receiveActor).toManaged_
     } yield PeerHandleLive(remotePeerId, sendActor, receiveActor, receiveFiber)
   }
@@ -124,8 +149,8 @@ object PeerHandleLive {
 
     val supervisor =
       actors.Supervisor.retryOrElse(
-        Schedule.stop,
-        (e, _: Unit) =>
+        Schedule.forever,
+        (e, _: Long) =>
           for {
             _ <- (receiveActor ! ReceiveActor.StartFailing(e)).orDie
           } yield ()
@@ -148,13 +173,13 @@ object PeerHandleLive {
       channelName: String,
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig
-  ): ZIO[DirectBufferPool with Clock with ActorSystem, Throwable, ActorRef[ReceiveActor.Command]] = {
+  ): ZIO[DirectBufferPool with Clock with ActorSystem with Logging, Throwable, ActorRef[ReceiveActor.Command]] = {
 
     // Supervisor that sends message StartFailing(...) to actor after first error.
     def makeSupervisor(promise: Promise[Nothing, ActorRef[ReceiveActor.Command]]) =
       actors.Supervisor.retryOrElse(
-        Schedule.stop,
-        (e, _: Unit) =>
+        Schedule.forever,
+        (e, _: Long) =>
           for {
             actor <- promise.await
             _     <- (actor ! ReceiveActor.StartFailing(e)).orDie
@@ -175,7 +200,8 @@ object PeerHandleLive {
     } yield actor
   }
 
-  private def shutdownReceiveActor(actor: ActorRef[ReceiveActor.Command]): URIO[DirectBufferPool with Clock, Unit] = {
+  private def shutdownReceiveActor(actor: ActorRef[ReceiveActor.Command])
+      : URIO[DirectBufferPool with Logging with Clock, Unit] = {
     for {
       state    <- (actor ? ReceiveActor.GetState)
                     .orDieWith(_ => new IllegalStateException("Could not get state from actor"))
@@ -190,7 +216,7 @@ object PeerHandleLive {
       state: ReceiveActor.State,
       context: Context,
       messages: List[PendingMessage[_]]
-  ): ZIO[DirectBufferPool with Clock, Nothing, Unit] = {
+  ): ZIO[DirectBufferPool with Logging with Clock, Nothing, Unit] = {
     messages match {
       case Nil          => ZIO.unit
       case (m, _) :: ms =>

@@ -10,43 +10,54 @@ import torr.directbuffers._
 import zio.Exit.Success
 import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
+import zio.magic.ZioProvideMagicOps
 import zio.test.TestAspect.{flaky, sequential}
 
 object DirectBuffersSpec extends DefaultRunnableSpec {
-
-  val env0 = Clock.live ++ ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
 
   def spec =
     suite("DirectBuffersSuite")(
       //
       testM("GetNumAvailable - 1 available") {
-        val effect = DirectBufferPool.numAvailable
-        val env    = env0 >>> FixedBufferPool.make(1)
-        assertM(effect.provideCustomLayer(env))(equalTo(1))
+        val effect = for {
+          actual <- DirectBufferPool.numAvailable
+        } yield assert(actual)(equalTo(1))
+
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(1)
+        )
       },
       //
       testM("GetNumAvailable - 0 available") {
 
         val effect = for {
-          _   <- DirectBufferPool.allocate
-          res <- DirectBufferPool.numAvailable
-        } yield res
+          _      <- DirectBufferPool.allocate
+          actual <- DirectBufferPool.numAvailable
+        } yield assert(actual)(equalTo(0))
 
-        val env = env0 >>> FixedBufferPool.make(1)
-        assertM(effect.provideCustomLayer(env))(equalTo(0))
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(1)
+        )
       },
       //
       testM("GetNumAvailable - starving") {
         val effect = for {
-          _   <- DirectBufferPool.allocate
-          f   <- DirectBufferPool.allocate.fork
-          _   <- f.status.repeatWhile { case Suspended(_, _, _, _, _) => false; case _ => true }
-          res <- DirectBufferPool.numAvailable
-          _   <- f.interrupt
-        } yield res
+          _      <- DirectBufferPool.allocate
+          f      <- DirectBufferPool.allocate.fork
+          _      <- f.status.repeatWhile { case Suspended(_, _, _, _, _) => false; case _ => true }
+          actual <- DirectBufferPool.numAvailable
+          _      <- f.interrupt
+        } yield assert(actual)(equalTo(-1))
 
-        val env = env0 >>> FixedBufferPool.make(1)
-        assertM(effect.provideCustomLayer(env))(equalTo(-1))
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(1)
+        )
       },
       //
       testM("Allocate - available") {
@@ -54,10 +65,13 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           buf1       <- DirectBufferPool.allocate
           buf2       <- DirectBufferPool.allocate
           (ix1, ix2) <- buf1.getInt <*> buf2.getInt
-        } yield (ix1, ix2)
+        } yield assert((ix1, ix2))(equalTo((1, 2)))
 
-        val env = env0 >>> FixedBufferPool.make(2)
-        assertM(effect.provideCustomLayer(env))(equalTo(1, 2))
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(2)
+        )
       },
       //
       testM("Free - when available") {
@@ -67,10 +81,13 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           avail1 <- DirectBufferPool.numAvailable
           _      <- DirectBufferPool.free(buf1)
           avail2 <- DirectBufferPool.numAvailable
-        } yield (ix1, avail1, avail2)
+        } yield assert((ix1, avail1, avail2))(equalTo((1, 1, 2)))
 
-        val env = env0 >>> FixedBufferPool.make(2)
-        assertM(effect.provideCustomLayer(env))(equalTo(1, 1, 2))
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(2)
+        )
       },
       //
       testM("Free - when starving") {
@@ -84,10 +101,13 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
           _    <- DirectBufferPool.free(buf1)
           res3 <- f3.await.flatMap { case Success(buf) => buf.getInt; case _ => ??? }
           res4 <- f4.await.flatMap { case Success(buf) => buf.getInt; case _ => ??? }
-        } yield (res3, res4)
+        } yield assert((res3, res4))(equalTo((2, 1)))
 
-        val env = env0 >>> FixedBufferPool.make(2)
-        assertM(effect.provideCustomLayer(env))(equalTo(2, 1))
+        effect.injectCustom(
+          ActorSystemLive.make("Test"),
+          Slf4jLogger.make((_, message) => message),
+          FixedBufferPool.make(2)
+        )
       }
     ) @@ sequential
 }

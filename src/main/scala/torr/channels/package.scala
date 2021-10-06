@@ -11,6 +11,7 @@ package object channels {
     def read(buf: ByteBuffer): Task[Int]
     def write(buf: ByteBuffer): Task[Int]
     def isOpen: Task[Boolean]
+    def close: Task[Unit]
   }
 
   trait SeekableChannel {

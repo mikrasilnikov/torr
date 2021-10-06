@@ -4,10 +4,13 @@ import zio._
 import zio.actors.Actor.Stateful
 import zio.actors.Context
 import zio.clock.Clock
+
 import scala.collection.mutable
 import torr.channels.ByteChannel
 import torr.directbuffers.DirectBufferPool
+import zio.logging.Logging
 import zio.nio.core.ByteBuffer
+
 import java.time.OffsetDateTime
 
 object ReceiveActor {
@@ -38,9 +41,13 @@ object ReceiveActor {
       var isFailingWith: Option[Throwable] = None
   )
 
-  val stateful = new Stateful[DirectBufferPool with Clock, State, Command] {
+  val stateful = new Stateful[DirectBufferPool with Logging with Clock, State, Command] {
 
-    def receive[A](state: State, msg: Command[A], context: Context): RIO[DirectBufferPool with Clock, (State, A)] = {
+    def receive[A](
+        state: State,
+        msg: Command[A],
+        context: Context
+    ): RIO[DirectBufferPool with Logging with Clock, (State, A)] = {
       msg match {
         case Receive1(cls, p)        => receive1(state, cls, p).map(p => (state, p))
         case Receive2(cls1, cls2, p) => receive2(state, cls1, cls2, p).map(p => (state, p))
@@ -155,7 +162,7 @@ object ReceiveActor {
       }
     }
 
-    private[peerwire] def onMessage[M <: Message](state: State, msg: M): RIO[Clock, Unit] = {
+    private[peerwire] def onMessage[M <: Message](state: State, msg: M): RIO[Logging with Clock, Unit] = {
       val cls = msg.getClass
       state.expectedMessages.get(cls) match {
         case None          =>
@@ -175,7 +182,7 @@ object ReceiveActor {
       }
     }
 
-    private def ensureMessagesAreBeingProcessed(state: State, now: OffsetDateTime): RIO[Clock, Unit] = {
+    private def ensureMessagesAreBeingProcessed(state: State, now: OffsetDateTime): RIO[Logging with Clock, Unit] = {
       for {
         _ <- failOnExcessiveMailboxSize(state, now)
         _ <- failOnExcessiveProcessingLatency(state, now)
@@ -183,7 +190,7 @@ object ReceiveActor {
     }
 
     //noinspection SimplifyWhenInspection
-    private def failOnExcessiveMailboxSize(state: State, now: OffsetDateTime): Task[Unit] = {
+    private def failOnExcessiveMailboxSize(state: State, now: OffsetDateTime): RIO[Logging, Unit] = {
       val newMailboxSize = state.mailbox.size + 1
       if (newMailboxSize > state.actorConfig.maxMailboxSize) {
         val mailboxStats = state.mailbox.formatStats
@@ -197,7 +204,7 @@ object ReceiveActor {
     }
 
     //noinspection SimplifyWhenInspection
-    private def failOnExcessiveProcessingLatency(state: State, now: OffsetDateTime): Task[Unit] = {
+    private def failOnExcessiveProcessingLatency(state: State, now: OffsetDateTime): RIO[Logging, Unit] = {
       state.mailbox.oldestMessage match {
         case None              => ZIO.unit
         case Some((time, msg)) =>
@@ -214,9 +221,13 @@ object ReceiveActor {
       }
     }
 
-    private def startFailing(state: State, error: Throwable): UIO[Unit] = {
+    private def startFailing(state: State, error: Throwable): RIO[Logging, Unit] = {
       state.isFailingWith = Some(error)
-      ZIO.foreach_(state.givenPromises) { case (p, _) => p.fail(error) }
+      for {
+        _ <- Logging.debug(s"\nReceiveActor.startFailing(..., ${error.getMessage}")
+        _ <- ZIO.foreach_(state.givenPromises) { case (p, _) => p.fail(error) }
+        _ <- state.channel.close
+      } yield ()
     }
   }
 }

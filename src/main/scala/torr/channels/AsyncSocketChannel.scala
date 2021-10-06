@@ -8,4 +8,5 @@ case class AsyncSocketChannel(private val channel: AsynchronousByteChannel) exte
   def read(buf: ByteBuffer): Task[Int]  = channel.read(buf)
   def write(buf: ByteBuffer): Task[Int] = channel.write(buf)
   def isOpen: UIO[Boolean]              = channel.isOpen
+  def close: Task[Unit]                 = channel.close
 }

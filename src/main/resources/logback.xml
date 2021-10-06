@@ -1,9 +1,9 @@
-<configuration>
+<configuration debug="false">
     <appender name="FILE1" class="ch.qos.logback.core.FileAppender">
         <file>torr.log</file>
 
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>INFO</level>
+            <level>DEBUG</level>
         </filter>
 
         <encoder>

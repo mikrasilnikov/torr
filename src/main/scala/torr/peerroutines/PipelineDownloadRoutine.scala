@@ -9,6 +9,7 @@ import torr.peerwire.{Message, PeerHandle}
 import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
+import zio.logging.Logging
 
 import scala.collection.immutable
 
@@ -32,7 +33,7 @@ object PipelineDownloadRoutine {
       peerHandle: PeerHandle,
       state: DownloadState,
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case true  => ZIO.unit
       case false => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
@@ -48,7 +49,7 @@ object PipelineDownloadRoutine {
       state: DownloadState,
       downSpeedAccRef: Ref[Long],
       maxConcurrentRequests: Int = 192
-  ): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
       _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
       _ <- peerHandle.receive[Unchoke].when(state.peerChoking) // choked = false(?), interested = true
@@ -59,59 +60,63 @@ object PipelineDownloadRoutine {
       requests  <- Queue.bounded[Option[SentRequest]](maxConcurrentRequests)
 
       sender    <- sendRequests(peerHandle, requests, sndJobOpt, beforeFirstRequest = true)
-                     // We must terminate receiver by enqueuing None if sender fails unexpectedly.
-                     .onError(e => (ZIO(println(e)) *> requests.offer(None)).ignore)
+                     // We must terminate receiver by shutting down queue if sender fails unexpectedly.
+                     .onError(e =>
+                       Logging.debug(s"${peerHandle.peerIdStr}.sendRequests failed with\n${e.prettyPrint}") *>
+                         requests.shutdown
+                     )
                      .fork
 
       rcvResult <- receiveResponses(peerHandle, requests, downSpeedAccRef)
+                     .onError(e => Logging.debug(s"${peerHandle.peerIdStr}.sendRequests failed with\n${e.prettyPrint}"))
 
-      _ <- rcvResult match {
-             // Remote peer has choked us. Sender is probably blocked by queue.Offer call.
-             // Remote peer won't respond to any of the pending requests.
-             case ReceiverResult.Choked(rcvJob) =>
-               for {
-                 _ <- sender.interrupt
-                 // receiveResponses function is responsible for releasing jobs.
-                 // However it is only aware of jobs that have arrived from the `requests` queue.
-                 // If there is a job that had been allocated by the sender and has not been seen by the
-                 // receiveResponses function we have to release it after interruption of the sender.
-                 _ <- sndJobOpt.get.flatMap {
-                        case Some(sndJob) =>
-                          Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Choked(sndJob))
-                            .unless(sndJob.pieceId == rcvJob.pieceId)
-                        case None         => ZIO.unit
-                      }
-                 _ <- downloadWhileInterested(
-                        peerHandle,
-                        DownloadState(amInterested = true, peerChoking = true),
-                        downSpeedAccRef
-                      )
-               } yield ()
-
-             // This means that the receiver has successfully processed all responses to requests sent by the sender.
-             // To find out the reason why sender has stopped sending requests, we must inspect the sender's return value.
-             case ReceiverResult.Completed      =>
-               for {
-                 sndResult <- sender.join
-                 _         <- sndResult match {
-                                // Remote peer does not have pieces that are interesting to us.
-                                case SenderResult.NotInterested =>
-                                  peerHandle.send(Message.NotInterested) *>
-                                    download(
-                                      peerHandle,
-                                      DownloadState(amInterested = false, peerChoking = false),
-                                      downSpeedAccRef
-                                    )
-
-                                case SenderResult.ChokedOnQueue =>
-                                  download(
-                                    peerHandle,
-                                    DownloadState(amInterested = true, peerChoking = true),
-                                    downSpeedAccRef
-                                  )
+      _         <- rcvResult match {
+                     // Remote peer has choked us. Sender is probably blocked by queue.Offer call.
+                     // Remote peer won't respond to any of the pending requests.
+                     case ReceiverResult.Choked(rcvJob) =>
+                       for {
+                         _ <- sender.interrupt
+                         // receiveResponses function is responsible for releasing jobs.
+                         // However it is only aware of jobs that have arrived from the `requests` queue.
+                         // If there is a job that had been allocated by the sender and has not been seen by the
+                         // receiveResponses function we have to release it after interruption of the sender.
+                         _ <- sndJobOpt.get.flatMap {
+                                case Some(sndJob) =>
+                                  Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Choked(sndJob))
+                                    .unless(sndJob.pieceId == rcvJob.pieceId)
+                                case None         => ZIO.unit
                               }
-               } yield ()
-           }
+                         _ <- downloadWhileInterested(
+                                peerHandle,
+                                DownloadState(amInterested = true, peerChoking = true),
+                                downSpeedAccRef
+                              )
+                       } yield ()
+
+                     // This means that the receiver has successfully processed all responses to requests sent by the sender.
+                     // To find out the reason why sender has stopped sending requests, we must inspect the sender's return value.
+                     case ReceiverResult.Completed      =>
+                       for {
+                         sndResult <- sender.join
+                         _         <- sndResult match {
+                                        // Remote peer does not have pieces that are interesting to us.
+                                        case SenderResult.NotInterested =>
+                                          peerHandle.send(Message.NotInterested) *>
+                                            download(
+                                              peerHandle,
+                                              DownloadState(amInterested = false, peerChoking = false),
+                                              downSpeedAccRef
+                                            )
+
+                                        case SenderResult.ChokedOnQueue =>
+                                          download(
+                                            peerHandle,
+                                            DownloadState(amInterested = true, peerChoking = true),
+                                            downSpeedAccRef
+                                          )
+                                      }
+                       } yield ()
+                   }
     } yield ()
   }
 
@@ -179,7 +184,7 @@ object PipelineDownloadRoutine {
       requestsInOrder: immutable.Queue[SentRequest] = immutable.Queue.empty[SentRequest],
       receivedResponses: immutable.HashMap[(Int, Int), Message.Piece] =
         immutable.HashMap.empty[(Int, Int), Message.Piece]
-  ): RIO[Dispatcher with FileIO with Clock, ReceiverResult] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, ReceiverResult] = {
 
     // Next response in order to process if available.
     val nextResponseInOrderOption = for {

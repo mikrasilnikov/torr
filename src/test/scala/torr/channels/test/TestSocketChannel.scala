@@ -29,6 +29,8 @@ case class TestSocketChannel(incoming: Queue[Byte], outgoing: Queue[Byte], rando
 
   def isOpen: Task[Boolean] = ZIO.succeed(true)
 
+  def close: Task[Unit] = ZIO.unit
+
   val remote = new ByteChannel {
     def read(buf: ByteBuffer): Task[Int] = {
       for {
@@ -48,6 +50,8 @@ case class TestSocketChannel(incoming: Queue[Byte], outgoing: Queue[Byte], rando
     }
 
     def isOpen: Task[Boolean] = ZIO.succeed(true)
+
+    override def close: Task[Unit] = ZIO.unit
   }
 
 }

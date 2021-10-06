@@ -17,6 +17,8 @@ import zio.test._
 import zio.test.Assertion._
 import torr.peerwire.test.PeerHandleAndDispatcherMock._
 import zio.clock.Clock
+import zio.logging.Logging
+import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.file.Path
 
@@ -69,7 +71,7 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
               spdRef <- Ref.make(0L)
               _      <- PipelineDownloadRoutine
                           .download(peerHandle, initialState, spdRef)
-                          .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
+                          .provideSomeLayer[Clock with FileIO with DirectBufferPool with Logging](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)
         }
@@ -80,7 +82,11 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
             FileIOMock.Store(anything) ++
             FileIOMock.Store(anything)
 
-        effect.injectCustom(fileIOMock, DirectBufferPoolMock.empty)
+        effect.injectCustom(
+          fileIOMock,
+          Slf4jLogger.make((_, message) => message),
+          DirectBufferPoolMock.empty
+        )
 
       },
       testM("Being choked before sending first request") {
@@ -107,12 +113,16 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
               spdRef <- Ref.make(0L)
               _      <- PipelineDownloadRoutine
                           .download(peerHandle, initialState, spdRef)
-                          .provideSomeLayer[Clock with FileIO with DirectBufferPool](ZLayer.succeed(dispatcher))
+                          .provideSomeLayer[Clock with FileIO with DirectBufferPool with Logging](ZLayer.succeed(dispatcher))
 
             } yield assert(())(anything)
         }
 
-        effect.injectCustom(FileIOMock.empty, DirectBufferPoolMock.empty)
+        effect.injectCustom(
+          FileIOMock.empty,
+          DirectBufferPoolMock.empty,
+          Slf4jLogger.make((_, message) => message)
+        )
 
       }
     )

@@ -6,17 +6,19 @@ import torr.peerwire.MessageTypes._
 import torr.peerwire.{Message, PeerHandle, TorrBitSet}
 import zio.clock.Clock
 import zio.duration.durationInt
+
 import scala.collection.immutable.HashSet
 import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob}
 import torr.fileio.FileIO
+import zio.logging.Logging
 
 object DefaultPeerRoutine {
 
   final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
   final case class UploadState(amChoking: Boolean, peerInterested: Boolean)
 
-  def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Clock, Unit] = {
+  def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
       metaInfo <- FileIO.metaInfo
       bitField <- peerHandle.receive[BitField]
@@ -34,13 +36,15 @@ object DefaultPeerRoutine {
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
-           )
+           ).onError(_ => Logging.debug("PipelineDownloadRoutine failed"))
+
+      _ <- Logging.debug(s"${peerHandle.peerIdStr} exiting")
 
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt
       _ <- speedFib.interrupt
 
-      _ <- ZIO(println(s"${peerHandle.peerIdStr} exited"))
+      _ <- Logging.debug(s"${peerHandle.peerIdStr} exited")
     } yield ()
   }
 

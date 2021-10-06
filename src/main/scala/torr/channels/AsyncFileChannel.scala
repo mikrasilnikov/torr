@@ -44,6 +44,8 @@ case class AsyncFileChannel(
     )
 
   def isOpen: Task[Boolean] = channel.isOpen
+
+  def close: Task[Unit] = channel.close
 }
 
 object AsyncFileChannel {

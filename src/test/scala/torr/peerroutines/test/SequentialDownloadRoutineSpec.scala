@@ -14,6 +14,8 @@ import torr.peerwire.test.PeerHandleLiveSpec.metaInfo
 import torr.peerwire.{Message, PeerHandle, PeerHandleLive}
 import zio._
 import zio.clock.Clock
+import zio.logging.Logging
+import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core._
 import zio.nio.core.file.Path
@@ -39,6 +41,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
           DispatcherLive.make,
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
@@ -79,6 +82,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
             FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
           DispatcherLive.make,
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
@@ -124,6 +128,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
             FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
           DispatcherLive.make,
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
@@ -169,6 +174,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
             FileIOMock.Store(anything, unit)
 
         effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
           DispatcherLive.make,
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
@@ -208,6 +214,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
         }
 
         effect.injectCustom(
+          Slf4jLogger.make((_, message) => message),
           DispatcherLive.make,
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
@@ -228,7 +235,7 @@ object SequentialDownloadRoutineSpec extends DefaultRunnableSpec {
     )
 
   def makePeerHandle(channelName: String): ZManaged[
-    Dispatcher with ActorSystem with DirectBufferPool with Clock,
+    Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock,
     Throwable,
     (TestSocketChannel, PeerHandle)
   ] = {

@@ -17,6 +17,7 @@ import zio.nio.core._
 import zio.nio.file.Files
 import zio._
 import zio.duration.durationInt
+import zio.magic.ZioProvideMagicOps
 
 import java.nio.file._
 
@@ -45,13 +46,11 @@ object CopyTorrentData extends App {
            }
     } yield ()
 
-    val actorSystem = ActorSystemLive.make("Test")
-    val env         =
-      (Clock.live ++ actorSystem ++ Slf4jLogger.make((_, message) => message)) >>>
-        FixedBufferPool.make(1, 32 * 1024) ++
-          actorSystem
-
-    effect.provideCustomLayer(env).exitCode
+    effect.injectCustom(
+      ActorSystemLive.make("Test"),
+      Slf4jLogger.make((_, message) => message),
+      FixedBufferPool.make(1, 32 * 1024)
+    ).exitCode
   }
 
   def copySequential(
