@@ -20,7 +20,10 @@ object DefaultPeerRoutine {
 
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
-      metaInfo <- FileIO.metaInfo
+      metaInfo    <- FileIO.metaInfo
+      localBitSet <- Dispatcher.getLocalBitField
+      _           <- peerHandle.send(Message.BitField(localBitSet))
+
       bitField <- peerHandle.receive[BitField]
       _        <- validateRemoteBitSet(metaInfo, bitField.bits)
       _        <- Dispatcher.reportHaveMany(peerHandle.peerId, Set.from(bitField.bits.set))
@@ -51,16 +54,10 @@ object DefaultPeerRoutine {
       metaInfo: MetaInfo
   ): RIO[Dispatcher, Unit] = {
     for {
-      msg <- peerHandle.receive[Have]
-      _   <- msg match {
-               case Message.Have(pieceIndex) =>
-                 for {
-                   _ <- validatePieceIndex(metaInfo, pieceIndex)
-                   _ <- Dispatcher.reportHave(peerHandle.peerId, pieceIndex)
-                 } yield ()
-               case _                        => ???
-             }
-      _   <- handleRemoteHave(peerHandle, metaInfo)
+      have <- peerHandle.receive[Have]
+      _    <- validatePieceIndex(metaInfo, have.pieceIndex)
+      _    <- Dispatcher.reportHave(peerHandle.peerId, have.pieceIndex)
+      _    <- handleRemoteHave(peerHandle, metaInfo)
     } yield ()
   }
 

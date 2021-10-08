@@ -7,6 +7,7 @@ import zio.actors.Context
 
 import scala.collection.mutable
 import torr.metainfo.MetaInfo
+import torr.peerwire.TorrBitSet
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable.ArrayBuffer
@@ -31,6 +32,7 @@ object Actor {
   case class IsRemoteInteresting(peerId: PeerId)                                       extends Command[Boolean]
   case class ReportDownloadSpeed(peerId: PeerId, value: Int)                           extends Command[Unit]
   case class ReportUploadSpeed(peerId: PeerId, value: Int)                             extends Command[Unit]
+  case object GetLocalBitField                                                         extends Command[TorrBitSet]
 
   private[dispatcher] case object DrawProgress extends Command[Unit]
 
@@ -71,7 +73,12 @@ object Actor {
         case IsDownloadCompleted                => ZIO(isDownloadCompleted(state)).map(res => (state, res))
         case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
         case DrawProgress                       => drawProgress(state).as(state, ())
+        case GetLocalBitField                   => getLocalBitField(state).map(res => (state, res))
       }
+  }
+
+  private def getLocalBitField(state: State): Task[TorrBitSet] = {
+    ZIO(TorrBitSet.fromBoolArray(state.localHave))
   }
 
   private[dispatcher] def registerPeer(state: State, peerId: PeerId): Unit = {

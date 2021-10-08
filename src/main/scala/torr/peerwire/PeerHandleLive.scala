@@ -90,6 +90,9 @@ object PeerHandleLive {
       channel     = AsyncSocketChannel(nioChannel)
       msgBuf     <- Buffer.byteDirect(1024).toManaged_
       res        <- fromChannelWithHandshake(channel, msgBuf, address.toString(), infoHash, localPeerId)
+      _          <- Logging.debug(
+                      s"${res.peerIdStr} connection established, peerId = ${new String(res.peerId.toArray, StandardCharsets.US_ASCII)}"
+                    ).toManaged_
     } yield res
   }
 

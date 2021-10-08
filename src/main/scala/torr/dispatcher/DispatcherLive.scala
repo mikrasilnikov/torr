@@ -8,6 +8,7 @@ import zio.actors.ActorRef
 import torr.dispatcher.Actor._
 import torr.fileio.FileIO
 import torr.metainfo.MetaInfo
+import torr.peerwire.TorrBitSet
 import zio.clock.Clock
 import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
@@ -39,6 +40,8 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
     actor ! ReportDownloadSpeed(peerId, bytesPerSecond)
   def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   =
     actor ! ReportUploadSpeed(peerId, bytesPerSecond)
+
+  def getLocalBitField: Task[TorrBitSet] = actor ? GetLocalBitField
 }
 
 object DispatcherLive {

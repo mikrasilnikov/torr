@@ -92,16 +92,16 @@ object PipelineDownloadRoutine {
 
       sender    <- sendRequests(peerHandle, requests, sndJobOpt, beforeFirstRequest = true)
                      // We must terminate receiver by shutting down queue if sender fails unexpectedly.
-                     .onError(e =>
+                     /*.onError(e =>
                        Logging.debug(s"${peerHandle.peerIdStr}.sendRequests failed with\n${e.prettyPrint}") *>
                          requests.shutdown
-                     )
+                     )*/
                      .fork
 
       rcvResult <- receiveResponses(peerHandle, requests, downSpeedAccRef)
-                     .onError(e =>
+      /*.onError(e =>
                        Logging.debug(s"${peerHandle.peerIdStr}.receiveResponses failed with\n${e.prettyPrint}")
-                     )
+                     )*/
 
       _         <- Logging.debug(s"${peerHandle.peerIdStr} ReceiverResult.$rcvResult")
       _         <- rcvResult match {

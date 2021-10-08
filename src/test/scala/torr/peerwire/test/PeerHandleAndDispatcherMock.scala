@@ -1,7 +1,7 @@
 package torr.peerwire.test
 
 import torr.dispatcher.{AcquireJobResult, Dispatcher, PeerId, PieceId, ReleaseJobStatus}
-import torr.peerwire.{Message, PeerHandle}
+import torr.peerwire.{Message, PeerHandle, TorrBitSet}
 import zio._
 import zio.nio.core.Buffer
 
@@ -89,6 +89,8 @@ object PeerHandleAndDispatcherMock {
 
         def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit] = ???
         def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   = ???
+
+        def getLocalBitField: Task[TorrBitSet] = ???
       }
 
       val peerHandle = new PeerHandle {

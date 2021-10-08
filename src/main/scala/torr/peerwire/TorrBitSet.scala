@@ -63,4 +63,10 @@ object TorrBitSet {
 
     loop(data)
   }
+
+  def fromBoolArray(data: Array[Boolean]): TorrBitSet = {
+    val result = make(data.length)
+    data.indices.foreach(i => if (data(i)) result.set.add(i))
+    result
+  }
 }
