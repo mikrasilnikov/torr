@@ -24,7 +24,7 @@ object AskTrackerForPeers extends App {
         metaInfo   <- FileIO.metaInfo
         request     = TrackerRequest(metaInfo.announce, metaInfo.infoHash, localPeerId, 12345, 0, 0, metaInfo.torrentSize)
         response   <- Announce.update(request)
-        result      = response.peers.map(p => s"(${p.ip}, ${p.port})").mkString(",\n")
+        result      = response.peers.map(p => "(\"" ++ s"${p.ip}" ++ s"\", ${p.port})").mkString(",\n")
         _          <- putStrLn(s"$result")
       } yield ()
 
