@@ -12,6 +12,7 @@ import zio.logging.Logging
 import zio.nio.core.ByteBuffer
 
 import java.time.OffsetDateTime
+import scala.util.control.Breaks.break
 
 object ReceiveActor {
 
@@ -20,11 +21,14 @@ object ReceiveActor {
   case class Receive2(cls1: Class[_], cls2: Class[_], p: Promise[Throwable, Message])  extends Command[Unit]
   case class ReceiveMany(messageTypes: List[Class[_]], p: Promise[Throwable, Message]) extends Command[Unit]
 
-  case class Poll1[+M <: Message](cls: Class[_])    extends Command[Option[M]]
-  case class Poll2(cls1: Class[_], cls2: Class[_])  extends Command[Option[Message]]
-  case class PollMany(messageTypes: List[Class[_]]) extends Command[Option[Message]]
-  case object GetState                              extends Command[State]
-  case object GetContext                            extends Command[Context]
+  case class Poll1[+M <: Message](cls: Class[_])                     extends Command[Option[M]]
+  case class Poll1Last[M <: Message](cls: Class[_])                  extends Command[Option[M]]
+  case class Poll2(cls1: Class[_], cls2: Class[_])                   extends Command[Option[Message]]
+  case class Poll2Last[M <: Message](cls1: Class[_], cls2: Class[_]) extends Command[Option[Message]]
+  case class PollMany(messageTypes: List[Class[_]])                  extends Command[Option[Message]]
+
+  case object GetState   extends Command[State]
+  case object GetContext extends Command[Context]
 
   private[peerwire] case class OnMessage(message: Message)    extends Command[Unit]
   private[peerwire] case class StartFailing(error: Throwable) extends Command[Unit]
@@ -32,6 +36,7 @@ object ReceiveActor {
   case class State(
       channel: ByteChannel,
       remotePeerId: Chunk[Byte] = Chunk.fill(20)(0.toByte),
+      remotePeerIdStr: String = "default peerId",
       expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
         new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
       givenPromises: mutable.Map[Promise[Throwable, Message], List[Class[_]]] =
@@ -53,8 +58,11 @@ object ReceiveActor {
         case Receive2(cls1, cls2, p) => receive2(state, cls1, cls2, p).map(p => (state, p))
         case ReceiveMany(classes, p) => receiveMany(state, classes, p).map(p => (state, p))
 
-        case Poll1(cls)          => poll1(state, cls).map(res => (state, res))
-        case Poll2(cls1, cls2)   => poll2(state, cls1, cls2).map(res => (state, res))
+        case Poll1(cls)            => poll1(state, cls).map(res => (state, res))
+        case Poll2(cls1, cls2)     => poll2(state, cls1, cls2).map(res => (state, res))
+        case Poll1Last(cls)        => poll1Last(state, cls).map(res => (state, res))
+        case Poll2Last(cls1, cls2) => poll2Last(state, cls1, cls2).map(res => (state, res))
+
         case PollMany(classes)   => pollMany(state, classes).map(res => (state, res))
         case OnMessage(m)        =>
           m match {
@@ -152,6 +160,49 @@ object ReceiveActor {
       state.isFailingWith match {
         case Some(e) => ZIO.fail(e)
         case None    => ZIO.succeed(state.mailbox.dequeue2(cls1, cls2))
+      }
+    }
+
+    private[peerwire] def poll1Last(
+        state: State,
+        cls: Class[_]
+    ): Task[Option[Message]] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case _       =>
+          var result: Option[Message] = None
+          var continue                = true
+          while (continue) {
+            state.mailbox.dequeue1(cls) match {
+              case Some(msg) =>
+                result = Some(msg)
+              case None      =>
+                continue = false
+            }
+          }
+          ZIO.succeed(result)
+      }
+    }
+
+    private[peerwire] def poll2Last(
+        state: State,
+        cls1: Class[_],
+        cls2: Class[_]
+    ): Task[Option[Message]] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case _       =>
+          var result: Option[Message] = None
+          var continue                = true
+          while (continue) {
+            state.mailbox.dequeue2(cls1, cls2) match {
+              case Some(msg) =>
+                result = Some(msg)
+              case None      =>
+                continue = false
+            }
+          }
+          ZIO.succeed(result)
       }
     }
 

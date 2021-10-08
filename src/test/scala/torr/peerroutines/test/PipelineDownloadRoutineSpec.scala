@@ -55,9 +55,9 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
                 ReceiveBlock(0, 0, 16 * 1024) ::
                   ReceiveBlock(0, 16 * 1024, 16 * 1024) ::
                   ReceiveBlock(1, 0, 16 * 1024) ::
-                  ReleaseJob(peerId, ReleaseJobStatus.Active(job1)) ::
+                  ReleaseJob(peerId, ReleaseJobStatus.Downloaded(job1)) ::
                   ReceiveBlock(1, 16 * 1024, 16 * 1024) ::
-                  ReleaseJob(peerId, ReleaseJobStatus.Active(job2)) ::
+                  ReleaseJob(peerId, ReleaseJobStatus.Downloaded(job2)) ::
                   Nil
             ) ::
             Send(Message.NotInterested) ::

@@ -9,9 +9,11 @@ import torr.actorsystem.ActorSystem
 import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.directbuffers.DirectBufferPool
 import torr.dispatcher.{Dispatcher, PeerId}
+import torr.peerwire.PeerHandleLive.makePeerIdStr
 import zio.logging.Logging
 
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -42,11 +44,15 @@ case class PeerHandleLive(
       res <- p.await
     } yield res
 
-  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
+  def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]                                  =
     receiveActor ? ReceiveActor.Poll1(tag.runtimeClass)
-
   def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] =
     receiveActor ? ReceiveActor.Poll2(tag1.runtimeClass, tag2.runtimeClass)
+
+  def pollLast[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]                                  =
+    receiveActor ? ReceiveActor.Poll1Last(tag.runtimeClass)
+  def pollLast[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] =
+    receiveActor ? ReceiveActor.Poll2Last(tag1.runtimeClass, tag2.runtimeClass)
 
   def receiveMany(classes: Class[_]*): Task[Message] = {
     for {
@@ -63,7 +69,7 @@ case class PeerHandleLive(
   def onMessage(msg: Message): Task[Unit] =
     receiveActor ? ReceiveActor.OnMessage(msg)
 
-  def peerIdStr: String = new String(peerId.toArray, StandardCharsets.US_ASCII)
+  val peerIdStr: String = makePeerIdStr(peerId)
 }
 
 object PeerHandleLive {
@@ -105,36 +111,40 @@ object PeerHandleLive {
       remotePeerId: Chunk[Byte],
       actorConfig: PeerActorConfig = PeerActorConfig.default
   ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock, Throwable, PeerHandle] = {
-    val peerIdStr = new String(remotePeerId.toArray, StandardCharsets.US_ASCII)
+
+    val remotePeerIdStr = makePeerIdStr(remotePeerId)
+
     for {
       _      <- Dispatcher.registerPeer(remotePeerId)
                   .toManaged(_ =>
-                    Logging.debug(s"$peerIdStr: unregistering peer") *>
+                    Logging.debug(s"$remotePeerIdStr: unregistering peer") *>
                       Dispatcher.unregisterPeer(remotePeerId).orDie *>
-                      Logging.debug(s"$peerIdStr: unregistered peer")
+                      Logging.debug(s"$remotePeerIdStr: unregistered peer")
                   )
 
       actorP <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
 
-      receiveFiber <- receiveProc(channel, msgBuf, actorP).fork
+      remotePeerIdStr = makePeerIdStr(remotePeerId)
+
+      receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).fork
                         .toManaged(fib =>
-                          Logging.debug(s"$peerIdStr: ReceiveActor.receiveProc interrupting") *>
+                          Logging.debug(s"$remotePeerIdStr: ReceiveActor.receiveProc interrupting") *>
                             fib.interrupt *>
-                            Logging.debug(s"$peerIdStr: ReceiveActor.receiveProc interrupted")
+                            Logging.debug(s"$remotePeerIdStr: ReceiveActor.receiveProc interrupted")
                         )
 
-      receiveActor <- createReceiveActor(channel, channelName, remotePeerId, actorConfig)
+      receiveActor <- createReceiveActor(channel, channelName, remotePeerId, remotePeerIdStr, actorConfig)
                         .toManaged(actor =>
-                          Logging.debug(s"$peerIdStr: ReceiveActor shutting down") *>
+                          Logging.debug(s"$remotePeerIdStr: ReceiveActor shutting down") *>
                             shutdownReceiveActor(actor) *>
-                            Logging.debug(s"$peerIdStr: ReceiveActor shut down")
+                            Logging.debug(s"$remotePeerIdStr: ReceiveActor shut down")
                         )
 
-      sendActor    <- createSendActor(channel, channelName, receiveActor)
+      sendActor    <- createSendActor(channel, channelName, remotePeerIdStr, receiveActor)
                         .toManaged(actor =>
-                          Logging.debug(s"$peerIdStr: SendActor shutting down") *>
+                          Logging.debug(s"$remotePeerIdStr: SendActor shutting down") *>
                             actor.stop.orDie *>
-                            Logging.debug(s"$peerIdStr: SendActor shut down")
+                            Logging.debug(s"$remotePeerIdStr: SendActor shut down")
                         )
 
       _            <- actorP.succeed(receiveActor).toManaged_
@@ -144,8 +154,9 @@ object PeerHandleLive {
   private def createSendActor(
       channel: ByteChannel,
       channelName: String,
+      remotePeerIdStr: String,
       receiveActor: ActorRef[ReceiveActor.Command]
-  ): RIO[ActorSystem with Clock, ActorRef[SendActor.Command]] = {
+  ): RIO[ActorSystem with Logging with Clock, ActorRef[SendActor.Command]] = {
 
     val supervisor =
       actors.Supervisor.retryOrElse(
@@ -161,6 +172,7 @@ object PeerHandleLive {
       sendBuf <- Buffer.byteDirect(1024)
       state    = SendActor.State(
                    channel,
+                   remotePeerIdStr,
                    sendBuf,
                    receiveActor
                  )
@@ -172,6 +184,7 @@ object PeerHandleLive {
       channel: ByteChannel,
       channelName: String,
       remotePeerId: Chunk[Byte],
+      remotePeerIdStr: String,
       actorConfig: PeerActorConfig
   ): ZIO[DirectBufferPool with Clock with ActorSystem with Logging, Throwable, ActorRef[ReceiveActor.Command]] = {
 
@@ -193,6 +206,7 @@ object PeerHandleLive {
       state      = ReceiveActor.State(
                      channel,
                      remotePeerId,
+                     remotePeerIdStr,
                      actorConfig = actorConfig
                    )
       actor     <- system.system.make(actorName = s"Rcv-$channelName", supervisor, state, ReceiveActor.stateful)
@@ -232,17 +246,27 @@ object PeerHandleLive {
   private[peerwire] def receiveProc(
       channel: ByteChannel,
       rcvBuf: ByteBuffer,
+      remotePeerIdStr: String,
       actorP: Promise[Nothing, ActorRef[ReceiveActor.Command]]
-  ): ZIO[DirectBufferPool with Clock, Throwable, Unit] = {
+  ): ZIO[Logging with DirectBufferPool with Clock, Throwable, Unit] = {
     for {
       actor <- actorP.await
       _     <- Message.receive(channel, rcvBuf).interruptible
-                 .flatMap(m => actor ! ReceiveActor.OnMessage(m))
+                 .flatMap(m =>
+                   Logging.debug(s"$remotePeerIdStr <- $m") *>
+                     (actor ! ReceiveActor.OnMessage(m))
+                 )
                  .forever
                  .foldM(
                    e => actor ! ReceiveActor.StartFailing(e),
                    _ => ZIO.unit
                  )
     } yield ()
+  }
+
+  private def makePeerIdStr(peerId: Chunk[Byte]): String = {
+    val digest = MessageDigest.getInstance("MD5")
+    val hash   = digest.digest(peerId.toArray)
+    hash.take(4).map("%02x" format _).mkString
   }
 }

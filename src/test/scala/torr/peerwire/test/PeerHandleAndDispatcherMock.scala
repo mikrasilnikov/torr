@@ -177,6 +177,13 @@ object PeerHandleAndDispatcherMock {
 
         def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] = ???
 
+        override def pollLast[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] = ???
+
+        override def pollLast[M1, M2 <: Message](implicit
+            tag1: ClassTag[M1],
+            tag2: ClassTag[M2]
+        ): Task[Option[Message]] = ???
+
         def peerId: PeerId = mockPeerId
 
         def peerIdStr: String = new String(mockPeerId.toArray, StandardCharsets.US_ASCII)

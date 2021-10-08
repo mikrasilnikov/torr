@@ -34,14 +34,17 @@ object PipelineDownloadRoutine {
       state: DownloadState,
       downSpeedAccRef: Ref[Long]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
-    Dispatcher.isDownloadCompleted.flatMap {
-      case true  => ZIO.unit
-      case false => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
-          // Download is not completed and remote peer does not have pieces that we are interested in.
-          case false => download(peerHandle, state, downSpeedAccRef).delay(10.seconds)
-          case _     => downloadWhileInterested(peerHandle, state, downSpeedAccRef)
-        }
-    }
+    Dispatcher.isDownloadCompleted.flatMap { res => Logging.debug(s"isDownloadCompleted = $res") *> ZIO(res) }
+      .flatMap {
+        case true => Logging.debug(s"exiting download") *> ZIO.unit
+        case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap { res =>
+            Logging.debug(s"isRemoteInteresting = $res") *> ZIO(res)
+          }.flatMap {
+            // Download is not completed and remote peer does not have pieces that we are interested in.
+            case false => download(peerHandle, state, downSpeedAccRef).delay(10.seconds)
+            case _     => downloadWhileInterested(peerHandle, state, downSpeedAccRef)
+          }
+      }
   }
 
   def downloadWhileInterested(
@@ -51,8 +54,20 @@ object PipelineDownloadRoutine {
       maxConcurrentRequests: Int = 192
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
-      _ <- peerHandle.send(Message.Interested).unless(state.amInterested)
-      _ <- peerHandle.receive[Unchoke].when(state.peerChoking) // choked = false(?), interested = true
+      _ <- Logging.debug("entering downloadWhileInterested")
+
+      _ <- peerHandle.pollLast[Choke, Unchoke].debug("peerHandle.pollLast[Choke, Unchoke] = ").flatMap {
+             case Some(Message.Choke)   =>
+               downloadWhileInterested(peerHandle, state.copy(peerChoking = true), downSpeedAccRef)
+             case Some(Message.Unchoke) =>
+               downloadWhileInterested(peerHandle, state.copy(peerChoking = false), downSpeedAccRef)
+             case _                     => ZIO.unit
+           }
+
+      _ <- Logging.debug("after downloadWhileInterested.pollLast")
+
+      _ <- (Logging.debug("sending Interested") *> peerHandle.send(Message.Interested)).unless(state.amInterested)
+      _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
       // DownloadJob that is currently allocated by the sendRequests fiber.
       // If we interrupt this fiber we are responsible for releasing the job.
@@ -68,7 +83,9 @@ object PipelineDownloadRoutine {
                      .fork
 
       rcvResult <- receiveResponses(peerHandle, requests, downSpeedAccRef)
-                     .onError(e => Logging.debug(s"${peerHandle.peerIdStr}.sendRequests failed with\n${e.prettyPrint}"))
+                     .onError(e =>
+                       Logging.debug(s"${peerHandle.peerIdStr}.receiveResponses failed with\n${e.prettyPrint}")
+                     )
 
       _         <- rcvResult match {
                      // Remote peer has choked us. Sender is probably blocked by queue.Offer call.
@@ -101,7 +118,8 @@ object PipelineDownloadRoutine {
                          _         <- sndResult match {
                                         // Remote peer does not have pieces that are interesting to us.
                                         case SenderResult.NotInterested =>
-                                          peerHandle.send(Message.NotInterested) *>
+                                          Logging.debug("sending NotInterested") *>
+                                            peerHandle.send(Message.NotInterested) *>
                                             download(
                                               peerHandle,
                                               DownloadState(amInterested = false, peerChoking = false),
@@ -127,7 +145,7 @@ object PipelineDownloadRoutine {
       currentJobRef: Ref[Option[DownloadJob]],
       beforeFirstRequest: Boolean,
       requestSize: Int = 16 * 1024
-  ): RIO[Dispatcher, SenderResult] = {
+  ): RIO[Dispatcher with Clock, SenderResult] = {
 
     def sendRequestsForJob(job: DownloadJob, offset: Int): Task[Unit] = {
       val remaining = job.length - offset
@@ -143,30 +161,31 @@ object PipelineDownloadRoutine {
       }
     }
 
-    Dispatcher.acquireJob(handle.peerId).flatMap {
+    for {
+      acquireResult <- Dispatcher.acquireJob(handle.peerId)
+      result        <- acquireResult match {
+                         case AcquireJobResult.AcquireSuccess(job) if beforeFirstRequest =>
+                           handle.poll[Choke].flatMap {
+                             case None    =>
+                               currentJobRef.set(Some(job)) *>
+                                 sendRequestsForJob(job, job.getOffset) *>
+                                 sendRequests(handle, requestQueue, currentJobRef, beforeFirstRequest = false)
+                             case Some(_) =>
+                               currentJobRef.set(None) *>
+                                 Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(job)) *>
+                                 requestQueue.offer(None).as(SenderResult.ChokedOnQueue)
+                           }
 
-      case AcquireJobResult.AcquireSuccess(job) if beforeFirstRequest =>
-        handle.poll[Choke].flatMap {
-          case None    =>
-            currentJobRef.set(Some(job)) *>
-              sendRequestsForJob(job, 0) *>
-              sendRequests(handle, requestQueue, currentJobRef, beforeFirstRequest = false)
-          case Some(_) =>
-            currentJobRef.set(None) *>
-              Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(job)) *>
-              requestQueue.offer(None).as(SenderResult.ChokedOnQueue)
-        }
+                         case AcquireJobResult.AcquireSuccess(job)                       =>
+                           currentJobRef.set(Some(job)) *>
+                             sendRequestsForJob(job, job.getOffset) *>
+                             sendRequests(handle, requestQueue, currentJobRef, beforeFirstRequest)
 
-      case AcquireJobResult.AcquireSuccess(job)                       =>
-        currentJobRef.set(Some(job)) *>
-          sendRequestsForJob(job, 0) *>
-          sendRequests(handle, requestQueue, currentJobRef, beforeFirstRequest)
-
-      case AcquireJobResult.NotInterested                             =>
-        currentJobRef.set(None) *>
-          requestQueue.offer(None).as(SenderResult.NotInterested)
-    }
-
+                         case AcquireJobResult.NotInterested                             =>
+                           currentJobRef.set(None) *>
+                             requestQueue.offer(None).as(SenderResult.NotInterested)
+                       }
+    } yield result
   }
 
   /**
@@ -198,7 +217,7 @@ object PipelineDownloadRoutine {
 
       for {
         // If the response being processed is related to the next job, we must release the previous one.
-        _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Active(lastProcessedJob.get))
+        _   <- Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloaded(lastProcessedJob.get))
                  .when(lastProcessedJob.isDefined && lastProcessedJob.get.pieceId != request.job.pieceId)
         _   <- validateResponse(response, request.msg)
         _   <- request.job.hashBlock(response.offset, response.block)
@@ -226,13 +245,14 @@ object PipelineDownloadRoutine {
           } else {
             lastSeenJob match {
               case Some(job) =>
-                Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Active(job)) *>
+                Dispatcher.releaseJob(peerHandle.peerId, ReleaseJobStatus.Downloaded(job)) *>
                   ZIO.succeed(ReceiverResult.Completed)
               case None      => ZIO.succeed(ReceiverResult.Completed)
             }
           }
 
         case Some(sent) =>
+          //peerHandle.poll[Unchoke] *>
           peerHandle.receive[Piece, Choke]
             .timeoutFail(new ProtocolException("Remote peer has not responded for 10 seconds"))(10.seconds)
             .flatMap {

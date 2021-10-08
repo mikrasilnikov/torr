@@ -6,7 +6,7 @@ import java.security.MessageDigest
 
 sealed trait JobCompletionStatus
 object JobCompletionStatus {
-  case object Complete   extends JobCompletionStatus
+  case object Verified   extends JobCompletionStatus
   case object Incomplete extends JobCompletionStatus
   case object Failed     extends JobCompletionStatus
 }
@@ -27,7 +27,7 @@ final case class DownloadJob(
     } else {
       val actualHash = Chunk.fromArray(digest.clone().asInstanceOf[MessageDigest].digest())
       if (hash == actualHash) {
-        JobCompletionStatus.Complete
+        JobCompletionStatus.Verified
       } else {
         JobCompletionStatus.Failed
       }

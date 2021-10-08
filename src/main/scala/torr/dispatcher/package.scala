@@ -17,8 +17,9 @@ package object dispatcher {
 
   sealed trait ReleaseJobStatus { def job: DownloadJob }
   object ReleaseJobStatus       {
-    case class Active(job: DownloadJob) extends ReleaseJobStatus
-    case class Choked(job: DownloadJob) extends ReleaseJobStatus
+    case class Downloaded(job: DownloadJob) extends ReleaseJobStatus
+    case class Choked(job: DownloadJob)     extends ReleaseJobStatus
+    case class Aborted(job: DownloadJob)    extends ReleaseJobStatus
   }
 
   @accessible

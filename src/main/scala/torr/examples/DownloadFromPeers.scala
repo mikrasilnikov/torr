@@ -15,6 +15,7 @@ import torr.peerwire.MessageTypes._
 import zio.Cause.Internal
 import zio._
 import zio.console.{Console, putStrLn}
+import zio.duration.durationInt
 import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
@@ -25,7 +26,7 @@ import scala.collection.immutable.HashMap
 object DownloadFromPeers extends App {
 
   val localPeers = List(
-    //("localhost", 57617),
+    ("localhost", 57617),
     //("localhost", 57618),
     ("localhost", 56233)
   )
@@ -58,7 +59,7 @@ object DownloadFromPeers extends App {
                                        .ignore
                         } yield ()
                     }
-      _          <- FileIO.flush
+      _          <- FileIO.flush.delay(1.second)
     } yield ()
 
     effect.injectCustom(
