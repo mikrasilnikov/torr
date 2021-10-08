@@ -36,9 +36,7 @@ object DefaultPeerRoutine {
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
-           ).onError(_ => Logging.debug("PipelineDownloadRoutine failed"))
-
-      _ <- Logging.debug(s"${peerHandle.peerIdStr} exiting")
+           ).onError(e => Logging.debug(s"PipelineDownloadRoutine failed with\n${e.prettyPrint}"))
 
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt

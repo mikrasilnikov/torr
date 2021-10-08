@@ -32,7 +32,7 @@ object SendActor {
       state: State,
       msg: Message
   ): RIO[Logging, Unit] = {
-    Logging.debug(s"${state.remotePeerIdStr} -> $msg") *>
+    //Logging.debug(s"${state.remotePeerIdStr} -> $msg") *>
       Message.send(msg, state.channel, state.sendBuf)
         .foldM(
           e => (state.receiveActor ! ReceiveActor.StartFailing(e)).orDie,

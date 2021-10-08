@@ -34,40 +34,56 @@ object PipelineDownloadRoutine {
       state: DownloadState,
       downSpeedAccRef: Ref[Long]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
-    Dispatcher.isDownloadCompleted.flatMap { res => Logging.debug(s"isDownloadCompleted = $res") *> ZIO(res) }
-      .flatMap {
-        case true => Logging.debug(s"exiting download") *> ZIO.unit
-        case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap { res =>
-            Logging.debug(s"isRemoteInteresting = $res") *> ZIO(res)
-          }.flatMap {
-            // Download is not completed and remote peer does not have pieces that we are interested in.
-            case false => download(peerHandle, state, downSpeedAccRef).delay(10.seconds)
-            case _     => downloadWhileInterested(peerHandle, state, downSpeedAccRef)
-          }
-      }
+    Dispatcher.isDownloadCompleted.flatMap {
+      case true => ZIO.unit
+      case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
+          // Download is not completed and remote peer does not have pieces that we are interested in.
+          case false => download(peerHandle, state, downSpeedAccRef).delay(10.seconds)
+          case _     => downloadUntilNotInterested(peerHandle, state, downSpeedAccRef)
+        }
+    }
   }
 
-  def downloadWhileInterested(
+  private def updatePeerChokingState(peerHandle: PeerHandle, oldState: DownloadState): Task[DownloadState] = {
+    peerHandle.pollLast[Choke, Unchoke].map {
+      case Some(Message.Choke)   => oldState.copy(peerChoking = true)
+      case Some(Message.Unchoke) => oldState.copy(peerChoking = false)
+      case _                     => oldState
+    }
+  }
+
+  def downloadUntilNotInterested(
       peerHandle: PeerHandle,
-      state: DownloadState,
+      state0: DownloadState,
       downSpeedAccRef: Ref[Long],
       maxConcurrentRequests: Int = 192
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
-      _ <- Logging.debug("entering downloadWhileInterested")
+      // Remote peer may have sent us some Choke/Unchoke messages (qBittorrent does this after handshake for example).
+      // Some of these messages may have been received already while some may be not.
+      // Let's determine current status by examining the last of these messages being received.
+      state <- updatePeerChokingState(peerHandle, state0)
 
-      _ <- peerHandle.pollLast[Choke, Unchoke].debug("peerHandle.pollLast[Choke, Unchoke] = ").flatMap {
-             case Some(Message.Choke)   =>
-               downloadWhileInterested(peerHandle, state.copy(peerChoking = true), downSpeedAccRef)
-             case Some(Message.Unchoke) =>
-               downloadWhileInterested(peerHandle, state.copy(peerChoking = false), downSpeedAccRef)
-             case _                     => ZIO.unit
+      _ <- Logging.debug(
+             s"${peerHandle.peerIdStr} (amInterested, peerChoking) = ${(state.amInterested, state.peerChoking)}"
+           )
+
+      _ <- (state.amInterested, state.peerChoking) match {
+             case (false, true)  =>
+               peerHandle.send(Message.Interested) *>
+                 peerHandle.receive[Unchoke] *>
+                 peerHandle.ignore[Unchoke]
+
+             case (false, false) =>
+               peerHandle.send(Message.Interested) *>
+                 peerHandle.ignore[Unchoke]
+
+             case (true, true)   =>
+               peerHandle.receive[Unchoke] *>
+                 peerHandle.ignore[Unchoke]
+
+             case (true, false)  => ???
            }
-
-      _ <- Logging.debug("after downloadWhileInterested.pollLast")
-
-      _ <- (Logging.debug("sending Interested") *> peerHandle.send(Message.Interested)).unless(state.amInterested)
-      _ <- peerHandle.receive[Unchoke].when(state.peerChoking)
 
       // DownloadJob that is currently allocated by the sendRequests fiber.
       // If we interrupt this fiber we are responsible for releasing the job.
@@ -87,6 +103,7 @@ object PipelineDownloadRoutine {
                        Logging.debug(s"${peerHandle.peerIdStr}.receiveResponses failed with\n${e.prettyPrint}")
                      )
 
+      _         <- Logging.debug(s"${peerHandle.peerIdStr} ReceiverResult.$rcvResult")
       _         <- rcvResult match {
                      // Remote peer has choked us. Sender is probably blocked by queue.Offer call.
                      // Remote peer won't respond to any of the pending requests.
@@ -103,7 +120,7 @@ object PipelineDownloadRoutine {
                                     .unless(sndJob.pieceId == rcvJob.pieceId)
                                 case None         => ZIO.unit
                               }
-                         _ <- downloadWhileInterested(
+                         _ <- downloadUntilNotInterested(
                                 peerHandle,
                                 DownloadState(amInterested = true, peerChoking = true),
                                 downSpeedAccRef
@@ -115,11 +132,11 @@ object PipelineDownloadRoutine {
                      case ReceiverResult.Completed      =>
                        for {
                          sndResult <- sender.join
+                         _         <- Logging.debug(s"${peerHandle.peerIdStr} SenderResult.$sndResult")
                          _         <- sndResult match {
                                         // Remote peer does not have pieces that are interesting to us.
                                         case SenderResult.NotInterested =>
-                                          Logging.debug("sending NotInterested") *>
-                                            peerHandle.send(Message.NotInterested) *>
+                                          peerHandle.send(Message.NotInterested) *>
                                             download(
                                               peerHandle,
                                               DownloadState(amInterested = false, peerChoking = false),

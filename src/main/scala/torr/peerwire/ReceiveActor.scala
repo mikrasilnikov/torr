@@ -27,6 +27,8 @@ object ReceiveActor {
   case class Poll2Last[M <: Message](cls1: Class[_], cls2: Class[_]) extends Command[Option[Message]]
   case class PollMany(messageTypes: List[Class[_]])                  extends Command[Option[Message]]
 
+  case class Ignore(cls: Class[_]) extends Command[Unit]
+
   case object GetState   extends Command[State]
   case object GetContext extends Command[Context]
 
@@ -39,6 +41,7 @@ object ReceiveActor {
       remotePeerIdStr: String = "default peerId",
       expectedMessages: mutable.Map[Class[_], Promise[Throwable, Message]] =
         new mutable.HashMap[Class[_], Promise[Throwable, Message]](),
+      ignoredMessages: mutable.HashSet[Class[_]] = mutable.HashSet[Class[_]](),
       givenPromises: mutable.Map[Promise[Throwable, Message], List[Class[_]]] =
         new mutable.HashMap[Promise[Throwable, Message], List[Class[_]]],
       mailbox: PeerMailbox = new PeerMailbox,
@@ -57,6 +60,7 @@ object ReceiveActor {
         case Receive1(cls, p)        => receive1(state, cls, p).map(p => (state, p))
         case Receive2(cls1, cls2, p) => receive2(state, cls1, cls2, p).map(p => (state, p))
         case ReceiveMany(classes, p) => receiveMany(state, classes, p).map(p => (state, p))
+        case Ignore(cls)             => ignore(state, cls).as(state, ())
 
         case Poll1(cls)            => poll1(state, cls).map(res => (state, res))
         case Poll2(cls1, cls2)     => poll2(state, cls1, cls2).map(res => (state, res))
@@ -83,6 +87,7 @@ object ReceiveActor {
       if (state.isFailingWith.isDefined)
         p.fail(state.isFailingWith.get).unit
       else {
+        unignore1(state, cls)
         state.mailbox.dequeue1(cls) match {
           case Some(m) => p.succeed(m).unit
           case None    =>
@@ -107,6 +112,7 @@ object ReceiveActor {
       if (state.isFailingWith.isDefined)
         p.fail(state.isFailingWith.get).unit
       else {
+        unignore2(state, cls1, cls2)
         state.mailbox.dequeue2(cls1, cls2) match {
           case Some(m) => p.succeed(m).unit
           case None    =>
@@ -133,6 +139,7 @@ object ReceiveActor {
       if (state.isFailingWith.isDefined)
         p.fail(state.isFailingWith.get).unit
       else {
+        unignoreMany(state, classes)
         state.mailbox.dequeueMany(classes) match {
           case Some(m) => p.succeed(m).unit
           case None    => classes.foreach { t =>
@@ -147,6 +154,30 @@ object ReceiveActor {
             ZIO.unit
         }
       }
+    }
+
+    private def ignore(state: State, cls: Class[_]): Task[Unit] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case None    =>
+          for {
+            _ <- poll1Last(state, cls)
+            _  = state.ignoredMessages.add(cls)
+          } yield ()
+      }
+    }
+
+    private def unignore1(state: State, cls: Class[_]): Unit = {
+      state.ignoredMessages.remove(cls)
+    }
+
+    private def unignore2(state: State, cls1: Class[_], cls2: Class[_]): Unit = {
+      state.ignoredMessages.remove(cls1)
+      state.ignoredMessages.remove(cls2)
+    }
+
+    private def unignoreMany(state: State, classes: List[Class[_]]): Unit = {
+      classes.foreach(state.ignoredMessages.remove)
     }
 
     private[peerwire] def poll1(state: State, cls: Class[_]): Task[Option[Message]] = {
@@ -196,10 +227,8 @@ object ReceiveActor {
           var continue                = true
           while (continue) {
             state.mailbox.dequeue2(cls1, cls2) match {
-              case Some(msg) =>
-                result = Some(msg)
-              case None      =>
-                continue = false
+              case Some(msg) => result = Some(msg)
+              case None      => continue = false
             }
           }
           ZIO.succeed(result)
@@ -213,24 +242,28 @@ object ReceiveActor {
       }
     }
 
-    private[peerwire] def onMessage[M <: Message](state: State, msg: M): RIO[Logging with Clock, Unit] = {
+    //noinspection SimplifyUnlessInspection private[peerwire]
+    def onMessage[M <: Message](state: State, msg: M): RIO[Logging with Clock, Unit] = {
       val cls = msg.getClass
-      state.expectedMessages.get(cls) match {
-        case None          =>
-          for {
-            now <- clock.currentDateTime
-            _   <- ensureMessagesAreBeingProcessed(state, now)
-            _    = state.mailbox.enqueue(now, msg)
-          } yield ()
 
-        case Some(promise) =>
-          for {
-            _            <- promise.succeed(msg)
-            expectedTypes = state.givenPromises(promise)
-            _             = expectedTypes.foreach(t => state.expectedMessages.remove(t))
-            _             = state.givenPromises.remove(promise)
-          } yield ()
-      }
+      if (state.ignoredMessages.contains(cls)) ZIO.unit
+      else
+        state.expectedMessages.get(cls) match {
+          case None          =>
+            for {
+              now <- clock.currentDateTime
+              _   <- ensureMessagesAreBeingProcessed(state, now)
+              _    = state.mailbox.enqueue(now, msg)
+            } yield ()
+
+          case Some(promise) =>
+            for {
+              _            <- promise.succeed(msg)
+              expectedTypes = state.givenPromises(promise)
+              _             = expectedTypes.foreach(t => state.expectedMessages.remove(t))
+              _             = state.givenPromises.remove(promise)
+            } yield ()
+        }
     }
 
     private def ensureMessagesAreBeingProcessed(state: State, now: OffsetDateTime): RIO[Logging with Clock, Unit] = {
