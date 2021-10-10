@@ -34,11 +34,11 @@ object SequentialDownloadRoutine {
 
               // choked = false(?), interested = true
               state1 <- Dispatcher.acquireJobManaged(peerHandle.peerId).use {
-                          case AcquireJobResult.AcquireSuccess(job) =>
+                          case AcquireJobResult.Success(job)        =>
                             downloadUntilChokedOrCompleted(peerHandle, job, maxConcurrentRequests)
                               .map(choked => DownloadState(choked, amInterested = true))
 
-                          case AcquireJobResult.NotInterested       =>
+                          case AcquireJobResult.NoInterestingPieces =>
                             for {
                               _ <- peerHandle.send(Message.NotInterested)
                               _ <- ZIO.sleep(10.seconds)

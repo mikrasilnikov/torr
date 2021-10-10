@@ -35,11 +35,11 @@ object DefaultPeerRoutine {
       aliveFib <- handleKeepAlive(peerHandle).fork
       speedFib <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
 
-      _ <- PipelineDownloadRoutine.download(
+      _ <- LastDownloadRoutine.restart(
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
-           ).onError(e => Logging.debug(s"PipelineDownloadRoutine failed with\n${e.prettyPrint}"))
+           ).onError(e => Logging.debug(s"LastDownloadRoutine failed with\n${e.prettyPrint}"))
 
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt

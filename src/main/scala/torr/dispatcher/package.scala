@@ -12,8 +12,9 @@ package object dispatcher {
 
   sealed trait AcquireJobResult
   object AcquireJobResult {
-    case class AcquireSuccess(job: DownloadJob) extends AcquireJobResult
-    case object NotInterested                   extends AcquireJobResult
+    case class Success(job: DownloadJob) extends AcquireJobResult
+    case object OnQueue                  extends AcquireJobResult
+    case object NoInterestingPieces      extends AcquireJobResult
   }
 
   sealed trait ReleaseJobStatus { def job: DownloadJob }
@@ -45,8 +46,8 @@ package object dispatcher {
 
       def acquireJobManaged(peerId: PeerId): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(peerId)) {
-          case AcquireJobResult.AcquireSuccess(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie
-          case _                                    => ZIO.unit
+          case AcquireJobResult.Success(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie
+          case _                             => ZIO.unit
         }
     }
   }

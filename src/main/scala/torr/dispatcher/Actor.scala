@@ -22,17 +22,17 @@ object Actor {
   )
 
   sealed trait Command[+_]
-  case class RegisterPeer(peerId: PeerId)                                              extends Command[Unit]
-  case class UnregisterPeer(peerId: PeerId)                                            extends Command[Unit]
-  case class ReportHaveMany(peerId: PeerId, pieces: Set[PieceId])                      extends Command[Unit]
-  case class ReportHave(peerId: PeerId, piece: PieceId)                                extends Command[Unit]
-  case class AcquireJob(peerId: PeerId, promise: Promise[Throwable, AcquireJobResult]) extends Command[Unit]
-  case class ReleaseJob(peerId: PeerId, jobWithStatus: ReleaseJobStatus)               extends Command[Unit]
-  case object IsDownloadCompleted                                                      extends Command[Boolean]
-  case class IsRemoteInteresting(peerId: PeerId)                                       extends Command[Boolean]
-  case class ReportDownloadSpeed(peerId: PeerId, value: Int)                           extends Command[Unit]
-  case class ReportUploadSpeed(peerId: PeerId, value: Int)                             extends Command[Unit]
-  case object GetLocalBitField                                                         extends Command[TorrBitSet]
+  case class RegisterPeer(peerId: PeerId)                                extends Command[Unit]
+  case class UnregisterPeer(peerId: PeerId)                              extends Command[Unit]
+  case class ReportHaveMany(peerId: PeerId, pieces: Set[PieceId])        extends Command[Unit]
+  case class ReportHave(peerId: PeerId, piece: PieceId)                  extends Command[Unit]
+  case class AcquireJob(peerId: PeerId)                                  extends Command[AcquireJobResult]
+  case class ReleaseJob(peerId: PeerId, jobWithStatus: ReleaseJobStatus) extends Command[Unit]
+  case object IsDownloadCompleted                                        extends Command[Boolean]
+  case class IsRemoteInteresting(peerId: PeerId)                         extends Command[Boolean]
+  case class ReportDownloadSpeed(peerId: PeerId, value: Int)             extends Command[Unit]
+  case class ReportUploadSpeed(peerId: PeerId, value: Int)               extends Command[Unit]
+  case object GetLocalBitField                                           extends Command[TorrBitSet]
 
   private[dispatcher] case object DrawProgress extends Command[Unit]
 
@@ -53,8 +53,6 @@ object Actor {
       activeJobs: mutable.Map[DownloadJob, PeerId] = mutable.HashMap[DownloadJob, PeerId](),
       activePeers: mutable.Map[PeerId, ArrayBuffer[DownloadJob]] =
         mutable.HashMap[PeerId, ArrayBuffer[DownloadJob]](),
-      pendingJobRequests: mutable.Map[PeerId, Promise[Throwable, AcquireJobResult]] =
-        mutable.HashMap[PeerId, Promise[Throwable, AcquireJobResult]](),
       suspendedJobs: mutable.Map[PieceId, DownloadJob] = mutable.HashMap[PieceId, DownloadJob]()
   )
 
@@ -68,7 +66,7 @@ object Actor {
         case ReportHaveMany(peerId, pieces)     => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
         case ReportDownloadSpeed(peerId, value) => ZIO(reportDownloadSpeed(state, peerId, value)).as((state, ()))
         case ReportUploadSpeed(peerId, value)   => ZIO(reportUploadSpeed(state, peerId, value)).as((state, ()))
-        case AcquireJob(peerId, promise)        => acquireJob(state, peerId, promise).as((state, ()))
+        case AcquireJob(peerId)                 => acquireJob(state, peerId).map(res => (state, res))
         case ReleaseJob(peerId, jobWithStatus)  => releaseJob(state, peerId, jobWithStatus).as(state, ())
         case IsDownloadCompleted                => ZIO(isDownloadCompleted(state)).map(res => (state, res))
         case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
@@ -162,21 +160,18 @@ object Actor {
 
   private[dispatcher] def acquireJob(
       state: State,
-      peerId: PeerId,
-      promise: Promise[Throwable, AcquireJobResult]
-  ): Task[Unit] = {
+      peerId: PeerId
+  ): Task[AcquireJobResult] = {
     val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
 
     if (!state.registeredPeers.contains(peerId)) {
-      promise.fail(new IllegalStateException(s"Peer $peerIdStr is not registered")).unit
-
-    } else if (state.pendingJobRequests.contains(peerId)) {
-      promise.fail(new IllegalStateException(s"Peer $peerIdStr is already waiting for a job")).unit
+      ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is not registered"))
 
     } else {
       val suitableJobOption = tryGetSuitableJob(state, peerId)
+
       if (suitableJobOption.isEmpty) {
-        promise.succeed(AcquireJobResult.NotInterested).unit
+        ZIO.succeed(AcquireJobResult.NoInterestingPieces)
 
       } else {
         val job = suitableJobOption.get
@@ -188,17 +183,16 @@ object Actor {
           state.activeJobs.put(job, peerId)
           state.activePeers(peerId).append(job)
           state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
-          promise.succeed(AcquireJobResult.AcquireSuccess(job)).unit
+          ZIO.succeed(AcquireJobResult.Success(job))
 
         } else if (state.activePeers.size < state.maxActivePeers) {
           state.activeJobs.put(job, peerId)
           state.activePeers.put(peerId, ArrayBuffer[DownloadJob](job))
           state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
-          promise.succeed(AcquireJobResult.AcquireSuccess(job)).unit
+          ZIO.succeed(AcquireJobResult.Success(job))
 
         } else {
-          state.pendingJobRequests.put(peerId, promise)
-          ZIO.unit
+          ZIO.succeed(AcquireJobResult.OnQueue)
         }
       }
     }
@@ -214,9 +208,6 @@ object Actor {
     } else if (peerJobsOption.isEmpty) {
       ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is releasing job $releaseStatus while not being active"))
 
-    } else if (state.pendingJobRequests.contains(peerId)) {
-      ZIO.fail(new IllegalStateException(s"Active peer $peerIdStr can not have a pending job request"))
-
     } else {
       val peerJobs = peerJobsOption.get
       if (
@@ -231,7 +222,7 @@ object Actor {
         val job          = releaseStatus.job
         val peerJobIndex = peerJobs.indexOf(job)
 
-        val doReleaseJob = releaseStatus match {
+        releaseStatus match {
           case ReleaseJobStatus.Downloaded(_) =>
             for {
               _ <- handleReleasedJob(state, releaseStatus)
@@ -258,56 +249,8 @@ object Actor {
               _  = if (peerJobs.isEmpty) state.activePeers.remove(peerId)
             } yield ()
         }
-
-        for {
-          _ <- doReleaseJob
-          _ <- handlePendingJobRequests(
-                 state,
-                 jobsToAcquire = state.maxActivePeers - state.activePeers.size
-               )
-        } yield ()
       }
     }
-  }
-
-  /**
-    * Checks every pending job request if it is still must wait for a response.
-    *   - may acquire at most `jobsToAcquire` jobs (and fulfill corresponding requests)
-    *   - responds to everyone if download is completed
-    *   - aborts requests to peers that are not interesting anymore
-    */
-  //noinspection SimplifyUnlessInspection
-  private def handlePendingJobRequests(state: State, jobsToAcquire: Int = 1): Task[Unit] = {
-
-    def loop(peers: List[PeerId], jobsToAcquire: Int): Task[Unit] = {
-      peers match {
-        case Nil         => ZIO.unit
-        case pid :: tail =>
-          val promise           = state.pendingJobRequests(pid)
-          val peerIsInteresting = state.registeredPeers(pid).interesting.nonEmpty
-
-          if (peerIsInteresting && jobsToAcquire > 0) {
-            val job = tryGetSuitableJob(state, pid).get
-            state.activeJobs.put(job, pid)
-            state.activePeers.put(pid, ArrayBuffer(job))
-            state.pendingJobRequests.remove(pid)
-
-            state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
-            promise.succeed(AcquireJobResult.AcquireSuccess(job)) *>
-              loop(tail, jobsToAcquire - 1)
-
-          } else if (peerIsInteresting) {
-            loop(tail, jobsToAcquire)
-
-          } else {
-            state.pendingJobRequests.remove(pid)
-            promise.succeed(AcquireJobResult.NotInterested) *>
-              loop(tail, jobsToAcquire)
-          }
-      }
-    }
-
-    loop(state.pendingJobRequests.keys.toList, jobsToAcquire)
   }
 
   private def handleReleasedJob(state: State, releaseStatus: ReleaseJobStatus): Task[Unit] = {

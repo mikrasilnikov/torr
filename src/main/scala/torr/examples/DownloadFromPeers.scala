@@ -85,11 +85,15 @@ object DownloadFromPeers extends App {
   )
 
   //val metaInfoFile     =
-  //  "d:\\Torrents\\!torrent\\Good.Will.Hunting.1997.BDRip.avi.torrent"
+  //   "d:\\Torrents\\!torrent\\Good.Will.Hunting.1997.BDRip.avi.torrent"
   //val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
 
-  val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
-  val dstDirectoryName = "c:\\!temp\\Ubuntu\\"
+  val metaInfoFile     =
+    "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
+  val dstDirectoryName = "c:\\!temp\\CopyTest2\\"
+
+  //val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
+  //val dstDirectoryName = "c:\\!temp\\Ubuntu\\"
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
@@ -99,7 +103,7 @@ object DownloadFromPeers extends App {
       peerHash   <- random.nextBytes(12)
       localPeerId = Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
       metaInfo   <- FileIO.metaInfo
-      _          <- ZIO.foreachPar_(remotePeers) {
+      _          <- ZIO.foreachPar_(localPeers) {
                       case (host, port) =>
                         for {
                           address <- InetSocketAddress.hostName(host, port)

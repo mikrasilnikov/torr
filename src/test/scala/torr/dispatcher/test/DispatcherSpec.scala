@@ -81,9 +81,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         Actor.registerPeer(state, peerId)
         Actor.reportHaveMany(state, peerId, remoteHave)
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+          actual <- Actor.acquireJob(state, peerId)
+                      .map(_.asInstanceOf[AcquireJobResult.Success].job)
         } yield //
         assert(actual)(equalTo(expected)) &&
           assert(state.activeJobs.size)(equalTo(1)) &&
@@ -101,12 +100,10 @@ object DispatcherSpec extends DefaultRunnableSpec {
         Actor.registerPeer(state, peerId)
         Actor.reportHaveMany(state, peerId, remoteHave)
         for {
-          p1      <- Promise.make[Throwable, AcquireJobResult]
-          p2      <- Promise.make[Throwable, AcquireJobResult]
-          _       <- Actor.acquireJob(state, peerId, p1)
-          _       <- Actor.acquireJob(state, peerId, p2)
-          actual1 <- p1.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
-          actual2 <- p2.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+          actual1 <- Actor.acquireJob(state, peerId)
+                       .map(_.asInstanceOf[AcquireJobResult.Success].job)
+          actual2 <- Actor.acquireJob(state, peerId)
+                       .map(_.asInstanceOf[AcquireJobResult.Success].job)
         } yield //
         assert(actual1)(equalTo(expectedFirst)) &&
           assert(actual2)(equalTo(expectedSecond))
@@ -124,9 +121,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         Actor.registerPeer(state, peerId)
         Actor.reportHaveMany(state, peerId, remoteHave)
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+          actual <- Actor.acquireJob(state, peerId)
+                      .map(_.asInstanceOf[AcquireJobResult.Success].job)
         } yield assert(actual)(equalTo(expected))
       },
       //
@@ -140,9 +136,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         Actor.registerPeer(state, peerId)
         Actor.reportHaveMany(state, peerId, remoteHave)
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
+          actual <- Actor.acquireJob(state, peerId)
+                      .map(_.asInstanceOf[AcquireJobResult.Success].job)
         } yield assert(actual)(equalTo(expected))
 
       },
@@ -156,10 +151,9 @@ object DispatcherSpec extends DefaultRunnableSpec {
 
         Actor.registerPeer(state, peerId)
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.NotInterested.type])
-        } yield assert(actual)(equalTo(AcquireJobResult.NotInterested))
+          actual <- Actor.acquireJob(state, peerId)
+                      .map(_.asInstanceOf[AcquireJobResult.NoInterestingPieces.type])
+        } yield assert(actual)(equalTo(AcquireJobResult.NoInterestingPieces))
       },
       //
       testM("acquire - not interested when download completed") {
@@ -172,27 +166,9 @@ object DispatcherSpec extends DefaultRunnableSpec {
 
         Actor.registerPeer(state, peerId)
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await.map(_.asInstanceOf[AcquireJobResult.NotInterested.type])
-        } yield assert(actual)(equalTo(AcquireJobResult.NotInterested))
-      },
-      //
-      testM("acquire - fails if a peer is already waiting or a job") {
-        val peerId     = Chunk.fill(3)('z'.toByte)
-        val localHave  = new Array[Boolean](metaInfo.numPieces)
-        val state      = Actor.State(metaInfo, localHave, registeredPeers = mutable.HashMap(peerId -> RegisteredPeer()))
-        val remoteHave = HashSet[PieceId](0)
-
-        for {
-          p1 <- Promise.make[Throwable, AcquireJobResult]
-          _   = state.pendingJobRequests.put(peerId, p1)
-
-          p2     <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p2)
-          actual <- p2.await.fork.flatMap(_.await)
-
-        } yield assert(actual)(fails(hasMessage(equalTo("Peer zzz is already waiting for a job"))))
+          actual <- Actor.acquireJob(state, peerId)
+                      .map(_.asInstanceOf[AcquireJobResult.NoInterestingPieces.type])
+        } yield assert(actual)(equalTo(AcquireJobResult.NoInterestingPieces))
       },
       //
       testM("acquire - immediate success for active peer (on maxActivePeers)") {
@@ -213,18 +189,16 @@ object DispatcherSpec extends DefaultRunnableSpec {
         state.localHave(1) = true
 
         for {
-          p      <- Promise.make[Throwable, AcquireJobResult]
-          _      <- Actor.acquireJob(state, peerId, p)
-          actual <- p.await
+          actual <- Actor.acquireJob(state, peerId)
 
         } yield assert(actual)(equalTo(
-          AcquireJobResult.AcquireSuccess(
+          AcquireJobResult.Success(
             DownloadJob(0, metaInfo.pieceSize, metaInfo.pieceHashes(0))
           )
         ))
       },
       //
-      testM("acquire - suspends request for inactive peer (on maxActivePeers)") {
+      testM("acquire - returns OnQueue (on maxActivePeers)") {
         val peerId1 = Chunk.fill(3)('x'.toByte)
         val peerId2 = Chunk.fill(3)('y'.toByte)
 
@@ -243,95 +217,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
         state.localHave(1) = true
 
         for {
-          p     <- Promise.make[Throwable, AcquireJobResult]
-          _     <- Actor.acquireJob(state, peerId2, p)
-          actual = state.pendingJobRequests
-        } yield assert(actual)(equalTo(mutable.HashMap(peerId2 -> p)))
-      },
-      //
-      testM("acquire - delayed success (when releaser is choked)") {
-        val peerId1 = Chunk.fill(3)('x'.toByte)
-        val peerId2 = Chunk.fill(3)('y'.toByte)
-
-        val job = DownloadJob(0, metaInfo.pieceSize, metaInfo.pieceHashes(0), 0)
-
-        val state = Actor.State(
-          metaInfo,
-          localHave = new Array[Boolean](metaInfo.numPieces),
-          registeredPeers = mutable.HashMap(
-            peerId1 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1)),
-            peerId2 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1))
-          ),
-          maxActivePeers = 1,
-          activePeers = mutable.HashMap(peerId1 -> ArrayBuffer(job)),
-          activeJobs = mutable.HashMap(job -> peerId1)
-        )
-
-        state.localHave(0) = false
-        state.localHave(1) = false
-
-        for {
-          p       <- Promise.make[Throwable, AcquireJobResult]
-          _       <- Actor.acquireJob(state, peerId2, p)
-          enqueued = state.pendingJobRequests.exists { case (peerId, promise) => peerId == peerId2 && promise == p }
-          _       <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Choked(job))
-          actual  <- p.await
-        } yield assert(enqueued)(isTrue) && assert(actual)(equalTo(AcquireJobResult.AcquireSuccess(job)))
-      },
-      //
-      testM("acquire - delayed NotInterested") {
-        val metaInfo3 = MetaInfo(
-          announce = "udp://tracker.openbittorrent.com:80/announce",
-          pieceSize = 16,
-          entries = FileEntry(Path("file1.dat"), 48) :: Nil,
-          pieceHashes = Vector(
-            // hashes of empty array
-            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
-            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709"),
-            toBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709")
-          ),
-          infoHash = Chunk[Byte](1, 2, 3)
-        )
-
-        val peerId1 = Chunk.fill(3)('x'.toByte)
-        val peerId2 = Chunk.fill(3)('y'.toByte)
-
-        val state = Actor.State(
-          metaInfo3,
-          localHave = new Array[Boolean](metaInfo3.numPieces),
-          registeredPeers = mutable.HashMap(
-            peerId1 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1)),
-            peerId2 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1))
-          ),
-          maxActivePeers = 1,
-          activePeers = mutable.HashMap[PeerId, ArrayBuffer[DownloadJob]](),
-          activeJobs = mutable.HashMap[DownloadJob, PeerId]()
-        )
-
-        for {
-          p0   <- Promise.make[Throwable, AcquireJobResult]
-          _    <- Actor.acquireJob(state, peerId1, p0)
-          job0 <- p0.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
-
-          p1 <- Promise.make[Throwable, AcquireJobResult]
-          _  <- Actor.acquireJob(state, peerId2, p1)
-
-          p2   <- Promise.make[Throwable, AcquireJobResult]
-          _    <- Actor.acquireJob(state, peerId1, p2)
-          job1 <- p2.await.map(_.asInstanceOf[AcquireJobResult.AcquireSuccess].job)
-
-          completedJob0 = DownloadJob(0, metaInfo3.pieceSize, metaInfo3.pieceHashes(0), metaInfo3.pieceSize)
-          completedJob1 = DownloadJob(1, metaInfo3.pieceSize, metaInfo3.pieceHashes(1), metaInfo3.pieceSize)
-          _            <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Downloaded(completedJob0))
-          _            <- Actor.releaseJob(state, peerId1, ReleaseJobStatus.Downloaded(completedJob1))
-
-          actual <- p1.await
-
-        } yield assert(())(anything) &&
-          assert(job0)(equalTo(DownloadJob(0, metaInfo3.pieceSize, metaInfo3.pieceHashes(0), 0))) &&
-          assert(job1)(equalTo(DownloadJob(1, metaInfo3.pieceSize, metaInfo3.pieceHashes(1), 0))) &&
-          assert(actual)(equalTo(AcquireJobResult.NotInterested)) &&
-          assert(state.localHave)(equalTo(Array(true, true, false)))
+          actual <- Actor.acquireJob(state, peerId2)
+        } yield assert(actual)(equalTo(AcquireJobResult.OnQueue))
       },
       //
       testM("acquire - immediate success when active even if other peer is waiting") {
@@ -356,8 +243,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         state.localHave(1) = false
 
         for {
-          p0 <- Promise.make[Throwable, AcquireJobResult]
-          _  <- Actor.acquireJob(state, peerId2, p0) // other peer is waiting
+          _ <- Actor.acquireJob(state, peerId2) // other peer is waiting
 
           _       <- Actor.releaseJob( // releasing job with active status
                        state,
@@ -365,10 +251,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
                        ReleaseJobStatus.Downloaded(completedJob)
                      )
 
-          p1      <- Promise.make[Throwable, AcquireJobResult]
-          _       <- Actor.acquireJob(state, peerId1, p1) // active peer gets next job
-          expected = AcquireJobResult.AcquireSuccess(DownloadJob(1, metaInfo.pieceSize, metaInfo.pieceHashes(1), 0))
-          actual  <- p1.await
+          actual  <- Actor.acquireJob(state, peerId1) // active peer gets next job
+          expected = AcquireJobResult.Success(DownloadJob(1, metaInfo.pieceSize, metaInfo.pieceHashes(1), 0))
         } yield assert(actual)(equalTo(expected)) &&
           assert(state.localHave(0))(isTrue) &&
           assert(state.localHave(1))(isFalse)
@@ -479,58 +363,6 @@ object DispatcherSpec extends DefaultRunnableSpec {
           assert(state.suspendedJobs)(
             equalTo(mutable.HashMap(currentJob.pieceId -> currentJob)) // job becomes suspended
           )
-      },
-      //
-      testM("release - (Downloading) fails if a peer has a pending job request") {
-        val peerId     = Chunk.fill[Byte](3)('z'.toByte)
-        val remoteHave = HashSet[PieceId](0, 1)
-        val job        = DownloadJob(0, metaInfo.pieceSize, metaInfo.pieceHashes(0), 0)
-
-        val state = Actor.State(
-          metaInfo,
-          localHave = new Array[Boolean](metaInfo.numPieces),
-          registeredPeers = mutable.HashMap(peerId -> RegisteredPeer()),
-          maxActivePeers = 1,
-          activeJobs = mutable.HashMap(job -> peerId),
-          activePeers = mutable.HashMap(peerId -> ArrayBuffer(job))
-        )
-
-        for {
-          requestPromise <- Promise.make[Throwable, AcquireJobResult]
-
-          _ = state.pendingJobRequests.put(peerId, requestPromise) // has pending request
-
-          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Downloaded(job))
-                      .fork.flatMap(_.await)
-        } yield assert(actual)(fails(hasMessage(
-          equalTo("Active peer zzz can not have a pending job request")
-        )))
-      },
-      //
-      testM("release - (Choked) fails if a peer has a pending job request") {
-        val peerId     = Chunk.fill[Byte](3)('z'.toByte)
-        val remoteHave = HashSet[PieceId](0, 1)
-        val job        = DownloadJob(0, metaInfo.pieceSize, metaInfo.pieceHashes(0), 0)
-
-        val state = Actor.State(
-          metaInfo,
-          localHave = new Array[Boolean](metaInfo.numPieces),
-          registeredPeers = mutable.HashMap(peerId -> RegisteredPeer()),
-          maxActivePeers = 1,
-          activeJobs = mutable.HashMap(job -> peerId),
-          activePeers = mutable.HashMap(peerId -> ArrayBuffer(job))
-        )
-
-        for {
-          requestPromise <- Promise.make[Throwable, AcquireJobResult]
-
-          _ = state.pendingJobRequests.put(peerId, requestPromise) // has pending request
-
-          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Choked(job))
-                      .fork.flatMap(_.await)
-        } yield assert(actual)(fails(hasMessage(
-          equalTo("Active peer zzz can not have a pending job request")
-        )))
       },
       //
       testM("release - completed job, updates localHave") {
@@ -661,14 +493,12 @@ object DispatcherSpec extends DefaultRunnableSpec {
           _                  <- Actor.unregisterPeer(state, peerId1)
           isDownloadCompleted = Actor.isDownloadCompleted(state)
           isRemoteInteresting = Actor.isRemoteInteresting(state, peerId2)
-          p                  <- Promise.make[Throwable, AcquireJobResult]
-          _                  <- Actor.acquireJob(state, peerId2, p)
-          actualJob          <- p.await
+          actualJob          <- Actor.acquireJob(state, peerId2)
 
         } yield assert(isDownloadCompleted)(isFalse) &&
           assert(isRemoteInteresting)(isTrue) &&
           assert(state.suspendedJobs)(equalTo(mutable.HashMap(1 -> job2))) &&
-          assert(actualJob)(equalTo(AcquireJobResult.AcquireSuccess(job1))) &&
+          assert(actualJob)(equalTo(AcquireJobResult.Success(job1))) &&
           assert(state.localHave)(equalTo(Array(false, false)))
       }
     )

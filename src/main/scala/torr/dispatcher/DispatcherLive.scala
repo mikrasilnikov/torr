@@ -16,13 +16,8 @@ import zio.logging.Logging
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
-  def acquireJob(peerId: PeerId): Task[AcquireJobResult] = {
-    for {
-      p   <- Promise.make[Throwable, AcquireJobResult]
-      _   <- actor ? AcquireJob(peerId, p)
-      res <- p.await
-    } yield res
-  }
+  def acquireJob(peerId: PeerId): Task[AcquireJobResult] =
+    actor ? AcquireJob(peerId)
 
   def releaseJob(peerId: PeerId, job: => ReleaseJobStatus): Task[Unit] =
     actor ! ReleaseJob(peerId, job)

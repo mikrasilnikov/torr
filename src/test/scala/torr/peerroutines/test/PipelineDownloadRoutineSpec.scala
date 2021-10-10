@@ -42,14 +42,14 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
             Receive(Message.Unchoke) ::
             Fork(
               left =
-                AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job1)) ::
+                AcquireJob(peerId, AcquireJobResult.Success(job1)) ::
                   Poll(None) ::
                   Send(Message.Request(0, 0, 16 * 1024)) ::
                   Send(Message.Request(0, 16 * 1024, 16 * 1024)) ::
-                  AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job2)) ::
+                  AcquireJob(peerId, AcquireJobResult.Success(job2)) ::
                   Send(Message.Request(1, 0, 16 * 1024)) ::
                   Send(Message.Request(1, 16 * 1024, 16 * 1024)) ::
-                  AcquireJob(peerId, AcquireJobResult.NotInterested) ::
+                  AcquireJob(peerId, AcquireJobResult.NoInterestingPieces) ::
                   Nil,
               right =
                 ReceiveBlock(0, 0, 16 * 1024) ::
@@ -100,7 +100,7 @@ object PipelineDownloadRoutineSpec extends DefaultRunnableSpec {
             IsRemoteInteresting(peerId, true) ::
             Send(Message.Interested) ::
             Receive(Message.Unchoke) ::
-            AcquireJob(peerId, AcquireJobResult.AcquireSuccess(job)) ::
+            AcquireJob(peerId, AcquireJobResult.Success(job)) ::
             Poll(Some(Message.Choke)) ::
             ReleaseJob(peerId, ReleaseJobStatus.Choked(job)) ::
             IsDownloadCompleted(true) ::

@@ -181,7 +181,7 @@ object PipelineDownloadRoutine {
     for {
       acquireResult <- Dispatcher.acquireJob(handle.peerId)
       result        <- acquireResult match {
-                         case AcquireJobResult.AcquireSuccess(job) if beforeFirstRequest =>
+                         case AcquireJobResult.Success(job) if beforeFirstRequest =>
                            handle.poll[Choke].flatMap {
                              case None    =>
                                currentJobRef.set(Some(job)) *>
@@ -193,12 +193,12 @@ object PipelineDownloadRoutine {
                                  requestQueue.offer(None).as(SenderResult.ChokedOnQueue)
                            }
 
-                         case AcquireJobResult.AcquireSuccess(job)                       =>
+                         case AcquireJobResult.Success(job)                       =>
                            currentJobRef.set(Some(job)) *>
                              sendRequestsForJob(job, job.getOffset) *>
                              sendRequests(handle, requestQueue, currentJobRef, beforeFirstRequest)
 
-                         case AcquireJobResult.NotInterested                             =>
+                         case AcquireJobResult.NoInterestingPieces                =>
                            currentJobRef.set(None) *>
                              requestQueue.offer(None).as(SenderResult.NotInterested)
                        }
