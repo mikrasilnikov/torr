@@ -99,7 +99,12 @@ object LastDownloadRoutine {
       received: HashMap[(PieceId, Offset), Message.Piece],
       downSpeedAccRef: Ref[Long]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
-    allocateFirstJob(handle, jobState, requestsPerJobs, sent, received, downSpeedAccRef)
+
+    jobState match {
+      case AfterLast if requestsPerJobs.isEmpty => ZIO.unit
+      case _                                    =>
+        allocateFirstJob(handle, jobState, requestsPerJobs, sent, received, downSpeedAccRef)
+    }
   }
 
   private def allocateFirstJob(
