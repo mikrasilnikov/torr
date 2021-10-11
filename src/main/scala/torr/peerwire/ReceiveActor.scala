@@ -310,7 +310,7 @@ object ReceiveActor {
 
       for {
         _ <- Logging.debug(
-               s"${state.remotePeerIdStr} ReceiveActor.startFailing(..., ${error.getClass}: ${error.getMessage})"
+               s"${state.remotePeerIdStr} ReceiveActor.startFailing(..., ${error.getClass}: ${error.getMessage.strip()})"
              )
         _ <- ZIO.foreach_(state.givenPromises) { case (p, _) => p.fail(error) }
         _ <- state.channel.close

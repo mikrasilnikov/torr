@@ -144,7 +144,9 @@ object Main extends App {
                        case Some(Success(_))     =>
                          Logging.debug(s"$peerIdStr fiber successfully exited").as(false)
                        case Some(Failure(cause)) =>
-                         Logging.debug(s"$peerIdStr fiber failed with $cause").as(false)
+                         Logging.debug(
+                           s"$peerIdStr fiber failed: ${cause.failures.map(_.getMessage.strip).mkString(",")}"
+                         ).as(false)
                        case None                 =>
                          ZIO.succeed(true)
                      }
