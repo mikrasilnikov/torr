@@ -246,6 +246,7 @@ object LastDownloadRoutine {
       received: HashMap[(PieceId, Offset), Piece],
       downSpeedAccRef: Ref[Long]
   ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+
     handle.receive[Piece, Choke]
       .timeoutFail(new ProtocolException("Remote peer has not responded for 10 seconds"))(10.seconds)
       .flatMap {
