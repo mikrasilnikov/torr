@@ -51,6 +51,8 @@ object LastDownloadRoutine {
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     for {
 
+      _ <- handle.log(s"updating peer choking state")
+
       state <- updatePeerChokingState(handle, state0)
 
       _ <- handle.log(s"negotiating unchoke from interested = ${state.amInterested}, choked = ${state.peerChoking}")
