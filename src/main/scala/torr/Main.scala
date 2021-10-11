@@ -54,9 +54,8 @@ object Main extends App {
       .exitCode
   }
 
-  def download: ZIO[
+  def download: RIO[
     Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem with Announce with Random,
-    Throwable,
     Unit
   ] = {
     for {
@@ -84,17 +83,17 @@ object Main extends App {
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
-      case false => maintainActiveConnectionsCount(peerQueue, metaInfo, myPeerId, connections)
+      case false => maintainActiveConnections(peerQueue, metaInfo, myPeerId, connections)
       case _     => ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt }
     }
   }
 
-  def maintainActiveConnectionsCount(
+  def maintainActiveConnections(
       peerQueue: Queue[Peer],
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
-  ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
+  ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Unit] = {
     if (connections.length < maxSimultaneousConnections) {
       peerQueue.poll.flatMap {
         case Some(peer) => establishConnection(peerQueue, peer, metaInfo, myPeerId, connections)
@@ -111,7 +110,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
-  ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
+  ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Unit] = {
     val peerIdStr = peer.peerId
       .map(PeerHandleLive.makePeerIdStr)
       .fold("UNKNOWN")(identity)
@@ -131,7 +130,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
-  ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
+  ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Unit] = {
 
     for {
       updated <- ZIO.filter(connections) {
