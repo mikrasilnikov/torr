@@ -59,16 +59,14 @@ object DownloadFromPeers extends App {
     ("37.48.95.62", 57383)
   )
 
-  //val metaInfoFile     =
-  //   "d:\\Torrents\\!torrent\\Good.Will.Hunting.1997.BDRip.avi.torrent"
+  //val metaInfoFile     = "d:\\Torrents\\!torrent\\Good.Will.Hunting.1997.BDRip.avi.torrent"
   //val dstDirectoryName = "c:\\!temp\\CopyTest1\\"
 
-  val metaInfoFile     =
-    "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
-  val dstDirectoryName = "c:\\!temp\\CopyTest2\\"
+  //val metaInfoFile     = "d:\\Torrents\\!torrent\\Breaking Bad - Season 1 [BDRip] (Кубик в Кубе).torrent"
+  //val dstDirectoryName = "c:\\!temp\\CopyTest2\\"
 
-  //val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
-  //val dstDirectoryName = "c:\\!temp\\Ubuntu\\"
+  val metaInfoFile     = "C:\\!temp\\ubuntu-21.04-desktop-amd64.iso.torrent"
+  val dstDirectoryName = "c:\\!temp\\Ubuntu\\"
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
 
