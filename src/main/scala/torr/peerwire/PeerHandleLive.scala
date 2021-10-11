@@ -270,7 +270,7 @@ object PeerHandleLive {
     } yield ()
   }
 
-  private def makePeerIdStr(peerId: Chunk[Byte]): String = {
+  def makePeerIdStr(peerId: Chunk[Byte]): String = {
     val digest = MessageDigest.getInstance("MD5")
     val hash   = digest.digest(peerId.toArray)
     hash.take(4).map("%02X" format _).mkString
