@@ -114,10 +114,8 @@ object LastDownloadRoutine {
         case _                             =>
           for {
             _ <- handle.send(Message.NotInterested)
-            _ <- handle.receive[Choke].timeoutFail(new ProtocolException(
-                   s"${handle.peerIdStr} has not responded with Choke after NotInterested for 5 seconds"
-                 ))(5.seconds)
             _ <- restart(handle, DownloadState(peerChoking = false, amInterested = false), downSpeedAccRef)
+                   .delay(5.seconds)
           } yield ()
       }
 
