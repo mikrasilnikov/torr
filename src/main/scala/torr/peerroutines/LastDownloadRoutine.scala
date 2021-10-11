@@ -8,6 +8,7 @@ import torr.peerroutines.DefaultPeerRoutine.DownloadState
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob, PieceId, ReleaseJobStatus}
 import torr.fileio.FileIO
 import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
+import zio.logging.Logging
 
 import scala.collection.immutable.Queue
 import scala.collection.immutable.HashMap
@@ -30,41 +31,53 @@ object LastDownloadRoutine {
       peerHandle: PeerHandle,
       downloadState: DownloadState,
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
-    Dispatcher.isDownloadCompleted.flatMap {
-      case true => ZIO.unit
-      case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
-          case false => restart(peerHandle, downloadState, downSpeedAccRef).delay(10.seconds)
-          case _     => negotiateUnchoke(peerHandle, downloadState, downSpeedAccRef)
-        }
-    }
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
+    peerHandle.log("restarting download") *>
+      Dispatcher.isDownloadCompleted.flatMap {
+        case true => peerHandle.log("download completed")
+        case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
+            case false =>
+              peerHandle.log("remote is not interesting, waiting 10 seconds") *>
+                restart(peerHandle, downloadState, downSpeedAccRef).delay(10.seconds)
+            case _     => negotiateUnchoke(peerHandle, downloadState, downSpeedAccRef)
+          }
+      }
   }
 
   private def negotiateUnchoke(
       handle: PeerHandle,
       state0: DownloadState,
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     for {
+
       state <- updatePeerChokingState(handle, state0)
+
+      _ <- handle.log(s"negotiating unchoke from interested = ${state.amInterested}, choked = ${state.peerChoking}")
 
       _ <- (state.amInterested, state.peerChoking) match {
              case (false, true)  =>
-               handle.send(Message.Interested) *>
+               handle.log("\tsending Interested") *>
+                 handle.send(Message.Interested) *>
+                 handle.log("\twaiting for Unchoke") *>
                  handle.receive[Unchoke] *>
                  handle.ignore[Unchoke]
 
              case (false, false) =>
-               handle.send(Message.Interested) *>
+               handle.log("\tsending Interested") *>
+                 handle.send(Message.Interested) *>
                  handle.ignore[Unchoke]
 
              case (true, true)   =>
-               handle.receive[Unchoke] *>
+               handle.log("\twaiting for Unchoke") *>
+                 handle.receive[Unchoke] *>
                  handle.ignore[Unchoke]
 
              case (true, false)  =>
                ZIO.fail(new IllegalStateException("negotiateAndDownload: (amInterested = true, peerChoking = false)"))
            }
+
+      _ <- handle.log("negotiation completed, starting requests")
 
       _ <- continue(
              handle,
@@ -85,7 +98,7 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     allocateFirstJob(handle, jobState, requestsPerJobs, sent, received, downSpeedAccRef)
   }
 
@@ -96,28 +109,32 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     if (jobState.isInstanceOf[BeforeFirst.type]) {
 
-      Dispatcher.acquireJob(handle.peerId).flatMap {
-        case AcquireJobResult.Success(job) =>
-          continue(
-            handle,
-            jobState = Allocated(job, requestOffset = 0),
-            requestsPerJobs + (job -> 0),
-            sent,
-            received,
-            downSpeedAccRef
-          )
+      handle.log("acquiring first job") *>
+        Dispatcher.acquireJob(handle.peerId).flatMap {
+          case AcquireJobResult.Success(job) =>
+            handle.log(s"acquired $job") *>
+              continue(
+                handle,
+                jobState = Allocated(job, requestOffset = job.getOffset),
+                requestsPerJobs + (job -> 0),
+                sent,
+                received,
+                downSpeedAccRef
+              )
 
-        case _                             =>
-          for {
-            _ <- handle.send(Message.NotInterested)
-            _ <- restart(handle, DownloadState(peerChoking = false, amInterested = false), downSpeedAccRef)
-                   .delay(5.seconds)
-          } yield ()
-      }
+          case dispatcherResponse            =>
+            for {
+              _ <- handle.log(s"got $dispatcherResponse, sending NotInterested")
+              _ <- handle.send(Message.NotInterested)
+              _ <- handle.log(s"waiting 5 seconds")
+              _ <- restart(handle, DownloadState(peerChoking = false, amInterested = false), downSpeedAccRef)
+                     .delay(5.seconds)
+            } yield ()
+        }
 
     } else {
       allocateNextJob(handle, jobState, requestsPerJobs, sent, received, downSpeedAccRef)
@@ -131,24 +148,27 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     jobState match {
       case Allocated(job, reqOffset) if job.length - reqOffset <= 0 =>
-        Dispatcher.acquireJob(handle.peerId).flatMap {
-          case AcquireJobResult.Success(job) =>
-            continue(
-              handle,
-              jobState = Allocated(job, requestOffset = 0),
-              requestsPerJobs + (job -> 0),
-              sent,
-              received,
-              downSpeedAccRef
-            )
+        handle.log("acquiring next job") *>
+          Dispatcher.acquireJob(handle.peerId).flatMap {
+            case AcquireJobResult.Success(job) =>
+              handle.log(s"acquired $job") *>
+                continue(
+                  handle,
+                  jobState = Allocated(job, requestOffset = job.getOffset),
+                  requestsPerJobs + (job -> 0),
+                  sent,
+                  received,
+                  downSpeedAccRef
+                )
 
-          case _                             =>
-            continue(handle, jobState = AfterLast, requestsPerJobs, sent, received, downSpeedAccRef)
-        }
+            case dispatcherResponse            =>
+              handle.log(s"got $dispatcherResponse, continuing with jobState = AfterLast") *>
+                continue(handle, jobState = AfterLast, requestsPerJobs, sent, received, downSpeedAccRef)
+          }
       case _                                                        =>
         sendRequest(handle, jobState, requestsPerJobs, sent, received, downSpeedAccRef)
     }
@@ -161,7 +181,7 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     if (
       jobState.isInstanceOf[Allocated] &&
@@ -198,7 +218,7 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     val nextResponseInOrderOption = for {
       req  <- sent.headOption
@@ -218,8 +238,13 @@ object LastDownloadRoutine {
 
         _ <- downSpeedAccRef.update(_ + request.msg.length)
 
-        _   <- Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Downloaded(request.job))
-                 .when(unprocessedForJob == 0)
+        _   <- unprocessedForJob match {
+                 case 0 =>
+                   handle.log(s"releasing job ${request.job} as downloaded") *>
+                     Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Downloaded(request.job))
+                 case _ =>
+                   ZIO.unit
+               }
 
         res <- continue(
                  handle,
@@ -243,7 +268,7 @@ object LastDownloadRoutine {
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Piece],
       downSpeedAccRef: Ref[Long]
-  ): RIO[Dispatcher with FileIO with Clock, Unit] = {
+  ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     handle.receive[Piece, Choke]
       .timeoutFail(new ProtocolException("Remote peer has not responded for 10 seconds"))(10.seconds)
@@ -262,8 +287,10 @@ object LastDownloadRoutine {
 
         case Message.Choke                 =>
           for {
+            _ <- handle.log(s"got Choke")
             _ <- ZIO.foreach_(requestsPerJobs.keys)(j =>
-                   Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(j))
+                   handle.log(s"releasing job $j as choked") *>
+                     Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(j))
                  )
             _ <- restart(handle, DownloadState(peerChoking = true, amInterested = true), downSpeedAccRef)
           } yield ()

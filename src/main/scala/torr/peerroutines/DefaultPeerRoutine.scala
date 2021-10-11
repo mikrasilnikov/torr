@@ -39,7 +39,11 @@ object DefaultPeerRoutine {
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
-           ).onError(e => Logging.debug(s"LastDownloadRoutine failed with\n${e.prettyPrint}"))
+           ).onError(e =>
+             Logging.debug(
+               s"${peerHandle.peerIdStr} LastDownloadRoutine failed with ${e.failures.map(_.getMessage).mkString(", ")}"
+             )
+           )
 
       _ <- haveFib.interrupt
       _ <- aliveFib.interrupt

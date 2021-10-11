@@ -61,4 +61,6 @@ final case class DownloadJob(
     }
 
   override def hashCode(): Int = pieceId.hashCode()
+
+  override def toString: String = s"DownloadJob(pieceId=$pieceId, length=$length, offset=$hashOffset)"
 }

@@ -1,9 +1,11 @@
 package torr.peerwire
 
-import zio.Task
+import zio._
 import zio.actors.ActorRef
+
 import scala.reflect.ClassTag
 import torr.dispatcher.PeerId
+import zio.logging.Logging
 
 trait PeerHandle {
   def peerId: PeerId
@@ -16,8 +18,9 @@ trait PeerHandle {
   def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]
   def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]]
   def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit]
-
   def onMessage(msg: Message): Task[Unit]
+
+  def log(message: String): RIO[Logging, Unit] = Logging.debug(s"$peerIdStr $message")
 
   private[peerwire] def sendActor: ActorRef[SendActor.Command]
   private[peerwire] def receiveActor: ActorRef[ReceiveActor.Command]
