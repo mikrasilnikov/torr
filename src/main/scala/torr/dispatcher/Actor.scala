@@ -48,7 +48,7 @@ object Actor {
   case class State(
       metaInfo: MetaInfo,
       localHave: Array[Boolean],
-      maxActivePeers: Int = 5, // Number of simultaneous downloads.
+      maxActivePeers: Int = 10, // Number of simultaneous downloads.
       registeredPeers: mutable.Map[PeerId, RegisteredPeer] = mutable.HashMap[PeerId, RegisteredPeer](),
       activeJobs: mutable.Map[DownloadJob, PeerId] = mutable.HashMap[DownloadJob, PeerId](),
       activePeers: mutable.Map[PeerId, ArrayBuffer[DownloadJob]] =
