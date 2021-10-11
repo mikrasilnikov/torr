@@ -70,7 +70,7 @@ object Main extends App {
              peerQueue,
              metaInfo,
              myPeerId,
-             connectionFibers = Vector.empty[(Peer, Fiber[Throwable, Unit])]
+             connections = Vector.empty[(Peer, Fiber[Throwable, Unit])]
            )
 
       _ <- fetchPeersFiber.interrupt
@@ -81,11 +81,11 @@ object Main extends App {
       peerQueue: Queue[Peer],
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      connectionFibers: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
-      case false => maintainActiveConnectionsCount(peerQueue, metaInfo, myPeerId, connectionFibers)
-      case _     => ZIO.foreach_(connectionFibers) { case (_, fiber) => fiber.interrupt }
+      case false => maintainActiveConnectionsCount(peerQueue, metaInfo, myPeerId, connections)
+      case _     => ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt }
     }
   }
 
@@ -93,15 +93,15 @@ object Main extends App {
       peerQueue: Queue[Peer],
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      connectionFibers: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
-    if (connectionFibers.length < maxSimultaneousConnections) {
+    if (connections.length < maxSimultaneousConnections) {
       peerQueue.poll.flatMap {
-        case Some(peer) => establishConnection(peerQueue, peer, metaInfo, myPeerId, connectionFibers)
-        case None       => processDropped(peerQueue, metaInfo, myPeerId, connectionFibers)
+        case Some(peer) => establishConnection(peerQueue, peer, metaInfo, myPeerId, connections)
+        case None       => processDisconnected(peerQueue, metaInfo, myPeerId, connections)
       }
     } else {
-      processDropped(peerQueue, metaInfo, myPeerId, connectionFibers)
+      processDisconnected(peerQueue, metaInfo, myPeerId, connections)
     }
   }
 
@@ -126,23 +126,20 @@ object Main extends App {
     } yield ()
   }
 
-  def processDropped(
+  def processDisconnected(
       peerQueue: Queue[Peer],
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      connectionFibers: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): ZIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock with ActorSystem, Throwable, Unit] = {
 
     for {
-      updated <- ZIO.filter(connectionFibers) {
+      updated <- ZIO.filter(connections) {
                    case (peer, fiber) =>
-                     val peerIdStr = peer.peerId
-                       .map(PeerHandleLive.makePeerIdStr)
-                       .fold("UNKNOWN")(identity)
+                     val peerIdStr = peer.peerId.map(PeerHandleLive.makePeerIdStr).fold("UNKNOWN")(identity)
 
                      fiber.poll.flatMap {
-                       case Some(Success(_))     =>
-                         Logging.debug(s"$peerIdStr fiber successfully exited").as(false)
+                       case Some(Success(_))     => Logging.debug(s"$peerIdStr fiber successfully exited").as(false)
                        case Some(Failure(cause)) =>
                          Logging.debug(
                            s"$peerIdStr fiber failed: ${cause.failures.map(_.getMessage.strip).mkString(",")}"
@@ -152,7 +149,12 @@ object Main extends App {
                      }
                  }
 
-      _       <- manageConnections(peerQueue, metaInfo, myPeerId, updated).delay(1.second)
+      _       <- manageConnections(
+                   peerQueue,
+                   metaInfo,
+                   myPeerId,
+                   connections = updated
+                 ).delay(1.second)
     } yield ()
   }
 
