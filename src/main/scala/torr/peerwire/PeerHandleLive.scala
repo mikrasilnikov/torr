@@ -166,8 +166,8 @@ object PeerHandleLive {
 
     val supervisor =
       actors.Supervisor.retryOrElse(
-        Schedule.forever,
-        (e, _: Long) =>
+        Schedule.stop,
+        (e, _: Unit) =>
           for {
             _ <- (receiveActor ! ReceiveActor.StartFailing(e)).orDie
           } yield ()
@@ -197,8 +197,8 @@ object PeerHandleLive {
     // Supervisor that sends message StartFailing(...) to actor after first error.
     def makeSupervisor(promise: Promise[Nothing, ActorRef[ReceiveActor.Command]]) =
       actors.Supervisor.retryOrElse(
-        Schedule.forever,
-        (e, _: Long) =>
+        Schedule.stop,
+        (e, _: Unit) =>
           for {
             actor <- promise.await
             _     <- (actor ! ReceiveActor.StartFailing(e)).orDie
