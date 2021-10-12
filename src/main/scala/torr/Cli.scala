@@ -11,7 +11,7 @@ object Cli {
   val maxConnectionsOption: Options[Int] =
     Options.integer("maxConnections")
       .alias("mc")
-      .withDefault(500, "500 active connections")
+      .withDefault(100, "500 active connections")
       .asInstanceOf[Options[Int]]
 
   val proxyOption: Options[Option[String]] =

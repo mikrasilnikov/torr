@@ -50,6 +50,14 @@ object Main extends App {
         command = Cli.default
       ) {
         case (options, args) =>
+          val extension = ".torrent"
+
+          val torrentFileAbsolutePath = args.metaInfoPath.toAbsolutePath.toString
+          val dstFolderAbsolutePath   =
+            if (torrentFileAbsolutePath.endsWith(extension))
+              torrentFileAbsolutePath.take(torrentFileAbsolutePath.length - extension.length)
+            else torrentFileAbsolutePath ++ ".out"
+
           download(options.maxConnections, options.maxActivePeers)
             .injectCustom(
               ActorSystemLive.make("Default"),
@@ -57,13 +65,17 @@ object Main extends App {
               Slf4jLogger.make((_, message) => message),
               GrowableBufferPool.make(256),
               FileIOLive.make(
-                args.metaInfoPath.toAbsolutePath.toString,
-                args.metaInfoPath.toAbsolutePath.toString ++ ".result"
+                torrentFileAbsolutePath,
+                dstFolderAbsolutePath
               ),
               DispatcherLive.make(options.maxActivePeers),
               SimpleConsoleUI.make
             ) //.catchAll(e => putStrLn(e.getMessage).orDie)
       }
+
+    /*cliApp.run(
+      "--help" :: Nil
+    )*/
 
     cliApp.run(
       "-p" :: "127.0.0.1:8080" ::

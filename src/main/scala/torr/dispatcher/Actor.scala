@@ -77,10 +77,6 @@ object Actor {
       }
   }
 
-  private def getLocalBitField(state: State): Task[TorrBitSet] = {
-    ZIO(TorrBitSet.fromBoolArray(state.localHave))
-  }
-
   private[dispatcher] def registerPeer(state: State, peerId: PeerId): Unit = {
     if (state.registeredPeers.contains(peerId)) {
       val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
@@ -107,6 +103,7 @@ object Actor {
         _ <- peerJobs match {
                case Some(jobs) =>
                  ZIO.foreach_(jobs.toList)(j => releaseJob(state, peerId, ReleaseJobStatus.Aborted(j)))
+
                case None       => ZIO.unit
              }
         _  = state.registeredPeers.remove(peerId)
@@ -164,9 +161,9 @@ object Actor {
       state: State,
       peerId: PeerId
   ): Task[AcquireJobResult] = {
-    val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
 
     if (!state.registeredPeers.contains(peerId)) {
+      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
       ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is not registered"))
 
     } else {
@@ -343,6 +340,10 @@ object Actor {
 
   private[dispatcher] def isRemoteInteresting(state: State, peerId: PeerId): Boolean = {
     state.registeredPeers(peerId).interesting.nonEmpty
+  }
+
+  private[dispatcher] def getLocalBitField(state: State): Task[TorrBitSet] = {
+    ZIO(TorrBitSet.fromBoolArray(state.localHave))
   }
 
   private def drawProgress(state: State): RIO[ConsoleUI, Unit] = {
