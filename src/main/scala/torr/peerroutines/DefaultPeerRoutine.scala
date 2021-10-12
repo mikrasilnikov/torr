@@ -35,7 +35,7 @@ object DefaultPeerRoutine {
       aliveFib <- handleKeepAlive(peerHandle).fork
       speedFib <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
 
-      _ <- LastDownloadRoutine.restart(
+      _ <- DefaultDownloadRoutine.restart(
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef

@@ -308,9 +308,14 @@ object ReceiveActor {
     private def startFailing(state: State, error: Throwable): RIO[Logging, Unit] = {
       state.isFailingWith = Some(error)
 
+      val message =
+        if (error.getMessage != null)
+          error.getMessage.strip()
+        else "null"
+
       for {
         _ <- Logging.debug(
-               s"${state.remotePeerIdStr} ReceiveActor.startFailing(..., ${error.getClass}: ${error.getMessage.strip()})"
+               s"${state.remotePeerIdStr} ReceiveActor.startFailing(..., ${error.getClass}: $message)"
              )
         _ <- ZIO.foreach_(state.givenPromises) { case (p, _) => p.fail(error) }
         _ <- state.channel.close

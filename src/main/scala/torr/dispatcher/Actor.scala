@@ -33,6 +33,7 @@ object Actor {
   case class ReportDownloadSpeed(peerId: PeerId, value: Int)             extends Command[Unit]
   case class ReportUploadSpeed(peerId: PeerId, value: Int)               extends Command[Unit]
   case object GetLocalBitField                                           extends Command[TorrBitSet]
+  case object NumActivePeers                                             extends Command[Int]
 
   private[dispatcher] case object DrawProgress extends Command[Unit]
 
@@ -72,6 +73,7 @@ object Actor {
         case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
         case DrawProgress                       => drawProgress(state).as(state, ())
         case GetLocalBitField                   => getLocalBitField(state).map(res => (state, res))
+        case NumActivePeers                     => ZIO.succeed((state, state.activePeers.size))
       }
   }
 

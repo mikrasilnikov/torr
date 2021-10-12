@@ -60,8 +60,23 @@ case class AnnounceLive(client: HttpClient) extends Announce.Service {
 }
 
 object AnnounceLive {
-  def make(proxy: Option[InetSocketAddress]): ZLayer[Any, Throwable, Announce] = {
-    ZIO(buildClient(proxy)).map(client => AnnounceLive(client)).toLayer
+
+  def make(proxy: Option[String]): ZLayer[Any, Throwable, Announce] = {
+
+    def makeAddressOption =
+      proxy.map { s =>
+        val (host :: portStr :: Nil) = s.split(':').toList
+        val port                     = portStr.toInt
+        InetSocketAddress.createUnresolved(host, port)
+      }
+
+    val effect = for {
+      addressOption <- ZIO(makeAddressOption)
+                         .orElseFail(new IllegalArgumentException("Could not parse proxy server. Specify host:port"))
+      client        <- ZIO(buildClient(addressOption))
+    } yield AnnounceLive(client)
+
+    effect.toLayer
   }
 
   private def buildClient(proxy: Option[InetSocketAddress]): HttpClient = {

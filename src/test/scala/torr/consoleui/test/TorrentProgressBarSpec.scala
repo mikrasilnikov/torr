@@ -11,7 +11,7 @@ import torr.metainfo.test.MetaInfoSpec.toBytes
 
 import scala.collection.mutable
 
-object TorrentProgressBarSpec$$ extends DefaultRunnableSpec {
+object TorrentProgressBarSpec extends DefaultRunnableSpec {
   override def spec =
     suite("DispatcherStateUiSpec")(
       //

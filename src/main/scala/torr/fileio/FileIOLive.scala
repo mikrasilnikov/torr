@@ -17,7 +17,7 @@ import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
 import zio.nio.file.Files
 
-import java.nio.file.{OpenOption, StandardOpenOption}
+import java.nio.file.{LinkOption, OpenOption, StandardOpenOption}
 
 case class FileIOLive(private val actor: ActorRef[Command], mi: MetaInfo, freshFiles: Boolean) extends FileIO.Service {
 
@@ -122,7 +122,7 @@ object FileIOLive {
   }
 
   private def createDirectory(path: Path): ZIO[Blocking, Throwable, Unit] = {
-    Files.exists(path).flatMap {
+    Files.isDirectory(path).flatMap {
       case true  => ZIO.unit
       case false =>
         for {

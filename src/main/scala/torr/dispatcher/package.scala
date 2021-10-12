@@ -44,6 +44,8 @@ package object dispatcher {
 
       def getLocalBitField: Task[TorrBitSet]
 
+      def numActivePeers: Task[Int]
+
       def acquireJobManaged(peerId: PeerId): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(peerId)) {
           case AcquireJobResult.Success(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie

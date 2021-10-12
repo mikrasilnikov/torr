@@ -37,11 +37,13 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
     actor ! ReportUploadSpeed(peerId, bytesPerSecond)
 
   def getLocalBitField: Task[TorrBitSet] = actor ? GetLocalBitField
+
+  def numActivePeers: Task[PieceId] = actor ? NumActivePeers
 }
 
 object DispatcherLive {
 
-  def make: ZLayer[
+  def make(maxActivePeers: Int): ZLayer[
     ConsoleUI with ActorSystem with DirectBufferPool with FileIO with Logging with Console with Clock,
     Throwable,
     Dispatcher
@@ -63,7 +65,7 @@ object DispatcherLive {
                         _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
                       } yield res).toManaged_
 
-      actor     <- makeActor(Actor.State(metaInfo, localHave))
+      actor     <- makeActor(Actor.State(metaInfo, localHave, maxActivePeers))
                      .toManaged(actor =>
                        Logging.debug("dispatcher actor stopping") *>
                          actor.stop.orDie *>

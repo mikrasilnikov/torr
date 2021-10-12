@@ -91,6 +91,8 @@ object PeerHandleAndDispatcherMock {
         def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   = ???
 
         def getLocalBitField: Task[TorrBitSet] = ???
+
+        def numActivePeers: Task[PieceId] = ???
       }
 
       val peerHandle = new PeerHandle {

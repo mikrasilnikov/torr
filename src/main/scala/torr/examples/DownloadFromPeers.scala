@@ -5,23 +5,16 @@ import ch.qos.logback.classic.joran.JoranConfigurator
 import org.slf4j.LoggerFactory
 import torr.actorsystem.ActorSystemLive
 import torr.consoleui.SimpleConsoleUI
-import torr.directbuffers.{DirectBufferPool, FixedBufferPool, GrowableBufferPool}
+import torr.directbuffers.GrowableBufferPool
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
-import torr.metainfo.MetaInfo
-import torr.peerroutines.{DefaultPeerRoutine, PipelineDownloadRoutine}
-import torr.peerwire.{Message, PeerHandle, PeerHandleLive}
-import torr.peerwire.MessageTypes._
-import zio.Cause.Internal
+import torr.peerroutines.DefaultPeerRoutine
+import torr.peerwire.PeerHandleLive
 import zio._
-import zio.console.{Console, putStrLn}
 import zio.duration.durationInt
-import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
-import zio.nio.core.{InetAddress, InetSocketAddress}
-
-import scala.collection.immutable.HashMap
+import zio.nio.core.InetSocketAddress
 
 object DownloadFromPeers extends App {
 
@@ -122,7 +115,7 @@ object DownloadFromPeers extends App {
       Slf4jLogger.make((_, message) => message),
       GrowableBufferPool.make(512),
       FileIOLive.make(metaInfoFile, dstDirectoryName),
-      DispatcherLive.make,
+      DispatcherLive.make(10),
       SimpleConsoleUI.make
     ).exitCode
   }
