@@ -132,13 +132,15 @@ object PeerHandleLive {
 
       remotePeerIdStr = makePeerIdStr(remotePeerId)
 
-      receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).fork
+      /*receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).fork
                         .toManaged(fib =>
                           Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupting") *>
                             channel.close.whenM(channel.isOpen).ignore *>
                             fib.interrupt *>
                             Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupted")
-                        )
+                        )*/
+
+      receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).toManaged_.fork
 
       receiveActor <- createReceiveActor(channel, channelName, remotePeerId, remotePeerIdStr, actorConfig)
                         .toManaged(actor =>
