@@ -184,13 +184,11 @@ object Actor {
         if (peerIsActive) {
           state.activeJobs.put(job, peerId)
           state.activePeers(peerId).append(job)
-          state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
           ZIO.succeed(AcquireJobResult.Success(job))
 
         } else if (state.activePeers.size < state.maxActivePeers) {
           state.activeJobs.put(job, peerId)
           state.activePeers.put(peerId, ArrayBuffer[DownloadJob](job))
-          state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
           ZIO.succeed(AcquireJobResult.Success(job))
 
         } else {
@@ -255,11 +253,7 @@ object Actor {
       case (Downloaded(job), Verified) if !state.localHave(job.pieceId) =>
         ZIO {
           state.localHave(job.pieceId) = true
-
-          state.registeredPeers.foreach {
-            case (_, peer) =>
-              peer.interesting.remove(job.pieceId)
-          }
+          state.registeredPeers.foreach { case (_, peer) => peer.interesting.remove(job.pieceId) }
         }
 
       case (Downloaded(job), Verified) if state.localHave(job.pieceId)  =>
@@ -270,23 +264,11 @@ object Actor {
       case (Choked(job), Incomplete)                                    =>
         ZIO.succeed {
           state.suspendedJobs.put(job.pieceId, job)
-
-          state.registeredPeers.foreach {
-            case (_, peer) =>
-              if (peer.have.contains(job.pieceId))
-                peer.interesting.add(job.pieceId)
-          }
         }
 
       case (Aborted(job), Incomplete)                                   =>
         ZIO.succeed {
           state.suspendedJobs.put(job.pieceId, job)
-
-          state.registeredPeers.foreach {
-            case (_, peer) =>
-              if (peer.have.contains(job.pieceId))
-                peer.interesting.add(job.pieceId)
-          }
         }
 
       case (_, Failed)                                                  => ZIO.unit

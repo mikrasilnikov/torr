@@ -25,8 +25,8 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def isDownloadCompleted: Task[Boolean]                 = actor ? IsDownloadCompleted
   def isRemoteInteresting(peerId: PeerId): Task[Boolean] = actor ? IsRemoteInteresting(peerId)
 
-  def registerPeer(peerId: PeerId): Task[Unit]   = actor ! RegisterPeer(peerId)
-  def unregisterPeer(peerId: PeerId): Task[Unit] = actor ! UnregisterPeer(peerId)
+  def registerPeer(peerId: PeerId): Task[Unit]   = actor ? RegisterPeer(peerId)
+  def unregisterPeer(peerId: PeerId): Task[Unit] = actor ? UnregisterPeer(peerId)
 
   def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = actor ! ReportHave(peerId, piece)
   def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = actor ! ReportHaveMany(peerId, pieces)
