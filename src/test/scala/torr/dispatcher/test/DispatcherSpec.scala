@@ -37,7 +37,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val peerId = Chunk.fill[Byte](20)(100)
         Actor.registerPeer(state, peerId)
         val actual = Try { Actor.registerPeer(state, peerId) }
-        assert(actual)(isFailure(hasMessage(equalTo("PeerId dddddddddddddddddddd is already registered"))))
+        assert(actual)(isFailure(hasMessage(equalTo("PeerId 00D620F6 is already registered"))))
       },
       //
       testM("unregisters peer - removes allocated job") {
@@ -74,7 +74,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         val effect = for {
           _      <- Actor.unregisterPeer(state, peerId)
           actual <- Actor.unregisterPeer(state, peerId).fork.flatMap(_.await)
-        } yield assert(actual)(fails(hasMessage(equalTo("PeerId dddddddddddddddddddd is not registered"))))
+        } yield assert(actual)(fails(hasMessage(equalTo("PeerId 00D620F6 is not registered"))))
 
         effect.inject(Logging.ignore)
       },
@@ -280,7 +280,9 @@ object DispatcherSpec extends DefaultRunnableSpec {
           actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Choked(job))
                       .fork.flatMap(_.await)
         } yield assert(actual)(fails(hasMessage(
-          equalTo("Peer zzz is releasing job Choked(DownloadJob(0,32,Chunk(1,2,3),0)) while not being active")
+          equalTo(
+            "Peer F3ABB86B is releasing job Choked(DownloadJob(pieceId=0, length=32, offset=0)) while not being active"
+          )
         )))
       },
       //
@@ -299,7 +301,9 @@ object DispatcherSpec extends DefaultRunnableSpec {
           actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Choked(job))
                       .fork.flatMap(_.await)
         } yield assert(actual)(fails(hasMessage(
-          equalTo("Peer zzz is releasing job Choked(DownloadJob(0,32,Chunk(1,2,3),0)) that has not been acquired")
+          equalTo(
+            "Peer F3ABB86B is releasing job Choked(DownloadJob(pieceId=0, length=32, offset=0)) that has not been acquired"
+          )
         )))
       },
       //
@@ -324,29 +328,6 @@ object DispatcherSpec extends DefaultRunnableSpec {
           assert(state.activePeers)(equalTo(mutable.HashMap(peerId -> ArrayBuffer[DownloadJob]()))) && // stays active
           assert(state.localHave(0))(isTrue) &&
           assert(state.localHave(1))(isFalse)
-      },
-      //
-      testM("release - choked release, fails on > 1 active jobs for peer") {
-        val peerId = Chunk.fill[Byte](3)('z'.toByte)
-
-        val job1 = DownloadJob(0, metaInfo.pieceSize, Chunk[Byte](1, 2, 3), 0)
-        val job2 = DownloadJob(1, metaInfo.pieceSize, Chunk[Byte](4, 5, 6), 0)
-
-        val state = Actor.State(
-          metaInfo,
-          localHave = new Array[Boolean](metaInfo.numPieces),
-          registeredPeers = mutable.HashMap(peerId -> RegisteredPeer()),
-          activeJobs = mutable.HashMap(job1 -> peerId, job2 -> peerId),
-          activePeers = mutable.HashMap(peerId -> ArrayBuffer(job1, job2))
-        )
-
-        for {
-          actual <- Actor.releaseJob(state, peerId, ReleaseJobStatus.Choked(job1))
-                      .fork.flatMap(_.await)
-        } yield assert(actual)(fails(hasMessage(equalTo(
-          "Peer zzz is releasing Choked(DownloadJob(0,16,Chunk(1,2,3),0)) while having multiple jobs allocated: " +
-            "DownloadJob(0,16,Chunk(1,2,3),0),DownloadJob(1,16,Chunk(4,5,6),0)"
-        ))))
       },
       //
       testM("release - choked release, peer becomes inactive") {
@@ -425,7 +406,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         } yield assert(actual)(
           fails(hasMessage(equalTo(
             "ReleaseJobStatus status does not correspond to JobCompletionStatus: " +
-              "(Downloaded(DownloadJob(0,16,Chunk(1,2,3),15)), Incomplete)"
+              "(Downloaded(DownloadJob(pieceId=0, length=16, offset=15)), Incomplete)"
           )))
         )
       },
@@ -450,7 +431,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
         } yield assert(actual)(
           fails(hasMessage(equalTo(
             "ReleaseJobStatus status does not correspond to JobCompletionStatus: " +
-              "(Choked(DownloadJob(0,16,Chunk(-38,57,-93,-18,94,107,75,13,50,85,-65,-17,-107,96,24,-112,-81,-40,7,9),16)), Verified)"
+              "(Choked(DownloadJob(pieceId=0, length=16, offset=16)), Verified)"
           )))
         )
       },
@@ -490,10 +471,10 @@ object DispatcherSpec extends DefaultRunnableSpec {
           new Array[Boolean](metaInfo.numPieces),
           registeredPeers =
             mutable.HashMap(
-              peerId1 -> RegisteredPeer(have = peerHave),
-              peerId2 -> RegisteredPeer(have = peerHave)
+              peerId1 -> RegisteredPeer(have = peerHave, interesting = peerHave),
+              peerId2 -> RegisteredPeer(have = peerHave, interesting = peerHave)
             ),
-          activeJobs = mutable.Map(job1 -> peerId1, job2 -> peerId2),
+          activeJobs = mutable.Map(job1 -> peerId1, job2 -> peerId1),
           activePeers = mutable.HashMap(peerId1 -> ArrayBuffer(job1, job2))
         )
 

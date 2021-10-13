@@ -171,8 +171,6 @@ object Actor {
       ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is not registered"))
 
     } else {
-      val suitableJobOption = tryGetSuitableJob(state, peerId)
-
       tryGetSuitableJob(state, peerId) match {
         case None                                                       =>
           ZIO.succeed(AcquireJobResult.NoInterestingPieces)
