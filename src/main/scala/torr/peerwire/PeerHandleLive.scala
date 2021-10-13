@@ -34,14 +34,14 @@ case class PeerHandleLive(
     for {
       p   <- Promise.make[Throwable, M]
       _   <- receiveActor ! ReceiveActor.Receive1(tag.runtimeClass, p)
-      res <- p.await
+      res <- p.await.interruptible
     } yield res
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
     for {
       p   <- Promise.make[Throwable, Message]
       _   <- receiveActor ! ReceiveActor.Receive2(tag1.runtimeClass, tag2.runtimeClass, p)
-      res <- p.await
+      res <- p.await.interruptible
     } yield res
 
   def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] =
@@ -61,7 +61,7 @@ case class PeerHandleLive(
     for {
       p   <- Promise.make[Throwable, Message]
       _   <- receiveActor ? ReceiveActor.ReceiveMany(classes.toList, p)
-      res <- p.await
+      res <- p.await.interruptible
     } yield res
   }
 

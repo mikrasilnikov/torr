@@ -108,15 +108,14 @@ object Main extends App {
       maxActivePeers: Int,
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): RIO[TorrEnv, Unit] = {
-    Logging.debug("MAIN manageConnections") *>
-      Dispatcher.isDownloadCompleted.flatMap {
-        case false =>
-          maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-        case _     =>
-          Logging.debug("MAIN interrupting all connections") *>
-            ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt } *>
-            Logging.debug("MAIN all connections interrupted")
-      }
+    Dispatcher.isDownloadCompleted.flatMap {
+      case false =>
+        maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+      case _     =>
+        Logging.debug("MAIN interrupting all connections") *>
+          ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt } *>
+          Logging.debug("MAIN all connections interrupted")
+    }
   }
 
   def maintainActiveConnections(

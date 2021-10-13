@@ -191,11 +191,11 @@ object DefaultDownloadRoutine {
 
         case dispatcherResponse            =>
           for {
-            _ <- handle.log(s"got $dispatcherResponse, sending NotInterested")
+            _ <- handle.log(s"got $dispatcherResponse, sending NotInterested + KeepAlive, waiting 10 seconds")
             _ <- handle.send(Message.NotInterested)
-            _ <- handle.log(s"waiting 5 seconds")
+            _ <- handle.send(Message.KeepAlive)
+            _ <- ZIO.sleep(10.seconds)
             _ <- restart(handle, DownloadState(peerChoking = false, amInterested = false), downSpeedAccRef)
-                   .delay(5.seconds)
           } yield ()
       }
   }
