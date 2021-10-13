@@ -9,7 +9,6 @@ import torr.actorsystem.ActorSystemLive
 import torr.directbuffers._
 import zio.Exit.Success
 import zio.logging.Logging
-import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.test.TestAspect.{flaky, sequential}
 
@@ -25,7 +24,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(1)
         )
       },
@@ -39,7 +38,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(1)
         )
       },
@@ -55,7 +54,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(1)
         )
       },
@@ -69,7 +68,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(2)
         )
       },
@@ -85,7 +84,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(2)
         )
       },
@@ -105,7 +104,7 @@ object DirectBuffersSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(2)
         )
       }

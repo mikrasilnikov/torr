@@ -7,7 +7,8 @@ import zio.actors.Context
 
 import scala.collection.mutable
 import torr.metainfo.MetaInfo
-import torr.peerwire.TorrBitSet
+import torr.peerwire.{PeerHandleLive, TorrBitSet}
+import zio.logging.Logging
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable.ArrayBuffer
@@ -57,9 +58,9 @@ object Actor {
       suspendedJobs: mutable.Map[PieceId, DownloadJob] = mutable.HashMap[PieceId, DownloadJob]()
   )
 
-  val stateful = new Stateful[ConsoleUI, State, Command] {
+  val stateful = new Stateful[ConsoleUI with Logging, State, Command] {
     //noinspection WrapInsteadOfLiftInspection
-    def receive[A](state: State, msg: Command[A], context: Context): RIO[ConsoleUI, (State, A)] =
+    def receive[A](state: State, msg: Command[A], context: Context): RIO[ConsoleUI with Logging, (State, A)] =
       msg match {
         case RegisterPeer(peerId)               => ZIO(registerPeer(state, peerId)).as((state, ()))
         case UnregisterPeer(peerId)             => unregisterPeer(state, peerId).as((state, ()))
@@ -79,7 +80,7 @@ object Actor {
 
   private[dispatcher] def registerPeer(state: State, peerId: PeerId): Unit = {
     if (state.registeredPeers.contains(peerId)) {
-      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+      val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       throw new IllegalStateException(s"PeerId $peerIdStr is already registered")
     } else {
       state.registeredPeers.put(
@@ -92,14 +93,16 @@ object Actor {
     }
   }
 
-  private[dispatcher] def unregisterPeer(state: State, peerId: PeerId): Task[Unit] = {
+  private[dispatcher] def unregisterPeer(state: State, peerId: PeerId): RIO[Logging, Unit] = {
+    val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
+
     if (!state.registeredPeers.contains(peerId)) {
-      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
       ZIO.fail(new IllegalStateException(s"PeerId $peerIdStr is not registered"))
 
     } else {
       val peerJobs = state.activePeers.get(peerId)
       for {
+        _ <- Logging.debug(s"$peerIdStr Dispatcher unregistering peer")
         _ <- peerJobs match {
                case Some(jobs) =>
                  ZIO.foreach_(jobs.toList)(j => releaseJob(state, peerId, ReleaseJobStatus.Aborted(j)))
@@ -113,7 +116,7 @@ object Actor {
 
   private[dispatcher] def reportHave(state: State, peerId: PeerId, piece: PieceId): Unit = {
     if (!state.registeredPeers.contains(peerId)) {
-      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+      val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
 
     } else {
@@ -126,7 +129,7 @@ object Actor {
 
   private[dispatcher] def reportHaveMany(state: State, peerId: PeerId, pieces: Set[PieceId]): Unit = {
     if (!state.registeredPeers.contains(peerId)) {
-      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+      val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
 
     } else {
@@ -143,7 +146,7 @@ object Actor {
     state.registeredPeers.get(peerId) match {
       case Some(peer) => peer.downloadSpeed = value
       case None       =>
-        val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+        val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
         throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
     }
   }
@@ -152,7 +155,7 @@ object Actor {
     state.registeredPeers.get(peerId) match {
       case Some(peer) => peer.uploadSpeed = value
       case None       =>
-        val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+        val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
         throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
     }
   }
@@ -163,7 +166,7 @@ object Actor {
   ): Task[AcquireJobResult] = {
 
     if (!state.registeredPeers.contains(peerId)) {
-      val peerIdStr = new String(peerId.toArray, StandardCharsets.US_ASCII)
+      val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       ZIO.fail(new IllegalStateException(s"Peer $peerIdStr is not registered"))
 
     } else {
@@ -198,7 +201,7 @@ object Actor {
   }
 
   private[dispatcher] def releaseJob(state: State, peerId: PeerId, releaseStatus: ReleaseJobStatus): Task[Unit] = {
-    val peerIdStr      = new String(peerId.toArray, StandardCharsets.US_ASCII)
+    val peerIdStr      = PeerHandleLive.makePeerIdStr(peerId)
     val peerJobsOption = state.activePeers.get(peerId)
 
     if (!state.registeredPeers.contains(peerId)) {
@@ -228,20 +231,7 @@ object Actor {
               _  = peerJobs.remove(peerJobIndex)
             } yield ()
 
-          case ReleaseJobStatus.Choked(_)     =>
-            if (peerJobs.length > 1) {
-              ZIO.fail(new IllegalStateException(
-                s"Peer $peerIdStr is releasing $releaseStatus while having multiple jobs allocated: ${peerJobs.mkString(",")}"
-              ))
-            } else {
-              for {
-                _ <- handleReleasedJob(state, releaseStatus)
-                _  = peerJobs.remove(peerJobIndex)
-                _  = state.activePeers.remove(peerId)
-              } yield ()
-            }
-
-          case ReleaseJobStatus.Aborted(_)    =>
+          case _                              =>
             for {
               _ <- handleReleasedJob(state, releaseStatus)
               _  = peerJobs.remove(peerJobIndex)
@@ -262,8 +252,8 @@ object Actor {
 
     (releaseStatus, completionStatus) match {
 
-      case (Downloaded(job), Verified) =>
-        ZIO.succeed {
+      case (Downloaded(job), Verified) if !state.localHave(job.pieceId) =>
+        ZIO {
           state.localHave(job.pieceId) = true
 
           state.registeredPeers.foreach {
@@ -272,7 +262,12 @@ object Actor {
           }
         }
 
-      case (Choked(job), Incomplete)   =>
+      case (Downloaded(job), Verified) if state.localHave(job.pieceId)  =>
+        ZIO.fail(new IllegalStateException(
+          s"$job has been released in completed state while piece ${job.pieceId} has been downloaded previously"
+        ))
+
+      case (Choked(job), Incomplete)                                    =>
         ZIO.succeed {
           state.suspendedJobs.put(job.pieceId, job)
 
@@ -283,7 +278,7 @@ object Actor {
           }
         }
 
-      case (Aborted(job), Incomplete)  =>
+      case (Aborted(job), Incomplete)                                   =>
         ZIO.succeed {
           state.suspendedJobs.put(job.pieceId, job)
 
@@ -294,7 +289,7 @@ object Actor {
           }
         }
 
-      case (_, Failed)                 => ZIO.unit
+      case (_, Failed)                                                  => ZIO.unit
 
       case _ =>
         ZIO.fail(new IllegalStateException(

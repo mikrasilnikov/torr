@@ -86,15 +86,21 @@ object DispatcherLive {
   }
 
   private[dispatcher] def makeActor(state: Actor.State)
-      : RIO[ConsoleUI with ActorSystem with Clock, ActorRef[Command]] = {
+      : RIO[ConsoleUI with ActorSystem with Logging with Clock, ActorRef[Command]] = {
     val effect = for {
       system <- ZIO.service[ActorSystem.Service]
-      actor  <- system.system.make(
-                  "DispatcherLive",
-                  actors.Supervisor.none,
-                  state,
-                  Actor.stateful
-                )
+
+      supervisor = actors.Supervisor.retryOrElse(
+                     Schedule.stop,
+                     (t, _: Unit) => Logging.debug(s"Dispatcher failed with ${t.getClass}: ${t.getMessage}")
+                   )
+
+      actor     <- system.system.make(
+                     "DispatcherLive",
+                     supervisor,
+                     state,
+                     Actor.stateful
+                   )
     } yield actor
 
     effect

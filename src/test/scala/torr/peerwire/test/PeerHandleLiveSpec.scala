@@ -12,7 +12,7 @@ import torr.peerwire.ReceiveActor.GetState
 import torr.peerwire.{Message, PeerActorConfig, PeerHandle, PeerHandleLive}
 import zio._
 import zio.duration.durationInt
-import zio.logging.slf4j.Slf4jLogger
+import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
 import zio.nio.core.file.Path
@@ -47,7 +47,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -75,7 +75,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -99,7 +99,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -127,7 +127,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8, 100)
         )
 
@@ -164,7 +164,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8, 100)
         )
       },
@@ -209,7 +209,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8, 100)
         )
       },
@@ -249,7 +249,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
           DispatcherLive.make(10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8, 100)
         )
       }

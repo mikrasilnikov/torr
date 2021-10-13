@@ -5,10 +5,13 @@ import torr.dispatcher.{AcquireJobResult, Actor, DownloadJob, PeerId, PieceId, R
 import torr.metainfo.{FileEntry, MetaInfo}
 import torr.metainfo.test.MetaInfoSpec.toBytes
 import zio._
+import zio.logging.Logging
+import zio.magic.ZioProvideMagicOps
 import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
 import zio.test.DefaultRunnableSpec
+
 import scala.collection.immutable.HashSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -50,10 +53,13 @@ object DispatcherSpec extends DefaultRunnableSpec {
             activePeers = mutable.HashMap(peerId -> ArrayBuffer(job))
           )
 
-        for {
-          _ <- Actor.unregisterPeer(state, peerId)
-        } yield assert(state.registeredPeers.keys)(equalTo(new mutable.HashSet[PeerId])) &&
-          assert(state.activeJobs)(equalTo(new mutable.HashMap[DownloadJob, PeerId]))
+        val effect =
+          for {
+            _ <- Actor.unregisterPeer(state, peerId)
+          } yield assert(state.registeredPeers.keys)(equalTo(new mutable.HashSet[PeerId])) &&
+            assert(state.activeJobs)(equalTo(new mutable.HashMap[DownloadJob, PeerId]))
+
+        effect.inject(Logging.ignore)
       },
       //
       testM("unregisters peer - fails if peer is not registered") {
@@ -65,10 +71,12 @@ object DispatcherSpec extends DefaultRunnableSpec {
           registeredPeers = mutable.HashMap(peerId -> RegisteredPeer())
         )
 
-        for {
+        val effect = for {
           _      <- Actor.unregisterPeer(state, peerId)
           actual <- Actor.unregisterPeer(state, peerId).fork.flatMap(_.await)
         } yield assert(actual)(fails(hasMessage(equalTo("PeerId dddddddddddddddddddd is not registered"))))
+
+        effect.inject(Logging.ignore)
       },
       //
       testM("acquire - first job") {
@@ -489,7 +497,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
           activePeers = mutable.HashMap(peerId1 -> ArrayBuffer(job1, job2))
         )
 
-        for {
+        val effect = for {
           _                  <- Actor.unregisterPeer(state, peerId1)
           isDownloadCompleted = Actor.isDownloadCompleted(state)
           isRemoteInteresting = Actor.isRemoteInteresting(state, peerId2)
@@ -500,6 +508,8 @@ object DispatcherSpec extends DefaultRunnableSpec {
           assert(state.suspendedJobs)(equalTo(mutable.HashMap(1 -> job2))) &&
           assert(actualJob)(equalTo(AcquireJobResult.Success(job1))) &&
           assert(state.localHave)(equalTo(Array(false, false)))
+
+        effect.inject(Logging.ignore)
       }
     )
 

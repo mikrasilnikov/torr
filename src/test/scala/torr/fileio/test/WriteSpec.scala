@@ -14,7 +14,6 @@ import zio.actors.ActorRef
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.logging.Logging
-import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.test.environment.{Live, TestClock}
 
@@ -137,7 +136,7 @@ object WriteSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(2, 8)
         )
       },
@@ -221,7 +220,7 @@ object WriteSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(1, 8)
         )
       }
@@ -231,7 +230,7 @@ object WriteSpec extends DefaultRunnableSpec {
       directBuffersNum: Int,
       directBufferSize: Int
   ) = {
-    val logging     = Slf4jLogger.make((_, message) => message)
+    val logging     = Logging.ignore
     val actorSystem = logging >>> ActorSystemLive.make("Test")
     val clock       = TestClock.default
     val bufferPool  = (actorSystem ++ logging ++ clock) >>> FixedBufferPool.make(directBuffersNum, directBufferSize)

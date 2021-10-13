@@ -2,7 +2,6 @@ package torr.fileio.test
 
 import zio._
 import zio.clock.Clock
-import zio.logging.slf4j.Slf4jLogger
 import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.sequential
@@ -10,13 +9,14 @@ import torr.actorsystem.ActorSystemLive
 import torr.channels.{InMemoryChannel, SeekableByteChannel}
 import torr.directbuffers.FixedBufferPool
 import torr.fileio.{Actor, EntryAddr, ReadEntry}
+import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
 import zio.test.environment.TestClock
 
 import java.util.Random
 
 object ReadSpec extends DefaultRunnableSpec {
-  val env0 = ActorSystemLive.make("Test") ++ Slf4jLogger.make((_, message) => message)
+  val env0 = ActorSystemLive.make("Test") ++ Logging.ignore
 
   override def spec =
     suite("ReadSpec")(
@@ -54,7 +54,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -72,7 +72,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -90,7 +90,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -115,7 +115,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -140,7 +140,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       },
@@ -171,7 +171,7 @@ object ReadSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           ActorSystemLive.make("Test"),
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           FixedBufferPool.make(8)
         )
       }

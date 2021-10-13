@@ -79,8 +79,8 @@ object Main extends App {
 
     cliApp.run(
       "-p" :: "127.0.0.1:8080" ::
-        "c:\\!temp\\Отряд самоубийц Миссия навылет The Suicide Squad (Джеймс Ганн James Gunn) " +
-          "[2021, США, боевик, фантастика, комедия, фэнтези, W [rutracker-6093195].torrent" :: Nil
+        "c:\\!temp\\Афера века El robo del siglo The Great Heist (Ариэль Виноград Ariel Winograd) " +
+          "[2020, Аргентина, комедия, криминал, WEB-DLRip.torrent" :: Nil
     )
   }
 
@@ -109,12 +109,15 @@ object Main extends App {
       maxActivePeers: Int,
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): RIO[TorrEnv, Unit] = {
-    Dispatcher.isDownloadCompleted.flatMap {
-      case false =>
-        maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-      case _     =>
-        ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt }
-    }
+    Logging.debug("MAIN manageConnections") *>
+      Dispatcher.isDownloadCompleted.flatMap {
+        case false =>
+          maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+        case _     =>
+          Logging.debug("MAIN interrupting all connections") *>
+            ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt } *>
+            Logging.debug("MAIN all connections interrupted")
+      }
   }
 
   def maintainActiveConnections(

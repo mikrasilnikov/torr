@@ -8,10 +8,11 @@ import torr.channels._
 import torr.directbuffers.FixedBufferPool
 import torr.metainfo.test.MetaInfoSpec
 import torr.peerwire.{Message, TorrBitSet}
-import zio.logging.slf4j.Slf4jLogger
+import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core.Buffer
 import zio.test.environment.TestClock
+
 import java.nio.charset.StandardCharsets
 import java.util.Random
 
@@ -83,7 +84,7 @@ object MessageSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
@@ -112,7 +113,7 @@ object MessageSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
@@ -137,7 +138,7 @@ object MessageSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
@@ -162,7 +163,7 @@ object MessageSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
@@ -187,7 +188,7 @@ object MessageSpec extends DefaultRunnableSpec {
         } yield assert(actual)(equalTo(expected))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
@@ -228,7 +229,7 @@ object MessageSpec extends DefaultRunnableSpec {
           assert(blockActual)(equalTo(block))
 
         effect.injectCustom(
-          Slf4jLogger.make((_, message) => message),
+          Logging.ignore,
           ActorSystemLive.make("Test"),
           FixedBufferPool.make(1, 1024)
         )
