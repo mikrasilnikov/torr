@@ -8,7 +8,7 @@ import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.announce.{Announce, AnnounceLive, Peer, TrackerRequest}
 import torr.consoleui.SimpleConsoleUI
 import torr.directbuffers.{DirectBufferPool, GrowableBufferPool}
-import torr.dispatcher.{Dispatcher, DispatcherLive, PeerId}
+import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadCompletion, PeerId}
 import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
 import torr.peerroutines.DefaultPeerRoutine
@@ -109,12 +109,24 @@ object Main extends App {
       connections: Vector[(Peer, Fiber[Throwable, Unit])]
   ): RIO[TorrEnv, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
-      case false =>
-        maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-      case _     =>
-        Logging.debug("MAIN interrupting all connections") *>
-          ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt } *>
-          Logging.debug("MAIN all connections interrupted")
+      case DownloadCompletion.Completed =>
+        for {
+          _ <- ZIO.sleep(3.seconds)
+          _ <- Logging.debug("MAIN interrupting all connections")
+          _ <- ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt }
+          _ <- Logging.debug("MAIN all connections interrupted")
+        } yield ()
+
+      case completion                   =>
+        maintainActiveConnections(
+          peerQueue,
+          metaInfo,
+          myPeerId,
+          maxConnections,
+          maxActivePeers,
+          connections,
+          completion
+        )
     }
   }
 
@@ -124,15 +136,25 @@ object Main extends App {
       myPeerId: PeerId,
       maxConnections: Int,
       maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: Vector[(Peer, Fiber[Throwable, Unit])],
+      completion: DownloadCompletion
   ): RIO[TorrEnv, Unit] = {
+    //
+    val isEndGame = completion.isInstanceOf[DownloadCompletion.EndGame.type]
+
     if (connections.length < maxConnections) {
+
       peerQueue.poll.flatMap {
-        case Some(peer)                                  =>
+        case Some(peer)                                               =>
           establishConnection(peerQueue, peer, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-        case None if connections.length < maxActivePeers =>
+
+        case None if !isEndGame                                       =>
           fetchMorePeers(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-        case _                                           =>
+
+        case None if isEndGame && connections.length < maxActivePeers =>
+          fetchMorePeers(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+
+        case _                                                        =>
           processDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
       }
     } else {
@@ -213,7 +235,7 @@ object Main extends App {
                    maxConnections,
                    maxActivePeers,
                    connections = updated
-                 ).delay(1.second)
+                 ).delay(10.seconds)
     } yield ()
   }
 

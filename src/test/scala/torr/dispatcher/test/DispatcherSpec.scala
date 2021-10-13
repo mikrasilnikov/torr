@@ -1,7 +1,7 @@
 package torr.dispatcher.test
 
 import torr.dispatcher.Actor.RegisteredPeer
-import torr.dispatcher.{AcquireJobResult, Actor, DownloadJob, PeerId, PieceId, ReleaseJobStatus}
+import torr.dispatcher.{AcquireJobResult, Actor, DownloadCompletion, DownloadJob, PeerId, PieceId, ReleaseJobStatus}
 import torr.metainfo.{FileEntry, MetaInfo}
 import torr.metainfo.test.MetaInfoSpec.toBytes
 import zio._
@@ -499,11 +499,11 @@ object DispatcherSpec extends DefaultRunnableSpec {
 
         val effect = for {
           _                  <- Actor.unregisterPeer(state, peerId1)
-          isDownloadCompleted = Actor.isDownloadCompleted(state)
+          downloadCompletion  = Actor.isDownloadCompleted(state)
           isRemoteInteresting = Actor.isRemoteInteresting(state, peerId2)
           actualJob          <- Actor.acquireJob(state, peerId2)
 
-        } yield assert(isDownloadCompleted)(isFalse) &&
+        } yield assert(downloadCompletion)(equalTo(DownloadCompletion.InProgress)) &&
           assert(isRemoteInteresting)(isTrue) &&
           assert(state.suspendedJobs)(equalTo(mutable.HashMap(1 -> job2))) &&
           assert(actualJob)(equalTo(AcquireJobResult.Success(job1))) &&

@@ -24,10 +24,17 @@ package object dispatcher {
     case class Aborted(job: DownloadJob)    extends ReleaseJobStatus
   }
 
+  sealed trait DownloadCompletion
+  object DownloadCompletion {
+    case object InProgress extends DownloadCompletion
+    case object EndGame    extends DownloadCompletion
+    case object Completed  extends DownloadCompletion
+  }
+
   @accessible
   object Dispatcher {
     trait Service {
-      def isDownloadCompleted: Task[Boolean]
+      def isDownloadCompleted: Task[DownloadCompletion]
       def isRemoteInteresting(peerId: PeerId): Task[Boolean]
 
       def registerPeer(peerId: PeerId): Task[Unit]

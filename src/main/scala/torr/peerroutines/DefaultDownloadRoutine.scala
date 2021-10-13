@@ -5,10 +5,11 @@ import zio.clock.Clock
 import zio.duration.durationInt
 import torr.peerwire.{Message, MessageTypes, PeerHandle}
 import torr.peerroutines.DefaultPeerRoutine.DownloadState
-import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob, PieceId, ReleaseJobStatus}
+import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadCompletion, DownloadJob, PieceId, ReleaseJobStatus}
 import torr.fileio.FileIO
 import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
 import zio.logging.Logging
+
 import scala.collection.immutable.Queue
 import scala.collection.immutable.HashMap
 
@@ -45,8 +46,10 @@ object DefaultDownloadRoutine {
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     peerHandle.log("restarting download") *>
       Dispatcher.isDownloadCompleted.flatMap {
-        case true => peerHandle.log("download completed")
-        case _    => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
+
+        case DownloadCompletion.Completed => peerHandle.log("download completed")
+
+        case _ => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
             case false =>
               peerHandle.log("remote is not interesting, waiting 10 seconds") *>
                 restart(peerHandle, downloadState, downSpeedAccRef).delay(10.seconds)

@@ -22,7 +22,7 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def releaseJob(peerId: PeerId, job: => ReleaseJobStatus): Task[Unit] =
     actor ! ReleaseJob(peerId, job)
 
-  def isDownloadCompleted: Task[Boolean]                 = actor ? IsDownloadCompleted
+  def isDownloadCompleted: Task[DownloadCompletion]      = actor ? IsDownloadCompleted
   def isRemoteInteresting(peerId: PeerId): Task[Boolean] = actor ? IsRemoteInteresting(peerId)
 
   def registerPeer(peerId: PeerId): Task[Unit]   = actor ? RegisterPeer(peerId)

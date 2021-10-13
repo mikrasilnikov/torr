@@ -11,6 +11,7 @@ import torr.peerwire.{PeerHandleLive, TorrBitSet}
 import zio.logging.Logging
 
 import java.nio.charset.StandardCharsets
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 object Actor {
@@ -29,7 +30,7 @@ object Actor {
   case class ReportHave(peerId: PeerId, piece: PieceId)                  extends Command[Unit]
   case class AcquireJob(peerId: PeerId)                                  extends Command[AcquireJobResult]
   case class ReleaseJob(peerId: PeerId, jobWithStatus: ReleaseJobStatus) extends Command[Unit]
-  case object IsDownloadCompleted                                        extends Command[Boolean]
+  case object IsDownloadCompleted                                        extends Command[DownloadCompletion]
   case class IsRemoteInteresting(peerId: PeerId)                         extends Command[Boolean]
   case class ReportDownloadSpeed(peerId: PeerId, value: Int)             extends Command[Unit]
   case class ReportUploadSpeed(peerId: PeerId, value: Int)               extends Command[Unit]
@@ -308,8 +309,22 @@ object Actor {
     }
   }
 
-  private[dispatcher] def isDownloadCompleted(state: State): Boolean = {
-    state.localHave.forall(identity)
+  private[dispatcher] def isDownloadCompleted(state: State): DownloadCompletion = {
+
+    @tailrec
+    def loop(i: Int, haveAll: Boolean): DownloadCompletion = {
+      if (i >= state.localHave.length && haveAll)
+        DownloadCompletion.Completed
+      else if (i >= state.localHave.length)
+        DownloadCompletion.EndGame
+      else if (state.localHave(i))
+        loop(i + 1, haveAll)
+      else if (state.activeJobs.exists { case (job, _) => job.pieceId == i })
+        loop(i + 1, haveAll = false)
+      else DownloadCompletion.InProgress
+    }
+
+    loop(0, haveAll = true)
   }
 
   private[dispatcher] def isRemoteInteresting(state: State, peerId: PeerId): Boolean = {
