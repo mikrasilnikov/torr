@@ -79,8 +79,7 @@ object Main extends App {
 
     cliApp.run(
       "-p" :: "127.0.0.1:8080" ::
-        "c:\\!temp\\Афера века El robo del siglo The Great Heist (Ариэль Виноград Ariel Winograd) " +
-          "[2020, Аргентина, комедия, криминал, WEB-DLRip.torrent" :: Nil
+        "c:\\!temp\\Афера века El robo del siglo The Great Heist.torrent" :: Nil
     )
   }
 
