@@ -1,7 +1,5 @@
 ThisBuild / scalaVersion := "2.13.6"
-ThisBuild / version := "1.0.0"
-// ThisBuild / organization := "com.example"
-// ThisBuild / organizationName := "example"
+ThisBuild / version := "0.0.1"
 
 lazy val root = (project in file("."))
   .settings(
@@ -20,6 +18,9 @@ lazy val root = (project in file("."))
       "dev.zio"              %% "zio-test"          % "1.0.11" % Test
     )
   )
+
+assembly / mainClass := Some("torr.Main")
+assembly / assemblyJarName := "torr.jar"
 
 scalacOptions += "-Ymacro-annotations"
 

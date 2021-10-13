@@ -79,7 +79,7 @@ object Main extends App {
 
     cliApp.run(
       "-p" :: "127.0.0.1:8080" ::
-        "c:\\!temp\\Афера века El robo del siglo The Great Heist.torrent" :: Nil
+        "d:\\!temp\\Black Mirror - The Complete 4th Season - whip93.torrent" :: Nil
     )
   }
 
