@@ -123,9 +123,9 @@ object PeerHandleLive {
     for {
       _      <- Dispatcher.registerPeer(remotePeerId)
                   .toManaged(_ =>
-                    Logging.debug(s"$remotePeerIdStr: unregistering peer") *>
+                    Logging.debug(s"$remotePeerIdStr unregistering peer") *>
                       Dispatcher.unregisterPeer(remotePeerId).orDie *>
-                      Logging.debug(s"$remotePeerIdStr: unregistered peer")
+                      Logging.debug(s"$remotePeerIdStr unregistered peer")
                   )
 
       actorP <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]].toManaged_
@@ -134,17 +134,17 @@ object PeerHandleLive {
 
       receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).fork
                         .toManaged(fib =>
-                          Logging.debug(s"$remotePeerIdStr: ReceiveActor.receiveProc interrupting") *>
+                          Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupting") *>
                             channel.close.whenM(channel.isOpen).ignore *>
                             fib.interrupt *>
-                            Logging.debug(s"$remotePeerIdStr: ReceiveActor.receiveProc interrupted")
+                            Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupted")
                         )
 
       receiveActor <- createReceiveActor(channel, channelName, remotePeerId, remotePeerIdStr, actorConfig)
                         .toManaged(actor =>
-                          Logging.debug(s"$remotePeerIdStr: ReceiveActor shutting down") *>
+                          Logging.debug(s"$remotePeerIdStr ReceiveActor shutting down") *>
                             shutdownReceiveActor(actor) *>
-                            Logging.debug(s"$remotePeerIdStr: ReceiveActor shut down")
+                            Logging.debug(s"$remotePeerIdStr ReceiveActor shut down")
                         )
 
       sendActor    <- createSendActor(channel, channelName, remotePeerIdStr, receiveActor)
