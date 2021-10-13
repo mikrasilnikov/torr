@@ -172,28 +172,24 @@ object Actor {
     } else {
       val suitableJobOption = tryGetSuitableJob(state, peerId)
 
-      if (suitableJobOption.isEmpty) {
-        ZIO.succeed(AcquireJobResult.NoInterestingPieces)
+      tryGetSuitableJob(state, peerId) match {
+        case None                                                       =>
+          ZIO.succeed(AcquireJobResult.NoInterestingPieces)
 
-      } else {
-        val job = suitableJobOption.get
-
-        // If a peer is currently active uploading to us, we should satisfy job request immediately
-        // to avoid draining of the block request queue.
-        val peerIsActive = state.activePeers.contains(peerId)
-        if (peerIsActive) {
+        // If peer is active (currently downloading) we must provide it with next job immediately
+        // to avoid draining of request queue.
+        case Some(job) if state.activePeers.contains(peerId)            =>
           state.activeJobs.put(job, peerId)
           state.activePeers(peerId).append(job)
           ZIO.succeed(AcquireJobResult.Success(job))
 
-        } else if (state.activePeers.size < state.maxActivePeers) {
+        case Some(job) if state.activePeers.size < state.maxActivePeers =>
           state.activeJobs.put(job, peerId)
           state.activePeers.put(peerId, ArrayBuffer[DownloadJob](job))
           ZIO.succeed(AcquireJobResult.Success(job))
 
-        } else {
+        case _                                                          =>
           ZIO.succeed(AcquireJobResult.OnQueue)
-        }
       }
     }
   }
@@ -296,7 +292,8 @@ object Actor {
 
     } else {
       // Piece that has not been downloaded and is not being downloaded currently.
-      val pieceIdOption = availableFromPeer.headOption
+      val pieceIdOption = availableFromPeer
+        .find(pid => !state.activeJobs.exists { case (job, _) => pid == job.pieceId })
 
       pieceIdOption.flatMap { pid =>
         val pieceSize =
