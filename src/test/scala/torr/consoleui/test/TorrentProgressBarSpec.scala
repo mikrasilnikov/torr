@@ -70,7 +70,7 @@ object TorrentProgressBarSpec extends DefaultRunnableSpec {
       },
       //
       test("ProgressBar - center 5% (10 pcs)") {
-        val expected = "Downloading [          ]   5%"
+        val expected = "Downloading [     -    ]   5%"
         val state    = DispatcherState(metaInfo(20), new Array[Boolean](20))
         (10 to 10).foreach(state.localHave(_) = true)
         val actual   = TorrentProgressBar.renderProgressBar(state, "Downloading", 10)
