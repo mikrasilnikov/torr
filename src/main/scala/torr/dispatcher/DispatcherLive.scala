@@ -92,7 +92,8 @@ object DispatcherLive {
 
       supervisor = actors.Supervisor.retryOrElse(
                      Schedule.stop,
-                     (t, _: Unit) => Logging.debug(s"Dispatcher failed with ${t.getClass}: ${t.getMessage}")
+                     (t, _: Unit) =>
+                       Logging.debug(s"Dispatcher failed with ${t.getClass}: ${t.getMessage}\n${t.toString}")
                    )
 
       actor     <- system.system.make(

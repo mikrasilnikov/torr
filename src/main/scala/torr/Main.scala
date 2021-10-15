@@ -83,14 +83,12 @@ object Main extends App {
             ) //.catchAll(e => putStrLn(e.getMessage).orDie)
       }
 
-    /*cliApp.run(
-      "--help" :: Nil
-    )*/
+    cliApp.run(args)
 
-    cliApp.run(
+    /*cliApp.run(
       "--px" :: "127.0.0.1:8080" ::
         "d:\\!temp\\Good.Will.Hunting.1997.BDRip.avi.torrent" :: Nil
-    )
+    )*/
   }
 
   def download(maxConnections: Int, maxActivePeers: Int): RIO[TorrEnv, Unit] = {
