@@ -14,7 +14,7 @@ import torr.metainfo.MetaInfo
 import torr.peerroutines.DefaultPeerRoutine
 import torr.peerwire.PeerHandleLive
 import zio.Exit.{Failure, Success}
-import zio._
+import zio.{Cause, _}
 import zio.blocking.Blocking
 import zio.cli.HelpDoc.Span._
 import zio.cli._
@@ -24,7 +24,14 @@ import zio.logging.Logging
 import zio.logging.slf4j.Slf4jLogger
 import zio.magic.ZioProvideMagicOps
 import zio.nio.core._
+import zio.nio.core.file.Path
+import zio.nio.file.Files
 import zio.random.Random
+
+import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.nio.file.{OpenOption, StandardOpenOption}
+import scala.collection.immutable.HashMap
 
 object Main extends App {
 
@@ -36,11 +43,14 @@ object Main extends App {
     with ActorSystem
     with Announce
     with Random
+    with Blocking
+
+  case class PeerConnection(peerId: Promise[Throwable, PeerId], fiber: Fiber[Throwable, Unit])
 
   //noinspection SimplifyWhenInspection,SimplifyUnlessInspection
   def run(args: List[String]): URIO[zio.ZEnv with Blocking, ExitCode] = {
 
-    configureLogging
+    configureLogging()
 
     val cliApp: CliApp[ZEnv, Throwable, (TorrOptions, TorrArgs)] =
       CliApp.make(
@@ -78,8 +88,8 @@ object Main extends App {
     )*/
 
     cliApp.run(
-      "-p" :: "127.0.0.1:8080" ::
-        "d:\\!temp\\Black Mirror - The Complete 4th Season - whip93.torrent" :: Nil
+      "--px" :: "127.0.0.1:8080" ::
+        "d:\\!temp\\Good.Will.Hunting.1997.BDRip.avi.torrent" :: Nil
     )
   }
 
@@ -89,14 +99,18 @@ object Main extends App {
       metaInfo  <- FileIO.metaInfo
       peerQueue <- Queue.unbounded[Peer]
 
+      announceFib <- fetchMorePeers(peerQueue, metaInfo, myPeerId).fork
+
       _ <- manageConnections(
              peerQueue,
              metaInfo,
              myPeerId,
              maxConnections,
-             maxActivePeers,
-             connections = Vector.empty[(Peer, Fiber[Throwable, Unit])]
+             connections = HashMap.empty[Peer, PeerConnection]
            )
+
+      _ <- announceFib.interrupt
+
     } yield ()
   }
 
@@ -105,27 +119,24 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: HashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case DownloadCompletion.Completed =>
         for {
           _ <- ZIO.sleep(3.seconds)
           _ <- Logging.debug("MAIN interrupting all connections")
-          _ <- ZIO.foreach_(connections) { case (_, fiber) => fiber.interrupt }
+          _ <- ZIO.foreach_(connections) { case (_, PeerConnection(_, fiber)) => fiber.interrupt }
           _ <- Logging.debug("MAIN all connections interrupted")
         } yield ()
 
-      case completion                   =>
+      case _                            =>
         maintainActiveConnections(
           peerQueue,
           metaInfo,
           myPeerId,
           maxConnections,
-          maxActivePeers,
-          connections,
-          completion
+          connections
         )
     }
   }
@@ -135,30 +146,22 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])],
-      completion: DownloadCompletion
+      connections: HashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
-    //
-    val isEndGame = completion.isInstanceOf[DownloadCompletion.EndGame.type]
-
-    if (connections.length < maxConnections) {
-
+    if (connections.size < maxConnections) {
       peerQueue.poll.flatMap {
-        case Some(peer)                                               =>
-          establishConnection(peerQueue, peer, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+        // Tracker may return a peer that we are already connected to.
+        case Some(peer) if !connections.contains(peer) =>
+          establishConnection(peerQueue, peer, metaInfo, myPeerId, maxConnections, connections)
 
-        case None if !isEndGame                                       =>
-          fetchMorePeers(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+        case Some(_)                                   =>
+          maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, connections)
 
-        case None if isEndGame && connections.length < maxActivePeers =>
-          fetchMorePeers(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-
-        case _                                                        =>
-          processDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+        case _                                         =>
+          handleDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, connections)
       }
     } else {
-      processDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
+      handleDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, connections)
     }
   }
 
@@ -168,8 +171,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: HashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     val peerIdStr = peer.peerId
       .map(PeerHandleLive.makePeerIdStr)
@@ -178,54 +180,73 @@ object Main extends App {
     for {
       _       <- Logging.debug(s"$peerIdStr connecting to ${peer.ip}:${peer.port}")
       address <- InetSocketAddress.hostName(peer.ip, peer.port)
+
+      // Some trackers do not return peerIds in their responses.
+      // So the only reliable way to find out remote peerId is to ask remote peer for it.
+      // If connection would be established, peerIdP would be completed with received peer id.
+      peerIdP <- Promise.make[Throwable, PeerId]
       fiber   <- PeerHandleLive.fromAddress(address, metaInfo.infoHash, myPeerId)
-                   .use(DefaultPeerRoutine.run)
+                   .use { peerHandle =>
+                     peerIdP.succeed(peerHandle.peerId) *>
+                       DefaultPeerRoutine.run(peerHandle)
+                   }
                    .fork
+
       _       <- manageConnections(
                    peerQueue,
                    metaInfo,
                    myPeerId,
                    maxConnections,
-                   maxActivePeers,
-                   connections.appended(peer, fiber)
+                   connections + (peer -> PeerConnection(peerIdP, fiber))
                  )
     } yield ()
   }
 
-  def processDisconnected(
+  def handleDisconnected(
       peerQueue: Queue[Peer],
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])]
+      connections: HashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
 
     for {
-      updated <- ZIO.filter(connections) {
-                   case (peer, fiber) =>
-                     val peerIdStr = peer.peerId
-                       .map(PeerHandleLive.makePeerIdStr)
-                       .fold("UNKNOWN")(identity)
+      // This .toList is necessary because ZIO.filter does not work with HashMap.
+      // It wont affect performance much because of relatively small amount of active connections (~100).
+      updated <- ZIO.filter(connections.toList) {
+                   case (_, PeerConnection(peerIdP, fiber)) =>
+                     for {
+                       peerIdOption <- peerIdP.isDone.flatMap {
+                                         case true => peerIdP.await.map(pid => Some(PeerHandleLive.makePeerIdStr(pid)))
+                                         case _    => ZIO.none
+                                       }
 
-                     fiber.poll.flatMap {
-                       case Some(Success(_))     =>
-                         Logging.debug(s"$peerIdStr fiber successfully exited").as(false)
+                       res          <- fiber.poll.flatMap {
+                                         case Some(Success(_)) if peerIdOption.isDefined     =>
+                                           Logging.debug(s"${peerIdOption.get} fiber successfully exited")
+                                             .as(false)
 
-                       case Some(Failure(cause)) =>
-                         val messages = cause.failures
-                           .map { throwable =>
-                             val message = throwable.getMessage
-                             if (message == null) ""
-                             else message.strip
-                           }
-                           .mkString(",")
+                                         case Some(Success(_))                               =>
+                                           Logging.debug(s"UNKNOWN fiber successfully exited")
+                                             .as(false)
 
-                         Logging.debug(s"$peerIdStr fiber failed: $messages").as(false)
+                                         // Saving errors only for peers that we have been connected to.
+                                         case Some(Failure(cause)) if peerIdOption.isDefined =>
+                                           val messages = messagesFromCause(cause)
+                                           for {
+                                             uuid <- saveError(peerIdOption.get, cause)
+                                             _    <- Logging.debug(
+                                                       s"${peerIdOption.get} fiber failed: $messages. Details in $uuid.log"
+                                                     )
+                                           } yield false
 
-                       case None                 =>
-                         ZIO.succeed(true)
-                     }
+                                         case Some(Failure(_))                               =>
+                                           ZIO.succeed(false)
+
+                                         case None                                           =>
+                                           ZIO.succeed(true)
+                                       }
+                     } yield res
                  }
 
       _       <- manageConnections(
@@ -233,20 +254,25 @@ object Main extends App {
                    metaInfo,
                    myPeerId,
                    maxConnections,
-                   maxActivePeers,
-                   connections = updated
-                 ).delay(10.seconds)
+                   connections = HashMap.from(updated)
+                 ).delay(1.second)
     } yield ()
   }
 
-  def fetchMorePeers(
-      peerQueue: Queue[Peer],
-      metaInfo: MetaInfo,
-      myPeerId: PeerId,
-      maxConnections: Int,
-      maxActivePeers: Int,
-      connections: Vector[(Peer, Fiber[Throwable, Unit])]
-  ): RIO[TorrEnv, Unit] = {
+  def saveError(peerIdStr: String, cause: Cause[Throwable]): RIO[Blocking, String] = {
+    val errorsPath = Path("errors")
+    val uuid       = java.util.UUID.randomUUID.toString
+    val filePath   = errorsPath / Path(s"$uuid.log")
+
+    for {
+      _      <- Files.createDirectory(errorsPath).whenM(Files.notExists(errorsPath))
+      dataStr = s"$peerIdStr failed with Cause:\n" ++ cause.prettyPrint
+      data    = Chunk.fromArray(dataStr.getBytes(StandardCharsets.UTF_8))
+      _      <- Files.writeBytes(filePath, data, StandardOpenOption.CREATE)
+    } yield uuid
+  }
+
+  def fetchMorePeers(peerQueue: Queue[Peer], metaInfo: MetaInfo, myPeerId: PeerId): RIO[TorrEnv, Unit] = {
 
     val request = TrackerRequest(
       metaInfo.announce,
@@ -258,15 +284,35 @@ object Main extends App {
       metaInfo.torrentSize
     )
 
-    for {
-      response <- Announce.update(request)
-      _        <- Logging.debug(
-                    s"ANNOUNCE got ${response.peers.length} peers. Interval = ${response.interval} seconds"
-                  )
-      _        <- peerQueue.offerAll(response.peers)
-      _        <- manageConnections(peerQueue, metaInfo, myPeerId, maxConnections, maxActivePeers, connections)
-                    .delay(10.seconds)
-    } yield ()
+    peerQueue.size.flatMap {
+      case s if s > 0 =>
+        Logging.debug(s"ANNOUNCE peerQueue size is $s") *>
+          fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
+      case _          =>
+        Announce.update(request).fork
+          .flatMap(fiber => fiber.await)
+          .flatMap {
+            case Success(response) =>
+              for {
+                _ <- Logging.debug(s"ANNOUNCE got ${response.peers.length} peers")
+                _ <- peerQueue.offerAll(response.peers)
+                _ <- fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
+              } yield ()
+
+            case Failure(cause)    =>
+              val messages = cause.failures
+                .map { throwable =>
+                  val message = throwable.getMessage
+                  if (message == null) "" else message.strip
+                }.mkString(",")
+
+              for {
+                uuid <- saveError("ANNOUNCE", cause)
+                _    <- Logging.debug(s"ANNOUNCE failed with $messages, log saved to $uuid.log")
+                _    <- fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
+              } yield ()
+          }
+    }
   }
 
   def makePeerId: RIO[Random, Chunk[Byte]] = {
@@ -275,11 +321,20 @@ object Main extends App {
     } yield Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
   }
 
-  private def configureLogging: Unit = {
+  private def configureLogging(): Unit = {
     val context      = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
     val configurator = new JoranConfigurator()
     configurator.setContext(context)
     context.reset()
     configurator.doConfigure(getClass.getResourceAsStream("/logback.xml"))
+  }
+
+  private def messagesFromCause(cause: Cause[Throwable]): String = {
+    cause.failures
+      .map { throwable =>
+        val message = throwable.getMessage
+        if (message == null) ""
+        else message.strip
+      }.mkString(",")
   }
 }

@@ -42,7 +42,7 @@ object DefaultDownloadRoutine {
   def restart(
       peerHandle: PeerHandle,
       downloadState: DownloadState,
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     peerHandle.log("restarting download") *>
       Dispatcher.isDownloadCompleted.flatMap {
@@ -61,7 +61,7 @@ object DefaultDownloadRoutine {
   private def negotiateUnchoke(
       handle: PeerHandle,
       state0: DownloadState,
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     for {
 
@@ -145,7 +145,7 @@ object DefaultDownloadRoutine {
       // Response reordering buffers.
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     selectDownloadLoopAction(jobState, requestsPerJobs, sent, received) match {
@@ -176,7 +176,7 @@ object DefaultDownloadRoutine {
       requestsPerJobs: HashMap[DownloadJob, Int],
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     handle.log("acquiring first job") *>
@@ -209,7 +209,7 @@ object DefaultDownloadRoutine {
       requestsPerJobs: HashMap[DownloadJob, Int],
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     handle.log("acquiring next job") *>
@@ -244,7 +244,7 @@ object DefaultDownloadRoutine {
       requestsPerJobs: HashMap[DownloadJob, Int],
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Message.Piece],
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     val acquired  = jobState.asInstanceOf[JobAllocationState.Acquired]
@@ -275,7 +275,7 @@ object DefaultDownloadRoutine {
       requestsPerJobs: HashMap[DownloadJob, Int],
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Piece],
-      downSpeedAccRef: Ref[Long],
+      downSpeedAccRef: Ref[Int],
       actionParams: DownloadLoopAction.ProcessResponse
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
@@ -318,7 +318,7 @@ object DefaultDownloadRoutine {
       requestsPerJobs: HashMap[DownloadJob, Int],
       sent: Queue[SentRequest],
       received: HashMap[(PieceId, Offset), Piece],
-      downSpeedAccRef: Ref[Long]
+      downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
     handle.receive[Piece, Choke]

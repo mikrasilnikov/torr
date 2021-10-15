@@ -12,6 +12,7 @@ import zio.duration.durationInt
 import zio.logging._
 
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 
 case class AnnounceLive(client: HttpClient) extends Announce.Service {
 
@@ -21,22 +22,20 @@ case class AnnounceLive(client: HttpClient) extends Announce.Service {
     for {
       url      <- ZIO(buildUrl(trackerRequest))
       request  <- ZIO(HttpRequest.newBuilder(URI.create(url)).build())
-      data     <- fetchWithRetry(request)
-      bVal      = BEncode.read(Chunk.fromArray(data))
+      data     <- fetch(request)
+      bVal     <- ZIO(BEncode.read(Chunk.fromArray(data)))
+                    .orElseFail(new Exception(
+                      s"Could not decode tracker response: ${new String(data, StandardCharsets.UTF_8)}"
+                    ))
       response <- ZIO.fromOption(TrackerResponse.interpret(bVal))
                     .orElseFail(new Exception("Could not interpret response"))
     } yield response
   }
 
-  def fetchWithRetry(httpRequest: HttpRequest): ZIO[Clock with Logging, IOException, Array[Byte]] =
+  def fetch(httpRequest: HttpRequest): ZIO[Clock with Logging, IOException, Array[Byte]] =
     for {
-      _       <- ZIO.unit
-      schedule = (Schedule.recurs(announceRetries) && Schedule.spaced(10.seconds))
-                   .tapOutput { case (n, _) => log.warn(s"Retrying ${httpRequest.uri()}").when(n < announceRetries) }
-      data    <- ZIO.fromCompletableFuture(client.sendAsync(httpRequest, BodyHandlers.ofByteArray()))
-                   .timeoutFail(new IOException("Timeout"))(30.seconds)
-                   .refineToOrDie[IOException]
-                   .retry(schedule)
+      data <- ZIO.fromCompletableFuture(client.sendAsync(httpRequest, BodyHandlers.ofByteArray()))
+                .refineToOrDie[IOException]
     } yield data.body()
 
   def buildUrl(request: TrackerRequest): String = {

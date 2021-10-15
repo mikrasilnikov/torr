@@ -13,6 +13,8 @@ import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadJob}
 import torr.fileio.FileIO
 import zio.logging.Logging
 
+import scala.collection.immutable
+
 object DefaultPeerRoutine {
 
   final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
@@ -28,8 +30,8 @@ object DefaultPeerRoutine {
       _        <- validateRemoteBitSet(metaInfo, bitField.bits)
       _        <- Dispatcher.reportHaveMany(peerHandle.peerId, Set.from(bitField.bits.set))
 
-      downSpeedAccRef <- Ref.make(0L)
-      upSpeedAccRef   <- Ref.make(0L)
+      downSpeedAccRef <- Ref.make(0)
+      upSpeedAccRef   <- Ref.make(0)
 
       haveFib  <- handleRemoteHave(peerHandle, metaInfo).fork
       aliveFib <- handleKeepAlive(peerHandle).fork
@@ -39,10 +41,6 @@ object DefaultPeerRoutine {
              peerHandle,
              DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
-           ).onError(e =>
-             Logging.debug(
-               s"${peerHandle.peerIdStr} LastDownloadRoutine failed with ${e.failures.map(_.getMessage).mkString(", ")}"
-             )
            )
 
       _ <- haveFib.interrupt
@@ -75,23 +73,38 @@ object DefaultPeerRoutine {
 
   private def reportSpeeds(
       peerHandle: PeerHandle,
-      downSpeedAccRef: Ref[Long],
-      upSpeedAccRef: Ref[Long],
+      downSpeedAccRef: Ref[Int],
+      upSpeedAccRef: Ref[Int],
       periodSeconds: Int = 1
   ): RIO[Dispatcher with Clock, Unit] = {
-    for {
-      dl <- downSpeedAccRef.getAndSet(0L)
-      ul <- upSpeedAccRef.getAndSet(0L)
 
-      dlSpeed = (dl.toDouble / periodSeconds).toInt
-      ulSpeed = (ul.toDouble / periodSeconds).toInt
+    def loop(
+        downSpeeds: immutable.Queue[Int],
+        upSpeeds: immutable.Queue[Int]
+    ): RIO[Dispatcher with Clock, Unit] =
+      for {
+        dl <- downSpeedAccRef.getAndSet(0)
+        ul <- upSpeedAccRef.getAndSet(0)
 
-      _ <- Dispatcher.reportDownloadSpeed(peerHandle.peerId, dlSpeed)
-      _ <- Dispatcher.reportUploadSpeed(peerHandle.peerId, ulSpeed)
+        dlInstantSpeed = (dl.toDouble / periodSeconds).toInt
+        ulInstantSpeed = (ul.toDouble / periodSeconds).toInt
 
-      _ <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef, periodSeconds)
-             .delay(periodSeconds.seconds)
-    } yield ()
+        dlSpeed = downSpeeds.sum / downSpeeds.length
+        ulSpeed = upSpeeds.sum / upSpeeds.length
+
+        _ <- Dispatcher.reportDownloadSpeed(peerHandle.peerId, dlSpeed)
+        _ <- Dispatcher.reportUploadSpeed(peerHandle.peerId, ulSpeed)
+
+        _ <- loop(
+               downSpeeds.tail.enqueue(dlInstantSpeed),
+               upSpeeds.tail.enqueue(ulInstantSpeed)
+             ).delay(periodSeconds.seconds)
+      } yield ()
+
+    loop(
+      immutable.Queue[Int]((1 to 10).map(_ => 0): _*),
+      immutable.Queue[Int]((1 to 10).map(_ => 0): _*)
+    )
   }
 
   //noinspection SimplifyUnlessInspection,SimplifyWhenInspection

@@ -38,8 +38,10 @@ object TorrentProgressBar {
         val pieceTo   = math.ceil(numPieces * rangeTo).toInt
 
         val cellIsCompleted = (pieceFrom until pieceTo).forall(i => state.localHave(i))
+        val cellIsPartial   = (pieceFrom until pieceTo).exists(i => state.localHave(i))
 
         if (cellIsCompleted) acc.append("=")
+        else if (cellIsPartial) acc.append("-")
         else acc.append(" ")
         loop(cell + 1)
       }

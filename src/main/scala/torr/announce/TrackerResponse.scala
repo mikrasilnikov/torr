@@ -6,8 +6,16 @@ import zio.Chunk
 
 import java.nio.ByteBuffer
 
-case class Peer(ip: String, port: Int, peerId: Option[Chunk[Byte]] = None)
 case class TrackerResponse(peers: List[Peer], interval: Int)
+
+case class Peer(ip: String, port: Int, peerId: Option[Chunk[Byte]] = None) {
+  override def equals(obj: Any): Boolean =
+    obj match {
+      case that @ Peer(_, _, _) => that.ip == ip && that.port == port
+      case _                    => false
+    }
+  override def hashCode(): Int           = (ip, port).hashCode()
+}
 
 object TrackerResponse {
 

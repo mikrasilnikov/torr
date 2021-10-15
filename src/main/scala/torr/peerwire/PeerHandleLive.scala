@@ -132,14 +132,6 @@ object PeerHandleLive {
 
       remotePeerIdStr = makePeerIdStr(remotePeerId)
 
-      /*receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).fork
-                        .toManaged(fib =>
-                          Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupting") *>
-                            channel.close.whenM(channel.isOpen).ignore *>
-                            fib.interrupt *>
-                            Logging.debug(s"$remotePeerIdStr ReceiveActor.receiveProc interrupted")
-                        )*/
-
       receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).toManaged_.fork
 
       receiveActor <- createReceiveActor(channel, channelName, remotePeerId, remotePeerIdStr, actorConfig)
@@ -151,9 +143,9 @@ object PeerHandleLive {
 
       sendActor    <- createSendActor(channel, channelName, remotePeerIdStr, receiveActor)
                         .toManaged(actor =>
-                          Logging.debug(s"$remotePeerIdStr: SendActor shutting down") *>
+                          Logging.debug(s"$remotePeerIdStr SendActor shutting down") *>
                             actor.stop.orDie *>
-                            Logging.debug(s"$remotePeerIdStr: SendActor shut down")
+                            Logging.debug(s"$remotePeerIdStr SendActor shut down")
                         )
 
       _            <- actorP.succeed(receiveActor).toManaged_
@@ -262,8 +254,8 @@ object PeerHandleLive {
       actor <- actorP.await
       _     <- Message.receive(channel, rcvBuf).interruptible
                  .flatMap(m =>
-                   //Logging.debug(s"$remotePeerIdStr <- $m") *>
-                   (actor ! ReceiveActor.OnMessage(m))
+                   Logging.debug(s"$remotePeerIdStr <- $m") *>
+                     (actor ! ReceiveActor.OnMessage(m))
                  )
                  .forever
                  .foldM(
