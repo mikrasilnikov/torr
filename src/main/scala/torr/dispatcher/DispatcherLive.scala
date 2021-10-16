@@ -22,6 +22,9 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def releaseJob(peerId: PeerId, job: => ReleaseJobStatus): Task[Unit] =
     actor ! ReleaseJob(peerId, job)
 
+  def acquireUploadSlot(peerId: PeerId): Task[AcquireUploadSlotResult] = actor ? AcquireUploadSlot(peerId)
+  def releaseUploadSlot(peerId: PeerId): Task[Unit]                    = actor ? ReleaseUploadSlot(peerId)
+
   def isDownloadCompleted: Task[DownloadCompletion]      = actor ? IsDownloadCompleted
   def isRemoteInteresting(peerId: PeerId): Task[Boolean] = actor ? IsRemoteInteresting(peerId)
 
@@ -36,9 +39,10 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   =
     actor ! ReportUploadSpeed(peerId, bytesPerSecond)
 
-  def getLocalBitField: Task[TorrBitSet] = actor ? GetLocalBitField
-
   def numActivePeers: Task[PieceId] = actor ? NumActivePeers
+
+  def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])] =
+    actor ? SubscribeToHaveUpdates(peerId)
 }
 
 object DispatcherLive {

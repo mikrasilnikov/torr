@@ -1,6 +1,8 @@
 package torr.peerwire
 
 import torr.channels.ByteChannel
+import torr.directbuffers.DirectBufferPool
+import torr.peerwire.Message.Piece
 import zio._
 import zio.actors._
 import zio.actors.Actor.Stateful
@@ -19,9 +21,9 @@ object SendActor {
       receiveActor: ActorRef[ReceiveActor.Command]
   )
 
-  val stateful = new Stateful[Logging, State, Command] {
+  val stateful = new Stateful[DirectBufferPool with Logging, State, Command] {
 
-    def receive[A](state: State, cmd: Command[A], context: Context): RIO[Logging, (State, A)] = {
+    def receive[A](state: State, cmd: Command[A], context: Context): RIO[DirectBufferPool with Logging, (State, A)] = {
       cmd match {
         case Send(msg) => send(state, msg).as(state, ())
       }
@@ -31,12 +33,21 @@ object SendActor {
   private[peerwire] def send(
       state: State,
       msg: Message
-  ): RIO[Logging, Unit] = {
-    Logging.debug(s"${state.remotePeerIdStr} -> $msg") *>
-      Message.send(msg, state.channel, state.sendBuf)
-        .foldM(
-          e => (state.receiveActor ! ReceiveActor.StartFailing(e)).orDie,
-          _ => ZIO.unit
-        )
+  ): RIO[DirectBufferPool with Logging, Unit] = {
+    val effect =
+      msg match {
+        case Piece(_, _, data) =>
+          Message.send(msg, state.channel, state.sendBuf) *>
+            DirectBufferPool.free(data)
+        case _                 =>
+          Message.send(msg, state.channel, state.sendBuf)
+      }
+
+    //Logging.debug(s"${state.remotePeerIdStr} -> $msg") *>
+    effect
+      .foldM(
+        e => (state.receiveActor ! ReceiveActor.StartFailing(e)).orDie,
+        _ => ZIO.unit
+      )
   }
 }

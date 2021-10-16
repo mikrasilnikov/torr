@@ -27,7 +27,8 @@ object ReceiveActor {
   case class Poll2Last[M <: Message](cls1: Class[_], cls2: Class[_]) extends Command[Option[Message]]
   case class PollMany(messageTypes: List[Class[_]])                  extends Command[Option[Message]]
 
-  case class Ignore(cls: Class[_]) extends Command[Unit]
+  case class Ignore(cls: Class[_])   extends Command[Unit]
+  case class Unignore(cls: Class[_]) extends Command[Unit]
 
   case object GetState   extends Command[State]
   case object GetContext extends Command[Context]
@@ -61,6 +62,7 @@ object ReceiveActor {
         case Receive2(cls1, cls2, p) => receive2(state, cls1, cls2, p).map(p => (state, p))
         case ReceiveMany(classes, p) => receiveMany(state, classes, p).map(p => (state, p))
         case Ignore(cls)             => ignore(state, cls).as(state, ())
+        case Unignore(cls)           => unignore(state, cls).as(state, ())
 
         case Poll1(cls)            => poll1(state, cls).map(res => (state, res))
         case Poll2(cls1, cls2)     => poll2(state, cls1, cls2).map(res => (state, res))
@@ -164,6 +166,13 @@ object ReceiveActor {
             _ <- poll1Last(state, cls)
             _  = state.ignoredMessages.add(cls)
           } yield ()
+      }
+    }
+
+    private def unignore(state: State, cls: Class[_]): Task[Unit] = {
+      state.isFailingWith match {
+        case Some(e) => ZIO.fail(e)
+        case None    => ZIO.succeed(unignore1(state, cls))
       }
     }
 

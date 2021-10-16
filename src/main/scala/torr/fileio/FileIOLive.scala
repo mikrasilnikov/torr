@@ -19,9 +19,13 @@ import zio.nio.file.Files
 
 import java.nio.file.{LinkOption, OpenOption, StandardOpenOption}
 
-case class FileIOLive(private val actor: ActorRef[Command], mi: MetaInfo, freshFiles: Boolean) extends FileIO.Service {
+case class FileIOLive(
+    private val actor: ActorRef[Command],
+    mi: MetaInfo,
+    freshFiles: Boolean
+) extends FileIO.Service {
 
-  def fetch(piece: Int, offset: Int, amount: Int): ZIO[DirectBufferPool, Throwable, Chunk[ByteBuffer]] = {
+  def fetch(piece: Int, offset: Int, amount: Int): Task[Chunk[ByteBuffer]] = {
     actor ? Fetch(piece, offset, amount)
   }
 

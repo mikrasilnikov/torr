@@ -14,7 +14,8 @@ package object announce {
       port: Int,
       uploaded: Long,
       downloaded: Long,
-      left: Long
+      left: Long,
+      numWant: Int = 50
   )
 
   type Announce = Has[Announce.Service]

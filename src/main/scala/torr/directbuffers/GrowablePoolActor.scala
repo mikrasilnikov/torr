@@ -30,7 +30,10 @@ object GrowablePoolActor {
       val res = state.buffers.dequeue()
       res.clear.as(res)
     } else {
-      Buffer.byteDirect(state.bufferSize)
+      for {
+        res <- Buffer.byteDirect(state.bufferSize)
+        _   <- res.clear
+      } yield res
     }
   }
 

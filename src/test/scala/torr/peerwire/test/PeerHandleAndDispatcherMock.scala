@@ -1,6 +1,15 @@
 package torr.peerwire.test
 
-import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadCompletion, PeerId, PieceId, ReleaseJobStatus}
+import torr.dispatcher
+import torr.dispatcher.{
+  AcquireJobResult,
+  AcquireUploadSlotResult,
+  Dispatcher,
+  DownloadCompletion,
+  PeerId,
+  PieceId,
+  ReleaseJobStatus
+}
 import torr.peerwire.{Message, PeerHandle, TorrBitSet}
 import zio._
 import zio.nio.core.Buffer
@@ -58,6 +67,9 @@ object PeerHandleAndDispatcherMock {
               ZIO.fail(new Exception(s"Expected ${exp.head}, got releaseJob($peerId, $releaseStatus)"))
           }
 
+        override def acquireUploadSlot(peerId: PeerId): Task[AcquireUploadSlotResult] = ???
+        override def releaseUploadSlot(peerId: PeerId): Task[Unit]                    = ???
+
         def registerPeer(peerId: PeerId): Task[Unit]   = ???
         def unregisterPeer(peerId: PeerId): Task[Unit] = ???
 
@@ -67,7 +79,7 @@ object PeerHandleAndDispatcherMock {
         def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit] = ???
         def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   = ???
 
-        def getLocalBitField: Task[TorrBitSet] = ???
+        def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])] = ???
 
         def numActivePeers: Task[PieceId] = ???
       }
@@ -116,6 +128,8 @@ object PeerHandleAndDispatcherMock {
         }
 
         def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] = ???
+
+        def unignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] = ???
 
         def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] = ???
 

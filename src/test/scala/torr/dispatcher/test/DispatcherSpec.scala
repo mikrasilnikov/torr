@@ -189,7 +189,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
           localHave = new Array[Boolean](metaInfo.numPieces),
           registeredPeers =
             mutable.HashMap(peerId -> RegisteredPeer(have = remoteHave, interesting = remoteHave)),
-          maxActivePeers = 1,
+          maxSimultaneousDownloads = 1,
           activePeers = mutable.HashMap(peerId -> ArrayBuffer[DownloadJob]())
         )
 
@@ -217,7 +217,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
             peerId1 -> RegisteredPeer(mutable.HashSet[PieceId](0), mutable.HashSet[PieceId](0)),
             peerId2 -> RegisteredPeer(mutable.HashSet[PieceId](0), mutable.HashSet[PieceId](0))
           ),
-          maxActivePeers = 1,
+          maxSimultaneousDownloads = 1,
           activePeers = mutable.HashMap(peerId1 -> ArrayBuffer[DownloadJob]())
         )
 
@@ -242,7 +242,7 @@ object DispatcherSpec extends DefaultRunnableSpec {
             peerId1 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1)),
             peerId2 -> RegisteredPeer(mutable.HashSet(0, 1), mutable.HashSet(0, 1))
           ),
-          maxActivePeers = 1,
+          maxSimultaneousDownloads = 1,
           activePeers = mutable.HashMap(peerId1 -> ArrayBuffer(completedJob)),
           activeJobs = mutable.HashMap[DownloadJob, PeerId](completedJob -> peerId1)
         )

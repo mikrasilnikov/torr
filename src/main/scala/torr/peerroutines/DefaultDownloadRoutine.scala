@@ -53,7 +53,9 @@ object DefaultDownloadRoutine {
             case false =>
               peerHandle.log("remote is not interesting, waiting 10 seconds") *>
                 restart(peerHandle, downloadState, downSpeedAccRef).delay(10.seconds)
-            case _     => negotiateUnchoke(peerHandle, downloadState, downSpeedAccRef)
+            case _     =>
+              negotiateUnchoke(peerHandle, downloadState, downSpeedAccRef) *>
+                restart(peerHandle, downloadState, downSpeedAccRef)
           }
       }
   }

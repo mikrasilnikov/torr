@@ -14,7 +14,6 @@ import torr.metainfo.MetaInfo
 import torr.peerroutines.DefaultPeerRoutine
 import torr.peerwire.PeerHandleLive
 import zio.Exit.{Failure, Success}
-import zio.{Cause, _}
 import zio.blocking.Blocking
 import zio.cli.HelpDoc.Span._
 import zio.cli._
@@ -27,10 +26,9 @@ import zio.nio.core._
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
-
-import java.io.IOException
+import zio.{Cause, _}
 import java.nio.charset.StandardCharsets
-import java.nio.file.{OpenOption, StandardOpenOption}
+import java.nio.file.StandardOpenOption
 import scala.collection.immutable.HashMap
 
 object Main extends App {
@@ -68,7 +66,7 @@ object Main extends App {
               torrentFileAbsolutePath.take(torrentFileAbsolutePath.length - extension.length)
             else torrentFileAbsolutePath ++ ".out"
 
-          download(options.maxConnections, options.maxActivePeers)
+          download(options, args)
             .injectCustom(
               ActorSystemLive.make("Default"),
               AnnounceLive.make(options.proxy),
@@ -83,27 +81,29 @@ object Main extends App {
             ) //.catchAll(e => putStrLn(e.getMessage).orDie)
       }
 
-    cliApp.run(args)
+    //cliApp.run(args)
 
-    /*cliApp.run(
-      "--px" :: "127.0.0.1:8080" ::
-        "d:\\!temp\\Good.Will.Hunting.1997.BDRip.avi.torrent" :: Nil
-    )*/
+    cliApp.run(
+      //"--px" :: "127.0.0.1:8080" ::
+      "c:\\!temp\\Breaking Bad - Season 1 [BDRip].torrent" ::
+        "127.0.0.1:56233" :: "127.0.0.1:57617" :: Nil
+    )
   }
 
-  def download(maxConnections: Int, maxActivePeers: Int): RIO[TorrEnv, Unit] = {
+  def download(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
     for {
       myPeerId  <- makePeerId
       metaInfo  <- FileIO.metaInfo
       peerQueue <- Queue.unbounded[Peer]
 
+      _           <- peerQueue.offerAll(args.additionalPeers)
       announceFib <- fetchMorePeers(peerQueue, metaInfo, myPeerId).fork
 
       _ <- manageConnections(
              peerQueue,
              metaInfo,
              myPeerId,
-             maxConnections,
+             options.maxConnections,
              connections = HashMap.empty[Peer, PeerConnection]
            )
 
@@ -279,7 +279,8 @@ object Main extends App {
       port = 12345,
       uploaded = 0,
       downloaded = 0,
-      metaInfo.torrentSize
+      metaInfo.torrentSize,
+      numWant = 100
     )
 
     peerQueue.size.flatMap {

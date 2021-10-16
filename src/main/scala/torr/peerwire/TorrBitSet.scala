@@ -1,5 +1,6 @@
 package torr.peerwire
 
+import torr.dispatcher.PieceId
 import zio._
 
 import java.nio._
@@ -67,6 +68,12 @@ object TorrBitSet {
   def fromBoolArray(data: Array[Boolean]): TorrBitSet = {
     val result = make(data.length)
     data.indices.foreach(i => if (data(i)) result.set.add(i))
+    result
+  }
+
+  def fromSet(set: Set[PieceId], length: Int): TorrBitSet = {
+    val result = make(length)
+    (0 until length).foreach(i => if (set.contains(i)) result.set.add(i))
     result
   }
 }

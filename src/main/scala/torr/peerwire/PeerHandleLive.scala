@@ -47,6 +47,9 @@ case class PeerHandleLive(
   def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] =
     receiveActor ! ReceiveActor.Ignore(tag.runtimeClass)
 
+  def unignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] =
+    receiveActor ! ReceiveActor.Unignore(tag.runtimeClass)
+
   def poll[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]                                  =
     receiveActor ? ReceiveActor.Poll1(tag.runtimeClass)
   def poll[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]] =
@@ -157,7 +160,7 @@ object PeerHandleLive {
       channelName: String,
       remotePeerIdStr: String,
       receiveActor: ActorRef[ReceiveActor.Command]
-  ): RIO[ActorSystem with Logging with Clock, ActorRef[SendActor.Command]] = {
+  ): RIO[ActorSystem with DirectBufferPool with Logging with Clock, ActorRef[SendActor.Command]] = {
 
     val supervisor =
       actors.Supervisor.retryOrElse(
@@ -254,8 +257,8 @@ object PeerHandleLive {
       actor <- actorP.await
       _     <- Message.receive(channel, rcvBuf).interruptible
                  .flatMap(m =>
-                   Logging.debug(s"$remotePeerIdStr <- $m") *>
-                     (actor ! ReceiveActor.OnMessage(m))
+                   //Logging.debug(s"$remotePeerIdStr <- $m") *>
+                   (actor ! ReceiveActor.OnMessage(m))
                  )
                  .forever
                  .foldM(

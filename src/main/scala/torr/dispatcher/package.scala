@@ -31,28 +31,33 @@ package object dispatcher {
     case object Completed  extends DownloadCompletion
   }
 
+  sealed trait AcquireUploadSlotResult
+  object AcquireUploadSlotResult {
+    case object Granted extends AcquireUploadSlotResult
+    case object Denied  extends AcquireUploadSlotResult
+  }
+
   @accessible
   object Dispatcher {
     trait Service {
       def isDownloadCompleted: Task[DownloadCompletion]
       def isRemoteInteresting(peerId: PeerId): Task[Boolean]
 
-      /**
-        * @return Queue that updates on `local have` are posted to.
-        */
-      def registerPeer(peerId: PeerId): Task[Dequeue[PieceId]]
+      def registerPeer(peerId: PeerId): Task[Unit]
       def unregisterPeer(peerId: PeerId): Task[Unit]
 
       def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]
       def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit]
+      def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])]
 
       def acquireJob(peerId: PeerId): Task[AcquireJobResult]
       def releaseJob(peerId: PeerId, releaseStatus: => ReleaseJobStatus): Task[Unit]
 
+      def acquireUploadSlot(peerId: PeerId): Task[AcquireUploadSlotResult]
+      def releaseUploadSlot(peerId: PeerId): Task[Unit]
+
       def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
       def reportUploadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
-
-      def getLocalBitField: Task[TorrBitSet]
 
       def numActivePeers: Task[Int]
 
