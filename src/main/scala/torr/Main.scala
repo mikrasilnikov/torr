@@ -279,8 +279,7 @@ object Main extends App {
       port = 12345,
       uploaded = 0,
       downloaded = 0,
-      metaInfo.torrentSize,
-      numWant = 100
+      metaInfo.torrentSize
     )
 
     peerQueue.size.flatMap {

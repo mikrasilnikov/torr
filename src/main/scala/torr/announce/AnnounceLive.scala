@@ -53,8 +53,6 @@ case class AnnounceLive(client: HttpClient) extends Announce.Service {
     urlBuilder.append(request.downloaded)
     urlBuilder.append("&left=")
     urlBuilder.append(request.left)
-    urlBuilder.append("&numwant=")
-    urlBuilder.append(request.numWant)
 
     urlBuilder.toString
   }
