@@ -24,7 +24,7 @@ object Actor {
   )
 
   sealed trait Command[+_]
-  case class RegisterPeer(peerId: PeerId)                                extends Command[Unit]
+  case class RegisterPeer(peerId: PeerId)                                extends Command[UManaged[Dequeue[PieceId]]]
   case class UnregisterPeer(peerId: PeerId)                              extends Command[Unit]
   case class ReportHaveMany(peerId: PeerId, pieces: Set[PieceId])        extends Command[Unit]
   case class ReportHave(peerId: PeerId, piece: PieceId)                  extends Command[Unit]
@@ -51,6 +51,7 @@ object Actor {
   case class State(
       metaInfo: MetaInfo,
       localHave: Array[Boolean],
+      haveUpdateHub: Hub[PieceId],
       maxActivePeers: Int = 10, // Number of simultaneous downloads.
       registeredPeers: mutable.Map[PeerId, RegisteredPeer] = mutable.HashMap[PeerId, RegisteredPeer](),
       activeJobs: mutable.Map[DownloadJob, PeerId] = mutable.HashMap[DownloadJob, PeerId](),
@@ -63,7 +64,7 @@ object Actor {
     //noinspection WrapInsteadOfLiftInspection
     def receive[A](state: State, msg: Command[A], context: Context): RIO[ConsoleUI with Logging, (State, A)] =
       msg match {
-        case RegisterPeer(peerId)               => ZIO(registerPeer(state, peerId)).as((state, ()))
+        case RegisterPeer(peerId)               => registerPeer(state, peerId).map(res => (state, res))
         case UnregisterPeer(peerId)             => unregisterPeer(state, peerId).as((state, ()))
         case ReportHave(peerId, piece)          => ZIO(reportHave(state, peerId, piece)).as((state, ()))
         case ReportHaveMany(peerId, pieces)     => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
@@ -79,7 +80,7 @@ object Actor {
       }
   }
 
-  private[dispatcher] def registerPeer(state: State, peerId: PeerId): Unit = {
+  private[dispatcher] def registerPeer(state: State, peerId: PeerId): Task[UManaged[Dequeue[PieceId]]] = {
     if (state.registeredPeers.contains(peerId)) {
       val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       throw new IllegalStateException(s"PeerId $peerIdStr is already registered")
@@ -91,6 +92,8 @@ object Actor {
           interesting = mutable.HashSet[PieceId]()
         )
       )
+
+      ZIO.succeed(state.haveUpdateHub.subscribe)
     }
   }
 

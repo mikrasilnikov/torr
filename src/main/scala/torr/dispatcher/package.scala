@@ -1,6 +1,6 @@
 package torr
 
-import torr.peerwire.TorrBitSet
+import torr.peerwire.{Message, TorrBitSet}
 import zio._
 import zio.macros.accessible
 
@@ -37,7 +37,10 @@ package object dispatcher {
       def isDownloadCompleted: Task[DownloadCompletion]
       def isRemoteInteresting(peerId: PeerId): Task[Boolean]
 
-      def registerPeer(peerId: PeerId): Task[Unit]
+      /**
+        * @return Queue that updates on `local have` are posted to.
+        */
+      def registerPeer(peerId: PeerId): Task[Dequeue[PieceId]]
       def unregisterPeer(peerId: PeerId): Task[Unit]
 
       def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]
