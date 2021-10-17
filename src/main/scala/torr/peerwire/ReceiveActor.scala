@@ -461,6 +461,8 @@ object ReceiveActor {
              s"${state.remotePeerIdStr} ReceiveActor.startFailing(..., ${error.getClass}: $message)"
            )
       _ <- ZIO.foreach_(state.givenPromises) { case (p, _) => p.fail(error) }
+      _ <- ZIO.foreach_(state.expectedWhilePeerInterested) { case (_, p) => p.fail(error) }
+      _ <- ZIO.foreach_(state.expectedWhilePeerUnchoking) { case (_, p) => p.fail(error) }
     } yield ()
   }
 }

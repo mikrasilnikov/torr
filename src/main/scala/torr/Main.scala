@@ -81,13 +81,13 @@ object Main extends App {
             ) //.catchAll(e => putStrLn(e.getMessage).orDie)
       }
 
-    //cliApp.run(args)
+    cliApp.run(args)
 
-    cliApp.run(
+    /*cliApp.run(
       //"--px" :: "127.0.0.1:8080" ::
       "c:\\!temp\\Breaking Bad - Season 1 [BDRip].torrent" ::
         "127.0.0.1:56233" :: "127.0.0.1:57617" :: Nil
-    )
+    )*/
   }
 
   def download(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
