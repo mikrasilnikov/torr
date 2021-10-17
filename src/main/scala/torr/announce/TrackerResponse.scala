@@ -42,8 +42,7 @@ object TrackerResponse {
 
       // Compact response
       case BStr(data)    =>
-        if (data.size % 6 != 0)
-          None
+        if (data.size % 6 != 0) None
         else {
           val res = data.sliding(6, 6).map { item =>
             val ip   = s"${unsigned(item(0))}.${unsigned(item(1))}.${unsigned(item(2))}.${unsigned(item(3))}"
@@ -68,5 +67,4 @@ object TrackerResponse {
     buf.putShort(2, s)
     buf.getInt
   }
-
 }

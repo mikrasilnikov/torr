@@ -16,8 +16,6 @@ import java.nio.charset.StandardCharsets
 
 case class AnnounceLive(client: HttpClient) extends Announce.Service {
 
-  private val announceRetries = 10
-
   def update(trackerRequest: TrackerRequest): ZIO[Clock with Logging, Throwable, TrackerResponse] = {
     for {
       url      <- ZIO(buildUrl(trackerRequest))

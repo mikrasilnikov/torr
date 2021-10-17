@@ -26,10 +26,11 @@ import zio.nio.core._
 import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
-import zio.{Cause, _}
+import zio._
 import java.nio.charset.StandardCharsets
 import java.nio.file.StandardOpenOption
-import scala.collection.immutable.HashMap
+import java.util.concurrent.ConcurrentHashMap
+import scala.collection.convert.ImplicitConversions.{`enumeration AsScalaIterator`, `map AsScalaConcurrentMap`}
 
 object Main extends App {
 
@@ -43,7 +44,13 @@ object Main extends App {
     with Random
     with Blocking
 
-  case class PeerConnection(peerId: Promise[Throwable, PeerId], fiber: Fiber[Throwable, Unit])
+  case class PeerConnection(peerIdPromise: Promise[Throwable, PeerId], fiber: Fiber[Throwable, Unit]) {
+    def peerIdStr: Task[String] =
+      peerIdPromise.poll.flatMap {
+        case Some(io) => io.map(PeerHandleLive.makePeerIdStr)
+        case None     => ZIO.succeed("UNKNOWN")
+      }
+  }
 
   //noinspection SimplifyWhenInspection,SimplifyUnlessInspection
   def run(args: List[String]): URIO[zio.ZEnv with Blocking, ExitCode] = {
@@ -105,7 +112,7 @@ object Main extends App {
              metaInfo,
              myPeerId,
              options.maxConnections,
-             connections = HashMap.empty[Peer, PeerConnection]
+             connections = new ConcurrentHashMap[Peer, PeerConnection]()
            )
 
       _ <- announceFib.interrupt
@@ -118,7 +125,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      connections: HashMap[Peer, PeerConnection]
+      connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     Dispatcher.isDownloadCompleted.flatMap {
       case DownloadCompletion.Completed =>
@@ -145,7 +152,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      connections: HashMap[Peer, PeerConnection]
+      connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     if (connections.size < maxConnections) {
       peerQueue.poll.flatMap {
@@ -170,7 +177,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      connections: HashMap[Peer, PeerConnection]
+      connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     val peerIdStr = peer.peerId
       .map(PeerHandleLive.makePeerIdStr)
@@ -191,12 +198,13 @@ object Main extends App {
                    }
                    .fork
 
+      _        = connections.put(peer, PeerConnection(peerIdP, fiber))
       _       <- manageConnections(
                    peerQueue,
                    metaInfo,
                    myPeerId,
                    maxConnections,
-                   connections + (peer -> PeerConnection(peerIdP, fiber))
+                   connections
                  )
     } yield ()
   }
@@ -206,55 +214,47 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       maxConnections: Int,
-      connections: HashMap[Peer, PeerConnection]
+      connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
 
+    def loop(keys: List[Peer]): RIO[Logging with Blocking, Unit] = {
+      keys match {
+        case Nil          => ZIO.unit
+        case peer :: tail =>
+          val connection = connections.get(peer)
+          for {
+            peerId <- connection.peerIdStr
+            _      <- connection.fiber.poll.flatMap {
+                        case None => loop(tail)
+
+                        case Some(Success(_))     =>
+                          connections.remove(peer)
+                          Logging.debug(s"$peerId fiber successfully exited") *>
+                            loop(tail)
+
+                        case Some(Failure(cause)) =>
+                          connections.remove(peer)
+                          val messages = messagesFromCause(cause)
+                          for {
+                            uuid <- saveError(peerId, cause)
+                            _    <- Logging.debug(s"$peerId fiber failed with $messages. Details in $uuid.log")
+                            _    <- loop(tail)
+                          } yield ()
+                      }
+
+          } yield ()
+      }
+    }
+
     for {
-      // This .toList is necessary because ZIO.filter does not work with HashMap.
-      // It wont affect performance much because of relatively small amount of active connections (~100).
-      updated <- ZIO.filter(connections.toList) {
-                   case (_, PeerConnection(peerIdP, fiber)) =>
-                     for {
-                       peerIdOption <- peerIdP.isDone.flatMap {
-                                         case true => peerIdP.await.map(pid => Some(PeerHandleLive.makePeerIdStr(pid)))
-                                         case _    => ZIO.none
-                                       }
-
-                       res          <- fiber.poll.flatMap {
-                                         case Some(Success(_)) if peerIdOption.isDefined     =>
-                                           Logging.debug(s"${peerIdOption.get} fiber successfully exited")
-                                             .as(false)
-
-                                         case Some(Success(_))                               =>
-                                           Logging.debug(s"UNKNOWN fiber successfully exited")
-                                             .as(false)
-
-                                         // Saving errors only for peers that we have been connected to.
-                                         case Some(Failure(cause)) if peerIdOption.isDefined =>
-                                           val messages = messagesFromCause(cause)
-                                           for {
-                                             uuid <- saveError(peerIdOption.get, cause)
-                                             _    <- Logging.debug(
-                                                       s"${peerIdOption.get} fiber failed: $messages. Details in $uuid.log"
-                                                     )
-                                           } yield false
-
-                                         case Some(Failure(_))                               =>
-                                           ZIO.succeed(false)
-
-                                         case None                                           =>
-                                           ZIO.succeed(true)
-                                       }
-                     } yield res
-                 }
-
-      _       <- manageConnections(
-                   peerQueue,
-                   metaInfo,
-                   myPeerId,
-                   maxConnections,
-                   connections = HashMap.from(updated)
-                 ).delay(1.second)
+      _ <- loop(connections.keys().toList)
+      _ <- manageConnections(
+             peerQueue,
+             metaInfo,
+             myPeerId,
+             maxConnections,
+             connections
+           ).delay(1.second)
     } yield ()
   }
 
