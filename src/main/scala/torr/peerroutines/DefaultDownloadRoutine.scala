@@ -3,12 +3,11 @@ package torr.peerroutines
 import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
-import torr.peerwire.{Message, MessageTypes, PeerHandle}
+import torr.peerwire.{Message, PeerHandle}
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadCompletion, DownloadJob, PieceId, ReleaseJobStatus}
 import torr.fileio.FileIO
-import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
+import torr.peerwire.MessageTypes.Piece
 import zio.logging.Logging
-
 import scala.collection.immutable.Queue
 import scala.collection.immutable.HashMap
 
@@ -16,8 +15,8 @@ object DefaultDownloadRoutine {
 
   type Offset = Int
 
+  val requestSizeBytes: Int         = 16 * 1024
   private val maxConcurrentRequests = 192
-  private val requestSizeBytes      = 16 * 1024
 
   sealed trait JobAllocationState
   object JobAllocationState {

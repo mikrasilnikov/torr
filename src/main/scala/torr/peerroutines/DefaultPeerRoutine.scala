@@ -32,11 +32,15 @@ object DefaultPeerRoutine {
       downSpeedAccRef <- Ref.make(0)
       upSpeedAccRef   <- Ref.make(0)
 
-      remoteHaveFib <- handleRemoteHave(peerHandle, metaInfo).fork
-      localHaveFib  <- handleLocalHaveUpdates(peerHandle, localHaveRef, haveQueue).fork
+      bitFieldReceivedSignal <- Promise.make[Nothing, Unit]
+
       aliveFib      <- handleKeepAlive(peerHandle).fork
       speedFib      <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
-      uploadFib     <- DefaultUploadRoutine.upload(peerHandle, localHaveRef, upSpeedAccRef).fork
+      localHaveFib  <- handleLocalHaveUpdates(peerHandle, localHaveRef, haveQueue).fork
+      remoteHaveFib <- handleRemoteHave(peerHandle, metaInfo, bitFieldReceivedSignal).fork
+      _             <- bitFieldReceivedSignal.await.timeout(1.second)
+
+      uploadFib <- DefaultUploadRoutine.upload(peerHandle, metaInfo, localHaveRef, upSpeedAccRef).fork
 
       _ <- DefaultDownloadRoutine.restart(
              peerHandle,
@@ -57,7 +61,8 @@ object DefaultPeerRoutine {
 
   private[peerroutines] def handleRemoteHave(
       peerHandle: PeerHandle,
-      metaInfo: MetaInfo
+      metaInfo: MetaInfo,
+      bitFieldReceivedSignal: Promise[Nothing, Unit]
   ): RIO[Dispatcher, Unit] = {
 
     peerHandle.receive[Have, BitField].flatMap {
@@ -65,17 +70,18 @@ object DefaultPeerRoutine {
         for {
           _ <- validatePieceIndex(metaInfo, pieceId)
           _ <- Dispatcher.reportHave(peerHandle.peerId, pieceId)
-          _ <- handleRemoteHave(peerHandle, metaInfo)
+          _ <- handleRemoteHave(peerHandle, metaInfo, bitFieldReceivedSignal)
         } yield ()
 
       case Message.BitField(bits) =>
         for {
           _ <- validateRemoteBitSet(metaInfo, bits)
           _ <- Dispatcher.reportHaveMany(peerHandle.peerId, Set.from(bits.set))
+          _ <- bitFieldReceivedSignal.succeed().unlessM(bitFieldReceivedSignal.isDone)
         } yield ()
 
       case _                      => ???
-    } *> handleRemoteHave(peerHandle, metaInfo)
+    } *> handleRemoteHave(peerHandle, metaInfo, bitFieldReceivedSignal)
   }
 
   private def handleLocalHaveUpdates(
