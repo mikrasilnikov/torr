@@ -147,6 +147,9 @@ object PeerHandleAndDispatcherMock {
         def onMessage(msg: Message): Task[Unit] = ???
         private[peerwire] def sendActor         = ???
         private[peerwire] def receiveActor      = ???
+
+        def waitForPeerInterested: Task[Unit]                                                    = ???
+        def receiveWhilePeerInterested[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] = ???
       }
 
       (dispatcher, peerHandle)

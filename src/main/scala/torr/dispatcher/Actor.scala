@@ -116,11 +116,11 @@ object Actor {
         _ <- peerJobs match {
                case Some(jobs) =>
                  ZIO.foreach_(jobs.toList)(j => releaseJob(state, peerId, ReleaseJobStatus.Aborted(j)))
-
                case None       => ZIO.unit
              }
         _ <- ZIO.foreach_(haveSubs)(_.shutdown)
         _  = state.registeredPeers.remove(peerId)
+        _  = state.uploadSlots.remove(peerId)
       } yield ()
     }
   }

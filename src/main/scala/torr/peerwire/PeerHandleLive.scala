@@ -34,14 +34,28 @@ case class PeerHandleLive(
     for {
       p   <- Promise.make[Throwable, M]
       _   <- receiveActor ! ReceiveActor.Receive1(tag.runtimeClass, p)
-      res <- p.await.interruptible
+      res <- p.await
     } yield res
 
   def receive[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Message] =
     for {
       p   <- Promise.make[Throwable, Message]
       _   <- receiveActor ! ReceiveActor.Receive2(tag1.runtimeClass, tag2.runtimeClass, p)
-      res <- p.await.interruptible
+      res <- p.await
+    } yield res
+
+  def waitForPeerInterested: Task[Unit] =
+    for {
+      p   <- Promise.make[Throwable, Unit]
+      _   <- receiveActor ! ReceiveActor.WaitForPeerInterested(p)
+      res <- p.await
+    } yield res
+
+  def receiveWhilePeerInterested[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
+    for {
+      p   <- Promise.make[Throwable, Option[M]]
+      _   <- receiveActor ! ReceiveActor.ReceiveWhilePeerInterested(tag.runtimeClass, p)
+      res <- p.await
     } yield res
 
   def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] =
@@ -137,7 +151,7 @@ object PeerHandleLive {
 
       receiveFiber <- receiveProc(channel, msgBuf, remotePeerIdStr, actorP).toManaged_.fork
 
-      receiveActor <- createReceiveActor(channel, channelName, remotePeerId, remotePeerIdStr, actorConfig)
+      receiveActor <- createReceiveActor(channelName, remotePeerId, remotePeerIdStr, actorConfig)
                         .toManaged(actor =>
                           Logging.debug(s"$remotePeerIdStr ReceiveActor shutting down") *>
                             shutdownReceiveActor(actor) *>
@@ -185,7 +199,6 @@ object PeerHandleLive {
   }
 
   private def createReceiveActor(
-      channel: ByteChannel,
       channelName: String,
       remotePeerId: Chunk[Byte],
       remotePeerIdStr: String,
@@ -207,8 +220,7 @@ object PeerHandleLive {
       actorP    <- Promise.make[Nothing, ActorRef[ReceiveActor.Command]]
       system    <- ZIO.service[ActorSystem.Service]
       supervisor = makeSupervisor(actorP)
-      state      = ReceiveActor.State(
-                     channel,
+      state      = ReceiveActorState(
                      remotePeerId,
                      remotePeerIdStr,
                      actorConfig = actorConfig
@@ -231,7 +243,7 @@ object PeerHandleLive {
   }
 
   private def processRemainingMessages(
-      state: ReceiveActor.State,
+      state: ReceiveActorState,
       context: Context,
       messages: List[PendingMessage[_]]
   ): ZIO[DirectBufferPool with Logging with Clock, Nothing, Unit] = {

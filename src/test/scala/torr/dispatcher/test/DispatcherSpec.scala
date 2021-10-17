@@ -62,6 +62,25 @@ object DispatcherSpec extends DefaultRunnableSpec {
         effect.inject(Logging.ignore)
       },
       //
+      testM("unregisters peer - frees upload slot") {
+        val peerId = Chunk.fill[Byte](20)(100)
+
+        val state =
+          Actor.State(
+            metaInfo,
+            new Array[Boolean](metaInfo.numPieces),
+            registeredPeers = mutable.HashMap(peerId -> RegisteredPeer()),
+            uploadSlots = mutable.HashMap(peerId -> 1)
+          )
+
+        val effect =
+          for {
+            _ <- Actor.unregisterPeer(state, peerId)
+          } yield assert(state.uploadSlots)(isEmpty)
+
+        effect.inject(Logging.ignore)
+      },
+      //
       testM("unregisters peer - fails if peer is not registered") {
         val peerId = Chunk.fill[Byte](20)(100)
 

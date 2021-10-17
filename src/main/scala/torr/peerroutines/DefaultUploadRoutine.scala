@@ -14,29 +14,22 @@ object DefaultUploadRoutine {
 
   def upload(
       peerHandle: PeerHandle,
-      localHaveRef: Ref[Set[PieceId]],
-      peerInterested: Boolean = false
+      localHaveRef: Ref[Set[PieceId]]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
-      _ <- peerHandle.receive[Interested].when(!peerInterested)
+      _ <- peerHandle.waitForPeerInterested
       _ <- acquireUploadSlot(peerHandle)
 
       _ <- peerHandle.unignore[Request]
       _ <- peerHandle.send(Message.Unchoke)
 
-      serveFib <- serveRequests(peerHandle, localHaveRef).fork
-      _        <- holdUploadSlot(peerHandle)
+      _ <- serveRequests(peerHandle, localHaveRef) race holdUploadSlot(peerHandle)
 
-      interested <- serveFib.poll.flatMap {
-                      case Some(_) => serveFib.interrupt.as(true)
-                      case None    => ZIO.succeed(false)
-                    }
-      _          <- peerHandle.ignore[Request]
-
+      _ <- peerHandle.ignore[Request]
       _ <- Dispatcher.releaseUploadSlot(peerHandle.peerId)
-
       _ <- peerHandle.send(Message.Choke)
-      _ <- upload(peerHandle, localHaveRef, interested)
+
+      _ <- upload(peerHandle, localHaveRef)
 
     } yield ()
   }
@@ -64,13 +57,12 @@ object DefaultUploadRoutine {
       peerHandle: PeerHandle,
       localHaveRef: Ref[Set[PieceId]]
   ): RIO[FileIO with DirectBufferPool with Logging with Clock, Unit] = {
-    peerHandle.receive[Request, NotInterested].flatMap {
-      case Message.NotInterested          => ZIO.unit
-      case req @ Message.Request(_, _, _) =>
+    peerHandle.receiveWhilePeerInterested[Request].flatMap {
+      case None                                 => ZIO.unit
+      case Some(req @ Message.Request(_, _, _)) =>
         serveRequest(peerHandle, req)
           .tapCause(c => ZIO(println(s"Serving request $req\n" ++ c.prettyPrint))) *>
           serveRequests(peerHandle, localHaveRef)
-      case _                              => ???
     }
   }
 
