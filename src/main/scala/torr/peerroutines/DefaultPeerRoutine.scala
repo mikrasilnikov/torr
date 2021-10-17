@@ -43,6 +43,8 @@ object DefaultPeerRoutine {
              downSpeedAccRef
            )
 
+      _ <- Logging.debug(s"${peerHandle.peerIdStr} DefaultDownloadRoutine exited")
+
       _ <- remoteHaveFib.interrupt
       _ <- localHaveFib.interrupt
       _ <- aliveFib.interrupt

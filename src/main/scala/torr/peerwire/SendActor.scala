@@ -19,6 +19,7 @@ object SendActor {
       remotePeerIdStr: String,
       sendBuf: ByteBuffer,
       receiveActor: ActorRef[ReceiveActor.Command]
+      //var isFailingWith: Option[Throwable] = None
   )
 
   val stateful = new Stateful[DirectBufferPool with Logging, State, Command] {
@@ -46,7 +47,9 @@ object SendActor {
     //Logging.debug(s"${state.remotePeerIdStr} -> $msg") *>
     effect
       .foldM(
-        e => (state.receiveActor ! ReceiveActor.StartFailing(e)).orDie,
+        e =>
+          Logging.debug(s"SendActor.send failed with ${e.getClass}: ${e.getMessage}") *>
+            (state.receiveActor ! ReceiveActor.StartFailing(e)).orDie,
         _ => ZIO.unit
       )
   }
