@@ -23,6 +23,12 @@ case class ReceiveActorState(
     expectedWhilePeerInterested: HashMap[Class[_], Promise[Throwable, Option[Message]]] =
       HashMap[Class[_], Promise[Throwable, Option[Message]]](),
     //
+    var peerUnchoking: Boolean = false,
+    waitingForPeerUnchoking: ArrayBuffer[Promise[Throwable, Unit]] =
+      ArrayBuffer[Promise[Throwable, Unit]](),
+    expectedWhilePeerUnchoking: HashMap[Class[_], Promise[Throwable, Option[Message]]] =
+      HashMap[Class[_], Promise[Throwable, Option[Message]]](),
+    //
     mailbox: PeerMailbox = new PeerMailbox,
     actorConfig: PeerActorConfig = PeerActorConfig.default,
     var isFailingWith: Option[Throwable] = None

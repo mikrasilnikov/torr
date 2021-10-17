@@ -4,7 +4,6 @@ import zio._
 import zio.clock.Clock
 import zio.duration.durationInt
 import torr.peerwire.{Message, MessageTypes, PeerHandle}
-import torr.peerroutines.DefaultPeerRoutine.DownloadState
 import torr.dispatcher.{AcquireJobResult, Dispatcher, DownloadCompletion, DownloadJob, PieceId, ReleaseJobStatus}
 import torr.fileio.FileIO
 import torr.peerwire.MessageTypes.{Choke, Piece, Unchoke}
@@ -41,60 +40,32 @@ object DefaultDownloadRoutine {
 
   def restart(
       peerHandle: PeerHandle,
-      downloadState: DownloadState,
-      downSpeedAccRef: Ref[Int]
+      downSpeedAccRef: Ref[Int],
+      amInterested: Boolean = false
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     peerHandle.log("restarting download") *>
       Dispatcher.isDownloadCompleted.flatMap {
-
         case DownloadCompletion.Completed => peerHandle.log("download completed")
-
-        case _ => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
+        case _                            => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
             case false =>
               peerHandle.log("remote is not interesting, waiting 10 seconds") *>
-                restart(peerHandle, downloadState, downSpeedAccRef).delay(10.seconds)
+                restart(peerHandle, downSpeedAccRef, amInterested).delay(10.second)
             case _     =>
-              negotiateUnchoke(peerHandle, downloadState, downSpeedAccRef) *>
-                restart(peerHandle, downloadState, downSpeedAccRef)
+              negotiateUnchoke(peerHandle, downSpeedAccRef, amInterested) *>
+                restart(peerHandle, downSpeedAccRef, amInterested)
           }
       }
   }
 
   private def negotiateUnchoke(
       handle: PeerHandle,
-      state0: DownloadState,
-      downSpeedAccRef: Ref[Int]
+      downSpeedAccRef: Ref[Int],
+      amInterested: Boolean
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
     for {
-
-      _     <- handle.log(s"updating peer choking state")
-      state <- updatePeerChokingState(handle, state0)
-      _     <- handle.log(s"negotiating unchoke from interested=${state.amInterested}, choked=${state.peerChoking}")
-
-      _ <- (state.amInterested, state.peerChoking) match {
-             case (false, true)  =>
-               handle.log("\tsending Interested") *>
-                 handle.send(Message.Interested) *>
-                 handle.log("\twaiting for Unchoke") *>
-                 handle.receive[Unchoke] *>
-                 handle.ignore[Unchoke]
-
-             case (false, false) =>
-               handle.log("\tsending Interested") *>
-                 handle.send(Message.Interested) *>
-                 handle.ignore[Unchoke]
-
-             case (true, true)   =>
-               handle.log("\twaiting for Unchoke") *>
-                 handle.receive[Unchoke] *>
-                 handle.ignore[Unchoke]
-
-             case (true, false)  =>
-               ZIO.fail(new IllegalStateException("negotiateAndDownload: (amInterested = true, peerChoking = false)"))
-           }
-
+      _ <- handle.send(Message.Interested).unless(amInterested)
+      _ <- handle.waitForPeerUnchoking
       _ <- handle.log("negotiation completed, starting requests")
-
       _ <- continue(
              handle,
              jobState = JobAllocationState.BeforeFirst,
@@ -200,7 +171,7 @@ object DefaultDownloadRoutine {
             _ <- handle.send(Message.NotInterested)
             _ <- handle.send(Message.KeepAlive)
             _ <- ZIO.sleep(10.seconds)
-            _ <- restart(handle, DownloadState(peerChoking = false, amInterested = false), downSpeedAccRef)
+            _ <- restart(handle, downSpeedAccRef, amInterested = false)
           } yield ()
       }
   }
@@ -323,11 +294,11 @@ object DefaultDownloadRoutine {
       downSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with Logging with Clock, Unit] = {
 
-    handle.receive[Piece, Choke]
+    handle.receiveWhilePeerUnchoking[Piece]
       .timeoutFail(new ProtocolException("Remote peer has not responded for 10 seconds"))(10.seconds)
       .flatMap {
 
-        case resp @ Message.Piece(_, _, _) =>
+        case Some(resp @ Message.Piece(_, _, _)) =>
           val responseKey = (resp.index, resp.offset)
           continue(
             handle,
@@ -338,27 +309,17 @@ object DefaultDownloadRoutine {
             downSpeedAccRef
           )
 
-        case Message.Choke                 =>
+        case None                                =>
           for {
-            _ <- handle.log(s"got Choke")
+            _ <- handle.log(s"got choked")
             _ <- handle.ignore[Piece]
             _ <- ZIO.foreach_(requestsPerJobs.keys)(j =>
                    handle.log(s"releasing job $j as choked") *>
                      Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(j))
                  )
-            _ <- restart(handle, DownloadState(peerChoking = true, amInterested = true), downSpeedAccRef)
+            _ <- restart(handle, downSpeedAccRef, amInterested = true)
           } yield ()
-
-        case _                             => ???
       }
-  }
-
-  private def updatePeerChokingState(peerHandle: PeerHandle, oldState: DownloadState): Task[DownloadState] = {
-    peerHandle.pollLast[Choke, Unchoke].map {
-      case Some(Message.Choke)   => oldState.copy(peerChoking = true)
-      case Some(Message.Unchoke) => oldState.copy(peerChoking = false)
-      case _                     => oldState
-    }
   }
 
   private def validateResponse(response: Message.Piece, request: Message.Request): Task[Unit] = {

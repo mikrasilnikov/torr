@@ -58,6 +58,20 @@ case class PeerHandleLive(
       res <- p.await
     } yield res
 
+  def waitForPeerUnchoking: Task[Unit] =
+    for {
+      p   <- Promise.make[Throwable, Unit]
+      _   <- receiveActor ! ReceiveActor.WaitForPeerUnchoking(p)
+      res <- p.await
+    } yield res
+
+  def receiveWhilePeerUnchoking[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] =
+    for {
+      p   <- Promise.make[Throwable, Option[M]]
+      _   <- receiveActor ! ReceiveActor.ReceiveWhilePeerUnchoking(tag.runtimeClass, p)
+      res <- p.await
+    } yield res
+
   def ignore[M <: Message](implicit tag: ClassTag[M]): Task[Unit] =
     receiveActor ! ReceiveActor.Ignore(tag.runtimeClass)
 

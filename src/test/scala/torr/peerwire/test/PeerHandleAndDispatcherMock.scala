@@ -150,6 +150,8 @@ object PeerHandleAndDispatcherMock {
 
         def waitForPeerInterested: Task[Unit]                                                    = ???
         def receiveWhilePeerInterested[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]] = ???
+        def waitForPeerUnchoking: Task[Unit]                                                     = ???
+        def receiveWhilePeerUnchoking[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]  = ???
       }
 
       (dispatcher, peerHandle)

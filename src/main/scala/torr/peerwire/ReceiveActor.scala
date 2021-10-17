@@ -18,6 +18,9 @@ object ReceiveActor {
   case class WaitForPeerInterested(p: Promise[Throwable, Unit]) extends Command[Unit]
   case class ReceiveWhilePeerInterested[M <: Message](cls: Class[_], p: Promise[Throwable, Option[M]])
       extends Command[Unit]
+  case class WaitForPeerUnchoking(p: Promise[Throwable, Unit])  extends Command[Unit]
+  case class ReceiveWhilePeerUnchoking[M <: Message](cls: Class[_], p: Promise[Throwable, Option[M]])
+      extends Command[Unit]
 
   case class Poll1[+M <: Message](cls: Class[_])                     extends Command[Option[M]]
   case class Poll1Last[M <: Message](cls: Class[_])                  extends Command[Option[M]]
@@ -49,6 +52,9 @@ object ReceiveActor {
 
         case WaitForPeerInterested(p)           => waitForPeerInterested(state, p).as(state, ())
         case ReceiveWhilePeerInterested(cls, p) => receiveWhilePeerInterested(state, cls, p).as(state, ())
+
+        case WaitForPeerUnchoking(p)           => waitForPeerUnchoking(state, p).as(state, ())
+        case ReceiveWhilePeerUnchoking(cls, p) => receiveWhilePeerUnchoking(state, cls, p).as(state, ())
 
         case Ignore(cls)   => ZIO(ignore(state, cls)).as(state, ())
         case Unignore(cls) => ZIO(unignore(state, cls)).as(state, ())
@@ -147,13 +153,30 @@ object ReceiveActor {
     }
   }
 
-  private[peerwire] def waitForPeerInterested(state: ReceiveActorState, p: Promise[Throwable, Unit]): Task[Unit] = {
+  private[peerwire] def waitForPeerInterested(
+      state: ReceiveActorState,
+      p: Promise[Throwable, Unit]
+  ): Task[Unit] = {
     if (state.isFailingWith.isDefined)
       p.fail(state.isFailingWith.get).unit
     else if (state.peerInterested) {
       p.succeed().unit
     } else {
       state.waitingForPeerInterested.append(p)
+      ZIO.unit
+    }
+  }
+
+  private[peerwire] def waitForPeerUnchoking(
+      state: ReceiveActorState,
+      p: Promise[Throwable, Unit]
+  ): Task[Unit] = {
+    if (state.isFailingWith.isDefined)
+      p.fail(state.isFailingWith.get).unit
+    else if (state.peerUnchoking) {
+      p.succeed().unit
+    } else {
+      state.waitingForPeerUnchoking.append(p)
       ZIO.unit
     }
   }
@@ -179,6 +202,27 @@ object ReceiveActor {
     }
   }
 
+  private[peerwire] def receiveWhilePeerUnchoking(
+      state: ReceiveActorState,
+      cls: Class[_],
+      p: Promise[Throwable, Option[Message]]
+  ): Task[Unit] = {
+    if (state.isFailingWith.isDefined)
+      p.fail(state.isFailingWith.get).unit
+    else if (state.expectingMessage(cls))
+      p.fail(new IllegalStateException(s"Message of type $cls is already expected by another routine")).unit
+    else if (!state.peerUnchoking)
+      p.succeed(None).unit
+    else {
+      state.mailbox.dequeue1(cls) match {
+        case Some(msg) => p.succeed(Some(msg)).unit
+        case None      =>
+          state.expectedWhilePeerUnchoking.put(cls, p)
+          ZIO.unit
+      }
+    }
+  }
+
   private[peerwire] def ignore(state: ReceiveActorState, cls: Class[_]): Task[Unit] = {
     if (state.isFailingWith.isDefined)
       ZIO.fail(state.isFailingWith.get)
@@ -189,6 +233,10 @@ object ReceiveActor {
                case None    => ZIO.unit
              }
         _ <- state.expectedWhilePeerInterested.get(cls) match {
+               case Some(p) => p.fail(new Exception(s"Message of type $cls is ignored"))
+               case None    => ZIO.unit
+             }
+        _ <- state.expectedWhilePeerUnchoking.get(cls) match {
                case Some(p) => p.fail(new Exception(s"Message of type $cls is ignored"))
                case None    => ZIO.unit
              }
@@ -299,11 +347,32 @@ object ReceiveActor {
           _  = state.peerInterested = false
         } yield ()
 
+      case Message.Unchoke       =>
+        for {
+          _ <- ZIO.foreach_(state.waitingForPeerUnchoking)(_.succeed())
+          _  = state.waitingForPeerUnchoking.clear()
+          _  = state.peerUnchoking = true
+        } yield ()
+
+      case Message.Choke         =>
+        for {
+          _ <- ZIO.foreach_(state.expectedWhilePeerUnchoking) { case (_, p) => p.succeed(None) }
+          _  = state.expectedWhilePeerUnchoking.clear()
+          _  = state.peerUnchoking = false
+        } yield ()
+
       case _
           if state.peerInterested &&
             state.expectedWhilePeerInterested.contains(msgClass) =>
         val promise = state.expectedWhilePeerInterested(msgClass)
         state.expectedWhilePeerInterested.remove(msgClass)
+        promise.succeed(Some(msg)).unit
+
+      case _
+          if state.peerUnchoking &&
+            state.expectedWhilePeerUnchoking.contains(msgClass) =>
+        val promise = state.expectedWhilePeerUnchoking(msgClass)
+        state.expectedWhilePeerUnchoking.remove(msgClass)
         promise.succeed(Some(msg)).unit
 
       case _                     =>

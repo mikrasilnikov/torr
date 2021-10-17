@@ -14,7 +14,8 @@ object DefaultUploadRoutine {
 
   def upload(
       peerHandle: PeerHandle,
-      localHaveRef: Ref[Set[PieceId]]
+      localHaveRef: Ref[Set[PieceId]],
+      upSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
       _ <- peerHandle.waitForPeerInterested
@@ -23,13 +24,13 @@ object DefaultUploadRoutine {
       _ <- peerHandle.unignore[Request]
       _ <- peerHandle.send(Message.Unchoke)
 
-      _ <- serveRequests(peerHandle, localHaveRef) race holdUploadSlot(peerHandle)
+      _ <- serveRequests(peerHandle, localHaveRef, upSpeedAccRef) race holdUploadSlot(peerHandle)
 
       _ <- peerHandle.ignore[Request]
       _ <- Dispatcher.releaseUploadSlot(peerHandle.peerId)
       _ <- peerHandle.send(Message.Choke)
 
-      _ <- upload(peerHandle, localHaveRef)
+      _ <- upload(peerHandle, localHaveRef, upSpeedAccRef)
 
     } yield ()
   }
@@ -55,24 +56,27 @@ object DefaultUploadRoutine {
 
   def serveRequests(
       peerHandle: PeerHandle,
-      localHaveRef: Ref[Set[PieceId]]
+      localHaveRef: Ref[Set[PieceId]],
+      upSpeedAccRef: Ref[Int]
   ): RIO[FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     peerHandle.receiveWhilePeerInterested[Request].flatMap {
       case None                                 => ZIO.unit
       case Some(req @ Message.Request(_, _, _)) =>
-        serveRequest(peerHandle, req)
+        serveRequest(peerHandle, req, upSpeedAccRef)
           .tapCause(c => ZIO(println(s"Serving request $req\n" ++ c.prettyPrint))) *>
-          serveRequests(peerHandle, localHaveRef)
+          serveRequests(peerHandle, localHaveRef, upSpeedAccRef)
     }
   }
 
   private def serveRequest(
       peerHandle: PeerHandle,
-      request: Message.Request
+      request: Message.Request,
+      upSpeedAccRef: Ref[Int]
   ): RIO[FileIO with DirectBufferPool with Logging, Unit] = {
     for {
       data <- FileIO.fetch(request.index, request.offset, request.length)
       _    <- peerHandle.send(Message.Piece(request.index, request.offset, data.head))
+      _    <- upSpeedAccRef.getAndUpdate(_ + request.length)
     } yield ()
   }
 }

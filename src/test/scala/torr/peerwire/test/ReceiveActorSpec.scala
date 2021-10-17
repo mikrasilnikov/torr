@@ -31,6 +31,15 @@ object ReceiveActorSpec extends DefaultRunnableSpec {
         } yield assert(actual)(succeeds(anything))
       },
       //
+      testM("waitForPeerUnchoking - instant") {
+        val state = ReceiveActorState(peerUnchoking = true)
+        for {
+          p      <- Promise.make[Throwable, Unit]
+          _      <- ReceiveActor.waitForPeerUnchoking(state, p)
+          actual <- p.await.fork.flatMap(_.await)
+        } yield assert(actual)(succeeds(anything))
+      },
+      //
       testM("waitForPeerInterested - delayed") {
         val state = ReceiveActorState(peerInterested = false)
         for {
@@ -38,6 +47,18 @@ object ReceiveActorSpec extends DefaultRunnableSpec {
           _       <- ReceiveActor.waitForPeerInterested(state, p)
           actual1 <- p.poll
           _       <- ReceiveActor.onMessage(state, Message.Interested)
+                       .provideCustomLayer(Logging.ignore)
+          actual2 <- p.poll
+        } yield assert(actual1)(isNone) && assert(actual2)(isSome)
+      },
+      //
+      testM("waitForPeerUnchoking - delayed") {
+        val state = ReceiveActorState(peerUnchoking = false)
+        for {
+          p       <- Promise.make[Throwable, Unit]
+          _       <- ReceiveActor.waitForPeerUnchoking(state, p)
+          actual1 <- p.poll
+          _       <- ReceiveActor.onMessage(state, Message.Unchoke)
                        .provideCustomLayer(Logging.ignore)
           actual2 <- p.poll
         } yield assert(actual1)(isNone) && assert(actual2)(isSome)
@@ -59,6 +80,22 @@ object ReceiveActorSpec extends DefaultRunnableSpec {
         )))
       },
       //
+      testM("receiveWhilePeerUnchoking - message is expected by another routine") {
+        val state = ReceiveActorState()
+        for {
+          p0 <- Promise.make[Throwable, Message]
+          _  <- ReceiveActor.receive1(state, Message.KeepAlive.getClass, p0)
+
+          p1 <- Promise.make[Throwable, Option[Message]]
+          _  <- ReceiveActor.receiveWhilePeerUnchoking(state, Message.KeepAlive.getClass, p1)
+
+          actual <- p1.await.fork.flatMap(_.await)
+
+        } yield assert(actual)(fails(hasMessage(
+          equalTo("Message of type class torr.peerwire.Message$KeepAlive$ is already expected by another routine")
+        )))
+      },
+      //
       testM("receiveWhilePeerInterested - instant from mailbox") {
         val state = ReceiveActorState(peerInterested = true)
         for {
@@ -69,11 +106,31 @@ object ReceiveActorSpec extends DefaultRunnableSpec {
         } yield assert(actual)(isSome(equalTo(Message.KeepAlive)))
       },
       //
+      testM("receiveWhilePeerUnchoking - instant from mailbox") {
+        val state = ReceiveActorState(peerUnchoking = true)
+        for {
+          _      <- ReceiveActor.onMessage(state, Message.KeepAlive).provideCustomLayer(Logging.ignore)
+          p      <- Promise.make[Throwable, Option[Message]]
+          _      <- ReceiveActor.receiveWhilePeerUnchoking(state, Message.KeepAlive.getClass, p)
+          actual <- p.await
+        } yield assert(actual)(isSome(equalTo(Message.KeepAlive)))
+      },
+      //
       testM("receiveWhilePeerInterested - instant from wire") {
         val state = ReceiveActorState(peerInterested = true)
         for {
           p      <- Promise.make[Throwable, Option[Message]]
           _      <- ReceiveActor.receiveWhilePeerInterested(state, Message.KeepAlive.getClass, p)
+          _      <- ReceiveActor.onMessage(state, Message.KeepAlive).provideCustomLayer(Logging.ignore)
+          actual <- p.await
+        } yield assert(actual)(isSome(equalTo(Message.KeepAlive)))
+      },
+      //
+      testM("receiveWhilePeerUnchoking - instant from wire") {
+        val state = ReceiveActorState(peerUnchoking = true)
+        for {
+          p      <- Promise.make[Throwable, Option[Message]]
+          _      <- ReceiveActor.receiveWhilePeerUnchoking(state, Message.KeepAlive.getClass, p)
           _      <- ReceiveActor.onMessage(state, Message.KeepAlive).provideCustomLayer(Logging.ignore)
           actual <- p.await
         } yield assert(actual)(isSome(equalTo(Message.KeepAlive)))

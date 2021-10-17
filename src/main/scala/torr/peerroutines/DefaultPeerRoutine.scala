@@ -15,9 +15,6 @@ import scala.collection.immutable
 
 object DefaultPeerRoutine {
 
-  final case class DownloadState(peerChoking: Boolean, amInterested: Boolean)
-  final case class UploadState(amChoking: Boolean, peerInterested: Boolean)
-
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
       metaInfo <- FileIO.metaInfo
@@ -39,11 +36,10 @@ object DefaultPeerRoutine {
       localHaveFib  <- handleLocalHaveUpdates(peerHandle, localHaveRef, haveQueue).fork
       aliveFib      <- handleKeepAlive(peerHandle).fork
       speedFib      <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
-      uploadFib     <- DefaultUploadRoutine.upload(peerHandle, localHaveRef).fork
+      uploadFib     <- DefaultUploadRoutine.upload(peerHandle, localHaveRef, upSpeedAccRef).fork
 
       _ <- DefaultDownloadRoutine.restart(
              peerHandle,
-             DownloadState(peerChoking = true, amInterested = false),
              downSpeedAccRef
            )
 

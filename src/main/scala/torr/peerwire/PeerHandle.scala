@@ -16,6 +16,8 @@ trait PeerHandle {
 
   def waitForPeerInterested: Task[Unit]
   def receiveWhilePeerInterested[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]
+  def waitForPeerUnchoking: Task[Unit]
+  def receiveWhilePeerUnchoking[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]
 
   def pollLast[M <: Message](implicit tag: ClassTag[M]): Task[Option[M]]
   def pollLast[M1, M2 <: Message](implicit tag1: ClassTag[M1], tag2: ClassTag[M2]): Task[Option[Message]]
