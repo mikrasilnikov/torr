@@ -59,7 +59,7 @@ package object dispatcher {
       def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
       def reportUploadSpeed(peerId: PeerId, bytesPerSecond: Int): Task[Unit]
 
-      def numActivePeers: Task[Int]
+      def numUploadingPeers: Task[Int]
 
       def acquireJobManaged(peerId: PeerId): ZManaged[Any, Throwable, AcquireJobResult] =
         ZManaged.make(acquireJob(peerId)) {

@@ -81,7 +81,7 @@ object PeerHandleAndDispatcherMock {
 
         def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])] = ???
 
-        def numActivePeers: Task[PieceId] = ???
+        def numUploadingPeers: Task[PieceId] = ???
       }
 
       val peerHandle = new PeerHandle {

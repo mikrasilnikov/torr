@@ -9,8 +9,9 @@ import java.nio.file.Path
 object Cli {
 
   case class TorrOptions(
+      port: Int,
       maxConnections: Int,
-      maxActivePeers: Int,
+      maxSimultaneousDownloads: Int,
       proxy: Option[String]
   )
 
@@ -19,21 +20,26 @@ object Cli {
       additionalPeers: List[Peer]
   )
 
+  val portOption: Options[Int] =
+    Options.integer("port")
+      .alias("p")
+      .withDefault(55123, "")
+      .asInstanceOf[Options[Int]]
+
   val maxConnectionsOption: Options[Int] =
     Options.integer("maxConnections")
-      .alias("mc")
+      .alias("c")
       .withDefault(50, "50 active connections")
       .asInstanceOf[Options[Int]]
 
   val proxyOption: Options[Option[String]] =
     Options.text("proxy")
-      .alias("px")
       .optional("Optional description")
 
-  val maxActivePeersOption: Options[Int] =
-    Options.integer("maxActivePeers")
-      .alias("mp")
-      .withDefault(10, "10 active peers")
+  val maxSimultaneousDownloadsOption: Options[Int] =
+    Options.integer("maxSimultaneousDownloads")
+      .alias("d")
+      .withDefault(10, "")
       .asInstanceOf[Options[Int]]
 
   val torrentFileArg: Args[Path]           = Args.file(Exists.Yes)
@@ -47,8 +53,8 @@ object Cli {
 
   val default = Command(
     "torr.jar",
-    (maxConnectionsOption ++ maxActivePeersOption ++ proxyOption).map {
-      case ((mc, ap), pr) => TorrOptions(mc, ap, pr)
+    (portOption ++ maxConnectionsOption ++ maxSimultaneousDownloadsOption ++ proxyOption).map {
+      case (((port, maxConn), ap), pr) => TorrOptions(port, maxConn, ap, pr)
     },
     (torrentFileArg ++ additionalPeersArg).map(TorrArgs.tupled),
     HelpDoc.empty

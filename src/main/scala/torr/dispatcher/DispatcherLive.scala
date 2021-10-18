@@ -39,7 +39,7 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   =
     actor ! ReportUploadSpeed(peerId, bytesPerSecond)
 
-  def numActivePeers: Task[PieceId] = actor ? NumActivePeers
+  def numUploadingPeers: Task[PieceId] = actor ? NumActivePeers
 
   def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])] =
     actor ? SubscribeToHaveUpdates(peerId)

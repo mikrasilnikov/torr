@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory
 import torr.Cli.{TorrArgs, TorrOptions}
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.announce.{Announce, AnnounceLive, Peer, TrackerRequest}
+import torr.channels.{AsyncSocketChannel, ByteChannel}
 import torr.consoleui.SimpleConsoleUI
 import torr.directbuffers.{DirectBufferPool, GrowableBufferPool}
 import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadCompletion, PeerId}
@@ -27,6 +28,8 @@ import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
 import zio._
+import zio.nio.core.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel}
+
 import java.nio.charset.StandardCharsets
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentHashMap
@@ -83,7 +86,7 @@ object Main extends App {
                 torrentFileAbsolutePath,
                 dstFolderAbsolutePath
               ),
-              DispatcherLive.make(options.maxActivePeers),
+              DispatcherLive.make(options.maxSimultaneousDownloads),
               SimpleConsoleUI.make
             ) //.catchAll(e => putStrLn(e.getMessage).orDie)
       }
@@ -100,83 +103,80 @@ object Main extends App {
 
   def download(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
     for {
-      myPeerId  <- makePeerId
-      metaInfo  <- FileIO.metaInfo
-      peerQueue <- Queue.unbounded[Peer]
+      myPeerId <- makePeerId
+      metaInfo <- FileIO.metaInfo
 
-      _           <- peerQueue.offerAll(args.additionalPeers)
-      announceFib <- fetchMorePeers(peerQueue, metaInfo, myPeerId).fork
+      connections = new ConcurrentHashMap[Peer, PeerConnection]()
 
-      _ <- manageConnections(
-             peerQueue,
-             metaInfo,
-             myPeerId,
-             options.maxConnections,
-             connections = new ConcurrentHashMap[Peer, PeerConnection]()
-           )
-
-      _ <- announceFib.interrupt
+      _ <- ZIO.never // For pretty scalafmt indentation.
+             // Neither of these effects should ever complete.
+             // If any of these does exit we consider it a failure.
+             .raceFirst(connectToPeers(metaInfo, myPeerId, options.port, options.maxSimultaneousDownloads, connections))
+             .raceFirst(acceptConnections(metaInfo, myPeerId, options.port, connections))
+             .raceFirst(handleDisconnected(connections))
+             .foldCauseM(
+               cause => saveError(cause, "MAIN", "main"),
+               _ => Logging.debug("MAIN exited unexpectedly")
+             )
 
     } yield ()
   }
 
-  def manageConnections(
-      peerQueue: Queue[Peer],
+  private def connectToPeers(
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      maxConnections: Int,
+      myPort: Int,
+      maxUploadingPeers: Int,
       connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
-    Dispatcher.isDownloadCompleted.flatMap {
-      case DownloadCompletion.Completed =>
+
+    def request =
+      TrackerRequest(
+        metaInfo.announce,
+        metaInfo.infoHash,
+        myPeerId,
+        port = myPort,
+        // It does not report stats to tracker.
+        uploaded = 0,
+        downloaded = 0,
+        left = metaInfo.torrentSize
+      )
+
+    (Dispatcher.isDownloadCompleted <*> Dispatcher.numUploadingPeers).flatMap {
+
+      // We don't need to search for more peers if download is completed.
+      // At the same time, this fiber should not exit because exit signals failure by convention.
+      case (DownloadCompletion.Completed, _) => ZIO.never
+
+      // All download slots are occupied.
+      case (_, n) if n >= maxUploadingPeers =>
         for {
-          _ <- ZIO.sleep(3.seconds)
-          _ <- Logging.debug("MAIN interrupting all connections")
-          _ <- ZIO.foreach_(connections) { case (_, PeerConnection(_, fiber)) => fiber.interrupt }
-          _ <- Logging.debug("MAIN all connections interrupted")
+          _ <- Logging.debug(s"ANNOUNCE numUploadingPeers = $n, tracker querying is not necessary")
+          _ <- connectToPeers(metaInfo, myPeerId, myPort, maxUploadingPeers, connections).delay(10.seconds)
         } yield ()
 
-      case _                            =>
-        maintainActiveConnections(
-          peerQueue,
-          metaInfo,
-          myPeerId,
-          maxConnections,
-          connections
-        )
+      case _                                =>
+        Announce.update(request)
+          .foldCauseM(
+            cause =>
+              saveError(cause, "ANNOUNCE", "announce") *>
+                connectToPeers(metaInfo, myPeerId, myPort, maxUploadingPeers, connections).delay(1.minute),
+            response =>
+              for {
+                _ <- Logging.debug(s"ANNOUNCE got ${response.peers.length} peers")
+                _ <- ZIO.foreachPar_(response.peers)(peer =>
+                       establishConnection(peer, metaInfo, myPeerId, connections)
+                     ).orDie // establishConnection(...) must not fail.
+                _ <- connectToPeers(metaInfo, myPeerId, myPort, maxUploadingPeers, connections).delay(1.minute)
+              } yield ()
+          )
     }
   }
 
-  def maintainActiveConnections(
-      peerQueue: Queue[Peer],
-      metaInfo: MetaInfo,
-      myPeerId: PeerId,
-      maxConnections: Int,
-      connections: ConcurrentHashMap[Peer, PeerConnection]
-  ): RIO[TorrEnv, Unit] = {
-    if (connections.size < maxConnections) {
-      peerQueue.poll.flatMap {
-        // Tracker may return a peer that we are already connected to.
-        case Some(peer) if !connections.contains(peer) =>
-          establishConnection(peerQueue, peer, metaInfo, myPeerId, maxConnections, connections)
-
-        case Some(_)                                   =>
-          maintainActiveConnections(peerQueue, metaInfo, myPeerId, maxConnections, connections)
-
-        case _                                         =>
-          handleDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, connections)
-      }
-    } else {
-      handleDisconnected(peerQueue, metaInfo, myPeerId, maxConnections, connections)
-    }
-  }
-
-  def establishConnection(
-      peerQueue: Queue[Peer],
+  private def establishConnection(
       peer: Peer,
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      maxConnections: Int,
       connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
     val peerIdStr = peer.peerId
@@ -199,21 +199,65 @@ object Main extends App {
                    .fork
 
       _        = connections.put(peer, PeerConnection(peerIdP, fiber))
-      _       <- manageConnections(
-                   peerQueue,
-                   metaInfo,
-                   myPeerId,
-                   maxConnections,
-                   connections
-                 )
     } yield ()
   }
 
-  def handleDisconnected(
-      peerQueue: Queue[Peer],
+  private def acceptConnections(
       metaInfo: MetaInfo,
       myPeerId: PeerId,
-      maxConnections: Int,
+      myPort: Int,
+      connections: ConcurrentHashMap[Peer, PeerConnection]
+  ): RIO[TorrEnv, Unit] = {
+
+    // Modified example from
+    // https://zio.github.io/zio-nio/docs/essentials/essentials_sockets
+    AsynchronousServerSocketChannel.open
+      .mapM { socket =>
+        for {
+          address <- InetSocketAddress.wildCard(myPort)
+          _       <- socket.bindTo(address)
+          _       <- socket.accept.preallocate.flatMap(_.use(channel =>
+                       acceptConnection(channel, metaInfo, myPeerId, connections)
+                         .foldCauseM(
+                           cause => saveError(cause, "UNKNOWN", "accept"),
+                           _ => ZIO.unit
+                         )
+                     ).fork).forever.fork
+        } yield ()
+      }.useForever
+  }
+
+  private def acceptConnection(
+      socketChannel: AsynchronousSocketChannel,
+      metaInfo: MetaInfo,
+      myPeerId: PeerId,
+      connections: ConcurrentHashMap[Peer, PeerConnection]
+  ): RIO[TorrEnv, Unit] = {
+
+    socketChannel.remoteAddress.flatMap {
+      case None          => ZIO.unit // Channel is not connected.
+      case Some(address) =>
+        for {
+          host       <- address.asInstanceOf[InetSocketAddress].hostName
+          port        = address.asInstanceOf[InetSocketAddress].port
+          peer        = Peer(host, port)
+          channelName = s"$host:$port"
+          _          <- Logging.debug(s"UNKNOWN accepting connection from $channelName")
+          byteChannel = AsyncSocketChannel(socketChannel)
+          peerIdP    <- Promise.make[Throwable, PeerId]
+          fiber      <- PeerHandleLive.fromChannelWithHandshake(byteChannel, channelName, metaInfo.infoHash, myPeerId)
+                          .use { peerHandle =>
+                            peerIdP.succeed(peerHandle.peerId) *>
+                              DefaultPeerRoutine.run(peerHandle)
+                          }
+                          .fork
+
+          _           = connections.put(peer, PeerConnection(peerIdP, fiber))
+        } yield ()
+    }
+  }
+
+  private def handleDisconnected(
       connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
 
@@ -224,109 +268,53 @@ object Main extends App {
           val connection = connections.get(peer)
           for {
             peerId <- connection.peerIdStr
-            _      <- connection.fiber.poll.flatMap {
-                        case None => loop(tail)
 
-                        case Some(Success(_))     =>
-                          connections.remove(peer)
-                          Logging.debug(s"$peerId fiber successfully exited") *>
-                            loop(tail)
+            _ <- connection.fiber.poll.flatMap {
+                   case None => loop(tail)
 
-                        case Some(Failure(cause)) =>
-                          connections.remove(peer)
-                          val messages = messagesFromCause(cause)
-                          for {
-                            uuid <- saveError(peerId, cause)
-                            _    <- Logging.debug(s"$peerId fiber failed with $messages. Details in $uuid.log")
-                            _    <- loop(tail)
-                          } yield ()
-                      }
+                   case Some(Success(_))     =>
+                     connections.remove(peer)
+                     Logging.debug(s"$peerId fiber successfully exited") *> loop(tail)
 
+                   case Some(Failure(cause)) =>
+                     connections.remove(peer)
+                     saveError(cause, peerId, "peer") *> loop(tail)
+                 }
           } yield ()
       }
     }
 
     for {
       _ <- loop(connections.keys().toList)
-      _ <- manageConnections(
-             peerQueue,
-             metaInfo,
-             myPeerId,
-             maxConnections,
-             connections
-           ).delay(1.second)
+      _ <- handleDisconnected(connections).delay(1.second)
     } yield ()
   }
 
-  def saveError(peerIdStr: String, cause: Cause[Throwable]): RIO[Blocking, String] = {
+  private def saveError(
+      cause: Cause[Throwable],
+      logMessagePrefix: String,
+      traceFilePrefix: String
+  ): RIO[Logging with Blocking, String] = {
+
+    val messages = messagesFromCause(cause)
+
     val errorsPath = Path("errors")
     val uuid       = java.util.UUID.randomUUID.toString
-    val filePath   = errorsPath / Path(s"$uuid.log")
+    val filePath   = errorsPath / Path(s"$traceFilePrefix-$uuid.log")
 
     for {
+      _      <- Logging.debug(s"$logMessagePrefix failed with $messages, log saved to $traceFilePrefix-$uuid.log")
       _      <- Files.createDirectory(errorsPath).whenM(Files.notExists(errorsPath))
-      dataStr = s"$peerIdStr failed with Cause:\n" ++ cause.prettyPrint
+      dataStr = s"$logMessagePrefix failed with Cause:\n" ++ cause.prettyPrint
       data    = Chunk.fromArray(dataStr.getBytes(StandardCharsets.UTF_8))
       _      <- Files.writeBytes(filePath, data, StandardOpenOption.CREATE)
     } yield uuid
   }
 
-  def fetchMorePeers(peerQueue: Queue[Peer], metaInfo: MetaInfo, myPeerId: PeerId): RIO[TorrEnv, Unit] = {
-
-    val request = TrackerRequest(
-      metaInfo.announce,
-      metaInfo.infoHash,
-      myPeerId,
-      port = 12345,
-      uploaded = 0,
-      downloaded = 0,
-      metaInfo.torrentSize,
-      numWant = 100
-    )
-
-    peerQueue.size.flatMap {
-      case s if s > 0 =>
-        Logging.debug(s"ANNOUNCE peerQueue size is $s") *>
-          fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
-      case _          =>
-        Announce.update(request).fork
-          .flatMap(fiber => fiber.await)
-          .flatMap {
-            case Success(response) =>
-              for {
-                _ <- Logging.debug(s"ANNOUNCE got ${response.peers.length} peers")
-                _ <- peerQueue.offerAll(response.peers)
-                _ <- fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
-              } yield ()
-
-            case Failure(cause)    =>
-              val messages = cause.failures
-                .map { throwable =>
-                  val message = throwable.getMessage
-                  if (message == null) "" else message.strip
-                }.mkString(",")
-
-              for {
-                uuid <- saveError("ANNOUNCE", cause)
-                _    <- Logging.debug(s"ANNOUNCE failed with $messages, log saved to $uuid.log")
-                _    <- fetchMorePeers(peerQueue, metaInfo, myPeerId).delay(1.minute)
-              } yield ()
-          }
-    }
-  }
-
-  def makePeerId: RIO[Random, Chunk[Byte]] = {
+  private def makePeerId: RIO[Random, Chunk[Byte]] = {
     for {
       peerHash <- random.nextBytes(12)
     } yield Chunk.fromArray("-AZ2060-".getBytes) ++ peerHash
-  }
-
-  private def configureLogging(): Unit = {
-    val context      = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
-    val configurator = new JoranConfigurator()
-    configurator.setContext(context)
-    context.reset()
-    configurator.doConfigure(getClass.getResourceAsStream("/logback.xml"))
   }
 
   private def messagesFromCause(cause: Cause[Throwable]): String = {
@@ -336,5 +324,13 @@ object Main extends App {
         if (message == null) ""
         else message.strip
       }.mkString(",")
+  }
+
+  private def configureLogging(): Unit = {
+    val context      = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
+    val configurator = new JoranConfigurator()
+    configurator.setContext(context)
+    context.reset()
+    configurator.doConfigure(getClass.getResourceAsStream("/logback.xml"))
   }
 }

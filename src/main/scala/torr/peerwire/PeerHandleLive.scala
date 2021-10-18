@@ -119,22 +119,22 @@ object PeerHandleLive {
       nioChannel <- AsynchronousSocketChannel.open()
       _          <- nioChannel.connect(address).toManaged_
       channel     = AsyncSocketChannel(nioChannel)
-      msgBuf     <- Buffer.byteDirect(1024).toManaged_
-      res        <- fromChannelWithHandshake(channel, msgBuf, address.toString(), infoHash, localPeerId)
-      _          <- Logging.debug(
-                      s"${res.peerIdStr} connection established, peerId = ${new String(res.peerId.toArray, StandardCharsets.US_ASCII)}"
-                    ).toManaged_
+
+      res <- fromChannelWithHandshake(channel, address.toString(), infoHash, localPeerId)
+      _   <- Logging.debug(
+               s"${res.peerIdStr} connection established, peerId = ${new String(res.peerId.toArray, StandardCharsets.US_ASCII)}"
+             ).toManaged_
     } yield res
   }
 
   def fromChannelWithHandshake(
       channel: ByteChannel,
-      msgBuf: ByteBuffer,
       channelName: String,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
   ): ZManaged[Dispatcher with ActorSystem with DirectBufferPool with Logging with Clock, Throwable, PeerHandle] = {
     for {
+      msgBuf    <- Buffer.byteDirect(1024).toManaged_
       _         <- Message.sendHandshake(infoHash, localPeerId, channel, msgBuf).toManaged_
       handshake <- Message.receiveHandshake(channel, msgBuf).toManaged_
       res       <- fromChannel(channel, msgBuf, channelName, handshake.peerId)

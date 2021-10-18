@@ -15,7 +15,7 @@ package object announce {
       uploaded: Long,
       downloaded: Long,
       left: Long,
-      numWant: Int = 50
+      numWant: Int = 30
   )
 
   type Announce = Has[Announce.Service]
