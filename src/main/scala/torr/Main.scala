@@ -227,7 +227,7 @@ object Main extends App {
                      _ => ZIO.unit
                    )
                    .when(connections.size() < maxActiveConnections)
-               ).fork).forever //.fork
+               ).fork).forever.fork
         } yield ()
       }.useForever
   }
