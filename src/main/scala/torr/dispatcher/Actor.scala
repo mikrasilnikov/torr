@@ -27,6 +27,7 @@ object Actor {
   sealed trait Command[+_]
   case class RegisterPeer(peerId: PeerId)                                extends Command[Unit]
   case class UnregisterPeer(peerId: PeerId)                              extends Command[Unit]
+  case class PeerIsSeeding(peerId: PeerId)                               extends Command[Boolean]
   case class ReportHave(peerId: PeerId, piece: PieceId)                  extends Command[Unit]
   case class ReportHaveMany(peerId: PeerId, pieces: Set[PieceId])        extends Command[Unit]
   case class SubscribeToHaveUpdates(peerId: PeerId)                      extends Command[(Set[PieceId], Dequeue[PieceId])]
@@ -73,6 +74,7 @@ object Actor {
         case UnregisterPeer(peerId)             => unregisterPeer(state, peerId).as((state, ()))
         case ReportHave(peerId, piece)          => ZIO(reportHave(state, peerId, piece)).as((state, ()))
         case ReportHaveMany(peerId, pieces)     => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
+        case PeerIsSeeding(peerId)              => ZIO(peerIsSeeding(state, peerId)).map(res => (state, res))
         case SubscribeToHaveUpdates(peerId)     => subscribeToHaveUpdates(state, peerId).map(res => (state, res))
         case ReportDownloadSpeed(peerId, value) => ZIO(reportDownloadSpeed(state, peerId, value)).as((state, ()))
         case ReportUploadSpeed(peerId, value)   => ZIO(reportUploadSpeed(state, peerId, value)).as((state, ()))
@@ -150,6 +152,17 @@ object Actor {
         if (!state.localHave(piece))
           peer.interesting.add(piece)
       }
+    }
+  }
+
+  private[dispatcher] def peerIsSeeding(state: State, peerId: PeerId): Boolean = {
+    if (!state.registeredPeers.contains(peerId)) {
+      val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
+      throw new IllegalStateException(s"PeerId $peerIdStr is not registered")
+
+    } else {
+      val peer = state.registeredPeers(peerId)
+      peer.have.size == state.localHave.length
     }
   }
 

@@ -11,31 +11,38 @@ import zio.clock.Clock
 import zio.duration.durationInt
 import zio.logging.Logging
 
-object DefaultUploadRoutine {
+object UploadRoutine {
 
-  def upload(
+  def run(
       peerHandle: PeerHandle,
       metaInfo: MetaInfo,
       localHaveRef: Ref[Set[PieceId]],
       upSpeedAccRef: Ref[Int]
   ): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
-    for {
-      _ <- peerHandle.waitForPeerInterested
-      _ <- acquireUploadSlot(peerHandle)
 
-      _ <- peerHandle.unignore[Request]
-      _ <- peerHandle.ignore[Cancel]
-      _ <- peerHandle.send(Message.Unchoke)
+    Dispatcher.peerIsSeeding(peerHandle.peerId).flatMap {
+      // Remote peer has completed downloading.
+      case true => ZIO.unit
+      case _    =>
+        for {
+          _ <- peerHandle.waitForPeerInterested
+          _ <- acquireUploadSlot(peerHandle)
 
-      _ <- serveRequests(peerHandle, metaInfo, localHaveRef, upSpeedAccRef) raceFirst holdUploadSlot(peerHandle)
+          _ <- peerHandle.unignore[Request]
+          _ <- peerHandle.ignore[Cancel]
+          _ <- peerHandle.send(Message.Unchoke)
 
-      _ <- peerHandle.ignore[Request]
-      _ <- Dispatcher.releaseUploadSlot(peerHandle.peerId)
-      _ <- peerHandle.send(Message.Choke)
+          _ <- serveRequests(peerHandle, metaInfo, localHaveRef, upSpeedAccRef)
+                 .raceFirst(holdUploadSlot(peerHandle))
 
-      _ <- upload(peerHandle, metaInfo, localHaveRef, upSpeedAccRef)
+          _ <- peerHandle.ignore[Request]
+          _ <- Dispatcher.releaseUploadSlot(peerHandle.peerId)
+          _ <- peerHandle.send(Message.Choke)
 
-    } yield ()
+          _ <- run(peerHandle, metaInfo, localHaveRef, upSpeedAccRef)
+
+        } yield ()
+    }
   }
 
   def acquireUploadSlot(peerHandle: PeerHandle): RIO[Dispatcher with Clock, Unit] = {
@@ -80,11 +87,11 @@ object DefaultUploadRoutine {
       upSpeedAccRef: Ref[Int]
   ): RIO[FileIO with DirectBufferPool with Logging, Unit] = {
 
-    val blocks = 1 + metaInfo.torrentSize / DefaultDownloadRoutine.requestSizeBytes
+    val blocks = 1 + metaInfo.torrentSize / DownloadRoutine.requestSizeBytes
 
     val correctBlockSize =
-      if (request.index < blocks - 1) DefaultDownloadRoutine.requestSizeBytes
-      else metaInfo.torrentSize % DefaultDownloadRoutine.requestSizeBytes
+      if (request.index < blocks - 1) DownloadRoutine.requestSizeBytes
+      else metaInfo.torrentSize % DownloadRoutine.requestSizeBytes
 
     for {
       localHave <- localHaveRef.get

@@ -12,7 +12,7 @@ import torr.directbuffers.{DirectBufferPool, GrowableBufferPool}
 import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadCompletion, PeerId}
 import torr.fileio.{FileIO, FileIOLive}
 import torr.metainfo.MetaInfo
-import torr.peerroutines.DefaultPeerRoutine
+import torr.peerroutines.PeerRoutine
 import torr.peerwire.PeerHandleLive
 import zio.Exit.{Failure, Success}
 import zio.blocking.Blocking
@@ -76,7 +76,7 @@ object Main extends App {
               torrentFileAbsolutePath.take(torrentFileAbsolutePath.length - extension.length)
             else torrentFileAbsolutePath ++ ".out"
 
-          download(options, args)
+          main(options, args)
             .injectCustom(
               ActorSystemLive.make("Default"),
               AnnounceLive.make(options.proxy),
@@ -88,7 +88,7 @@ object Main extends App {
               ),
               DispatcherLive.make(options.maxSimultaneousDownloads),
               SimpleConsoleUI.make
-            ) //.catchAll(e => putStrLn(e.getMessage).orDie)
+            )
       }
 
     //cliApp.run(args)
@@ -101,12 +101,14 @@ object Main extends App {
     )
   }
 
-  def download(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
+  def main(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
     for {
       myPeerId <- makePeerId
       metaInfo <- FileIO.metaInfo
 
       connections = new ConcurrentHashMap[Peer, PeerConnection]()
+
+      _ <- ZIO.foreachPar_(args.additionalPeers)(peer => establishConnection(peer, metaInfo, myPeerId, connections))
 
       _ <- ZIO.never // For pretty scalafmt indentation.
              // Neither of these effects should ever complete.
@@ -194,7 +196,7 @@ object Main extends App {
       fiber   <- PeerHandleLive.fromAddress(address, metaInfo.infoHash, myPeerId)
                    .use { peerHandle =>
                      peerIdP.succeed(peerHandle.peerId) *>
-                       DefaultPeerRoutine.run(peerHandle)
+                       PeerRoutine.run(peerHandle)
                    }
                    .fork
 
@@ -248,7 +250,7 @@ object Main extends App {
           fiber      <- PeerHandleLive.fromChannelWithHandshake(byteChannel, channelName, metaInfo.infoHash, myPeerId)
                           .use { peerHandle =>
                             peerIdP.succeed(peerHandle.peerId) *>
-                              DefaultPeerRoutine.run(peerHandle)
+                              PeerRoutine.run(peerHandle)
                           }
                           .fork
 

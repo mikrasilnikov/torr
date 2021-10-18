@@ -11,7 +11,7 @@ import zio.logging.Logging
 import scala.collection.immutable.Queue
 import scala.collection.immutable.HashMap
 
-object DefaultDownloadRoutine {
+object DownloadRoutine {
 
   type Offset = Int
 
@@ -37,7 +37,7 @@ object DefaultDownloadRoutine {
 
   case class SentRequest(job: DownloadJob, msg: Message.Request)
 
-  def restart(
+  def run(
       peerHandle: PeerHandle,
       downSpeedAccRef: Ref[Int],
       amInterested: Boolean = false
@@ -48,10 +48,10 @@ object DefaultDownloadRoutine {
         case _                            => Dispatcher.isRemoteInteresting(peerHandle.peerId).flatMap {
             case false =>
               peerHandle.log("remote is not interesting, waiting 10 seconds") *>
-                restart(peerHandle, downSpeedAccRef, amInterested).delay(10.second)
+                run(peerHandle, downSpeedAccRef, amInterested).delay(10.second)
             case _     =>
               negotiateUnchoke(peerHandle, downSpeedAccRef, amInterested) *>
-                restart(peerHandle, downSpeedAccRef, amInterested)
+                run(peerHandle, downSpeedAccRef, amInterested)
           }
       }
   }
@@ -170,7 +170,7 @@ object DefaultDownloadRoutine {
             _ <- handle.send(Message.NotInterested)
             _ <- handle.send(Message.KeepAlive)
             _ <- ZIO.sleep(10.seconds)
-            _ <- restart(handle, downSpeedAccRef, amInterested = false)
+            _ <- run(handle, downSpeedAccRef, amInterested = false)
           } yield ()
       }
   }
@@ -316,7 +316,7 @@ object DefaultDownloadRoutine {
                    handle.log(s"releasing job $j as choked") *>
                      Dispatcher.releaseJob(handle.peerId, ReleaseJobStatus.Choked(j))
                  )
-            _ <- restart(handle, downSpeedAccRef, amInterested = true)
+            _ <- run(handle, downSpeedAccRef, amInterested = true)
           } yield ()
       }
   }

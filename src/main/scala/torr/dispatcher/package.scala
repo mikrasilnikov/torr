@@ -50,6 +50,8 @@ package object dispatcher {
       def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit]
       def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])]
 
+      def peerIsSeeding(peerId: PeerId): Task[Boolean]
+
       def acquireJob(peerId: PeerId): Task[AcquireJobResult]
       def releaseJob(peerId: PeerId, releaseStatus: => ReleaseJobStatus): Task[Unit]
 

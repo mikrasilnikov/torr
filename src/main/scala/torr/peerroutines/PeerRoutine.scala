@@ -13,39 +13,37 @@ import zio.logging.Logging
 
 import scala.collection.immutable
 
-object DefaultPeerRoutine {
+object PeerRoutine {
 
   def run(peerHandle: PeerHandle): RIO[Dispatcher with FileIO with DirectBufferPool with Logging with Clock, Unit] = {
     for {
       metaInfo <- FileIO.metaInfo
 
       (initialHave, haveQueue) <- Dispatcher.subscribeToHaveUpdates(peerHandle.peerId)
+      localHaveRef             <- Ref.make(initialHave)
 
-      localHaveRef <- Ref.make(initialHave)
+      _ <- peerHandle.send(Message.BitField(TorrBitSet.fromSet(initialHave, metaInfo.pieceHashes.length)))
 
-      _               <- peerHandle.send(
-                           Message.BitField(
-                             TorrBitSet.fromSet(initialHave, metaInfo.pieceHashes.length)
-                           )
-                         )
-
+      //
       downSpeedAccRef <- Ref.make(0)
       upSpeedAccRef   <- Ref.make(0)
 
+      // Remote peer may or may not send BitField message right after connecting.
+      // So we are going to wait for it, but not for a long time.
       bitFieldReceivedSignal <- Promise.make[Nothing, Unit]
 
       aliveFib      <- handleKeepAlive(peerHandle).fork
       speedFib      <- reportSpeeds(peerHandle, downSpeedAccRef, upSpeedAccRef).fork
       localHaveFib  <- handleLocalHaveUpdates(peerHandle, localHaveRef, haveQueue).fork
       remoteHaveFib <- handleRemoteHave(peerHandle, metaInfo, bitFieldReceivedSignal).fork
-      _             <- bitFieldReceivedSignal.await.timeout(1.second)
 
-      uploadFib <- DefaultUploadRoutine.upload(peerHandle, metaInfo, localHaveRef, upSpeedAccRef).fork
+      // Waiting for BitField message for 1 second.
+      // We are assuming that remote peer does not have any pieces if this message has not been received.
+      _ <- bitFieldReceivedSignal.await.timeout(1.second)
 
-      _ <- DefaultDownloadRoutine.restart(
-             peerHandle,
-             downSpeedAccRef
-           )
+      uploadFib <- UploadRoutine.run(peerHandle, metaInfo, localHaveRef, upSpeedAccRef).fork
+      _         <- DownloadRoutine.run(peerHandle, downSpeedAccRef)
+      _         <- uploadFib.join
 
       _ <- Logging.debug(s"${peerHandle.peerIdStr} DefaultDownloadRoutine exited")
 

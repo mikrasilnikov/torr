@@ -34,6 +34,8 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = actor ! ReportHave(peerId, piece)
   def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = actor ! ReportHaveMany(peerId, pieces)
 
+  def peerIsSeeding(peerId: PeerId): Task[Boolean] = actor ? PeerIsSeeding(peerId)
+
   def reportDownloadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit] =
     actor ! ReportDownloadSpeed(peerId, bytesPerSecond)
   def reportUploadSpeed(peerId: PeerId, bytesPerSecond: PieceId): Task[Unit]   =

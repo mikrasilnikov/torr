@@ -8,7 +8,7 @@ import torr.consoleui.SimpleConsoleUI
 import torr.directbuffers.GrowableBufferPool
 import torr.dispatcher.DispatcherLive
 import torr.fileio.{FileIO, FileIOLive}
-import torr.peerroutines.DefaultPeerRoutine
+import torr.peerroutines.PeerRoutine
 import torr.peerwire.PeerHandleLive
 import zio._
 import zio.duration.durationInt
@@ -100,7 +100,7 @@ object DownloadFromPeers extends App {
                           address <- InetSocketAddress.hostName(host, port)
                           _       <- PeerHandleLive.fromAddress(address, metaInfo.infoHash, localPeerId)
                                        .use {
-                                         handle => DefaultPeerRoutine.run(handle)
+                                         handle => PeerRoutine.run(handle)
                                        }
 
                                        //.onError(e => ZIO.foreach_(e.failures)(t => putStrLn(t.getMessage).orDie))
