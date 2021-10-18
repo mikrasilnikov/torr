@@ -27,9 +27,9 @@ object Cli {
       .asInstanceOf[Options[Int]]
 
   val maxConnectionsOption: Options[Int] =
-    Options.integer("maxConnections")
+    Options.integer("maxConn")
       .alias("c")
-      .withDefault(50, "50 active connections")
+      .withDefault(500, "")
       .asInstanceOf[Options[Int]]
 
   val proxyOption: Options[Option[String]] =
@@ -37,7 +37,7 @@ object Cli {
       .optional("Optional description")
 
   val maxSimultaneousDownloadsOption: Options[Int] =
-    Options.integer("maxSimultaneousDownloads")
+    Options.integer("maxDown")
       .alias("d")
       .withDefault(10, "")
       .asInstanceOf[Options[Int]]

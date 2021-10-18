@@ -28,6 +28,7 @@ import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
 import zio._
+import zio.console.putStrLn
 import zio.nio.core.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel}
 
 import java.nio.charset.StandardCharsets
@@ -91,7 +92,20 @@ object Main extends App {
             )
       }
 
-    //cliApp.run(args)
+    args match {
+      case "--help" :: Nil =>
+        putStrLn("Usage: ") *>
+          putStrLn(
+            "java -jar torr.jar [--port|-p listenPort] [--maxConn|-c maxConnections] [--proxy proxyAddr] " +
+              "[--maxDown maxSimultaneousDownloads] torrentFile additionalPeer ...\n"
+          ) *>
+          putStrLn("Example:") *>
+          putStrLn("" +
+            "java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 " +
+            "ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265")
+
+      case args            => cliApp.run(args)
+    }
 
     cliApp.run(
       //"--proxy" :: "127.0.0.1:8080" ::
