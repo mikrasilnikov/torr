@@ -94,9 +94,9 @@ object Main extends App {
     //cliApp.run(args)
 
     cliApp.run(
-      //"--px" :: "127.0.0.1:8080" ::
-      "c:\\!temp\\Breaking Bad - Season 1 [BDRip].torrent" ::
-        "127.0.0.1:56233" :: "127.0.0.1:57617" ::
+      //"--proxy" :: "127.0.0.1:8080" ::
+      "c:\\!temp\\kubuntu-21.04-desktop-amd64.iso.torrent" ::
+        // "127.0.0.1:56233" :: "127.0.0.1:57617" ::
         Nil
     )
   }
@@ -114,7 +114,7 @@ object Main extends App {
              // Neither of these effects should ever complete.
              // If any of these does exit we consider it a failure.
              .raceFirst(connectToPeers(metaInfo, myPeerId, options.port, options.maxSimultaneousDownloads, connections))
-             .raceFirst(acceptConnections(metaInfo, myPeerId, options.port, connections))
+             .raceFirst(acceptConnections(metaInfo, myPeerId, options.port, options.maxConnections, connections))
              .raceFirst(handleDisconnected(connections))
              .foldCauseM(
                cause => saveError(cause, "MAIN", "main"),
@@ -208,6 +208,7 @@ object Main extends App {
       metaInfo: MetaInfo,
       myPeerId: PeerId,
       myPort: Int,
+      maxActiveConnections: Int,
       connections: ConcurrentHashMap[Peer, PeerConnection]
   ): RIO[TorrEnv, Unit] = {
 
@@ -218,13 +219,15 @@ object Main extends App {
         for {
           address <- InetSocketAddress.wildCard(myPort)
           _       <- socket.bindTo(address)
-          _       <- socket.accept.preallocate.flatMap(_.use(channel =>
-                       acceptConnection(channel, metaInfo, myPeerId, connections)
-                         .foldCauseM(
-                           cause => saveError(cause, "UNKNOWN", "accept"),
-                           _ => ZIO.unit
-                         )
-                     ).fork).forever.fork
+
+          _ <- socket.accept.preallocate.flatMap(_.use(channel =>
+                 acceptConnection(channel, metaInfo, myPeerId, connections)
+                   .foldCauseM(
+                     cause => saveError(cause, "UNKNOWN", "accept"),
+                     _ => ZIO.unit
+                   )
+                   .when(connections.size() < maxActiveConnections)
+               ).fork).forever //.fork
         } yield ()
       }.useForever
   }
@@ -237,7 +240,7 @@ object Main extends App {
   ): RIO[TorrEnv, Unit] = {
 
     socketChannel.remoteAddress.flatMap {
-      case None          => ZIO.unit // Channel is not connected.
+      case None          => ZIO.unit
       case Some(address) =>
         for {
           host       <- address.asInstanceOf[InetSocketAddress].hostName
@@ -255,6 +258,7 @@ object Main extends App {
                           .fork
 
           _           = connections.put(peer, PeerConnection(peerIdP, fiber))
+          _          <- fiber.await
         } yield ()
     }
   }
