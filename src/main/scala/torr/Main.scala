@@ -28,7 +28,7 @@ import zio.nio.core.file.Path
 import zio.nio.file.Files
 import zio.random.Random
 import zio._
-import zio.console.putStrLn
+import zio.console.{Console, putStrLn}
 import zio.nio.core.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel}
 
 import java.nio.charset.StandardCharsets
@@ -57,7 +57,7 @@ object Main extends App {
   }
 
   //noinspection SimplifyWhenInspection,SimplifyUnlessInspection
-  def run(args: List[String]): URIO[zio.ZEnv with Blocking, ExitCode] = {
+  def run(args: List[String]): URIO[ZEnv, ExitCode] = {
 
     configureLogging()
 
@@ -87,32 +87,37 @@ object Main extends App {
                 torrentFileAbsolutePath,
                 dstFolderAbsolutePath
               ),
-              DispatcherLive.make(options.maxSimultaneousDownloads),
+              DispatcherLive.make(
+                options.maxSimultaneousDownloads,
+                options.maxSimultaneousUploads
+              ),
               SimpleConsoleUI.make
             )
       }
 
     args match {
       case "--help" :: Nil =>
-        putStrLn("Usage: ") *>
-          putStrLn(
-            "java -jar torr.jar [--port|-p listenPort] [--maxConn|-c maxConnections] [--proxy proxyAddr] " +
-              "[--maxDown maxSimultaneousDownloads] [--maxUp maxSimultaneousUploads] torrentFile additionalPeer ...\n"
-          ) *>
-          putStrLn("Example:") *>
-          putStrLn("" +
-            "java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 --maxUp 20" +
-            "ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265")
+        (
+          putStrLn("Usage: ") *>
+            putStrLn(
+              "java -jar torr.jar [--port|-p listenPort] [--maxConn|-c maxConnections] [--proxy proxyAddr] " +
+                "[--maxDown maxSimultaneousDownloads] [--maxUp maxSimultaneousUploads] torrentFile additionalPeer ...\n"
+            ) *>
+            putStrLn("Example:") *>
+            putStrLn("" +
+              "java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 --maxUp 20" +
+              "ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265")
+        ).exitCode
 
       case args            => cliApp.run(args)
     }
 
-    cliApp.run(
+    /*cliApp.run(
       //"--proxy" :: "127.0.0.1:8080" ::
       "c:\\!temp\\kubuntu-21.04-desktop-amd64.iso.torrent" ::
         // "127.0.0.1:56233" :: "127.0.0.1:57617" ::
         Nil
-    )
+    )*/
   }
 
   def main(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
@@ -132,7 +137,7 @@ object Main extends App {
              .raceFirst(handleDisconnected(connections))
              .foldCauseM(
                cause => saveError(cause, "MAIN", "main"),
-               _ => Logging.debug("MAIN exited unexpectedly")
+               _ => Logging.error("MAIN exited unexpectedly")
              )
 
     } yield ()
@@ -323,7 +328,7 @@ object Main extends App {
     val filePath   = errorsPath / Path(s"$traceFilePrefix-$uuid.log")
 
     for {
-      _      <- Logging.debug(s"$logMessagePrefix failed with $messages, log saved to $traceFilePrefix-$uuid.log")
+      _      <- Logging.error(s"$logMessagePrefix failed with $messages, log saved to $traceFilePrefix-$uuid.log")
       _      <- Files.createDirectory(errorsPath).whenM(Files.notExists(errorsPath))
       dataStr = s"$logMessagePrefix failed with Cause:\n" ++ cause.prettyPrint
       data    = Chunk.fromArray(dataStr.getBytes(StandardCharsets.UTF_8))

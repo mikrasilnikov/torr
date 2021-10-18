@@ -3,7 +3,7 @@
         <file>torr.log</file>
 
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>DEBUG</level>
+            <level>ERROR</level>
         </filter>
 
         <encoder>

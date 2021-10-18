@@ -44,7 +44,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -72,7 +72,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -96,7 +96,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -124,7 +124,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         val effect1 = effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -161,7 +161,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -206,7 +206,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,
@@ -246,7 +246,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
 
         effect.injectCustom(
           FileIOMock.MetaInfo(value(metaInfo)) ++ FileIOMock.FreshFilesWereAllocated(value(true)),
-          DispatcherLive.make(10),
+          DispatcherLive.make(10, 10),
           NullConsoleUI.make,
           ActorSystemLive.make("Test"),
           Logging.ignore,

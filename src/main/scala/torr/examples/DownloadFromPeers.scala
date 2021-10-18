@@ -115,7 +115,7 @@ object DownloadFromPeers extends App {
       Slf4jLogger.make((_, message) => message),
       GrowableBufferPool.make(512),
       FileIOLive.make(metaInfoFile, dstDirectoryName),
-      DispatcherLive.make(10),
+      DispatcherLive.make(10, 5),
       SimpleConsoleUI.make
     ).exitCode
   }
