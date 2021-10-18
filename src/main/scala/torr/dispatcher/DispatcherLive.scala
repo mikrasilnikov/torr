@@ -49,7 +49,7 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 
 object DispatcherLive {
 
-  def make(maxActivePeers: Int): ZLayer[
+  def make(maxDown: Int, maxUp: Int): ZLayer[
     ConsoleUI with ActorSystem with DirectBufferPool with FileIO with Logging with Console with Clock,
     Throwable,
     Dispatcher
@@ -71,7 +71,14 @@ object DispatcherLive {
                         _           <- progressRef.interrupt.delay(1.second) *> putStrLn("")
                       } yield res).toManaged_
 
-      actor     <- makeActor(Actor.State(metaInfo, localHave, maxActivePeers))
+      actor     <- makeActor(
+                     Actor.State(
+                       metaInfo,
+                       localHave,
+                       maxSimultaneousDownloads = maxDown,
+                       maxSimultaneousUploads = maxUp
+                     )
+                   )
                      .toManaged(actor =>
                        Logging.debug("dispatcher actor stopping") *>
                          actor.stop.orDie *>

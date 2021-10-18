@@ -12,6 +12,7 @@ object Cli {
       port: Int,
       maxConnections: Int,
       maxSimultaneousDownloads: Int,
+      maxSimultaneousUploads: Int,
       proxy: Option[String]
   )
 
@@ -42,6 +43,12 @@ object Cli {
       .withDefault(10, "")
       .asInstanceOf[Options[Int]]
 
+  val maxSimultaneousUploadsOption: Options[Int] =
+    Options.integer("maxUp")
+      .alias("u")
+      .withDefault(10, "")
+      .asInstanceOf[Options[Int]]
+
   val torrentFileArg: Args[Path]           = Args.file(Exists.Yes)
   val additionalPeersArg: Args[List[Peer]] =
     Args.text("additionalPeer")
@@ -53,8 +60,8 @@ object Cli {
 
   val default = Command(
     "torr.jar",
-    (portOption ++ maxConnectionsOption ++ maxSimultaneousDownloadsOption ++ proxyOption).map {
-      case (((port, maxConn), ap), pr) => TorrOptions(port, maxConn, ap, pr)
+    (portOption ++ maxConnectionsOption ++ maxSimultaneousDownloadsOption ++ maxSimultaneousUploadsOption ++ proxyOption).map {
+      case ((((port, maxConn), maxDown), maxUp), proxy) => TorrOptions(port, maxConn, maxDown, maxUp, proxy)
     },
     (torrentFileArg ++ additionalPeersArg).map(TorrArgs.tupled),
     HelpDoc.empty
