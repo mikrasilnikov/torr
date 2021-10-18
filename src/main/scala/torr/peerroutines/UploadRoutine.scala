@@ -87,11 +87,9 @@ object UploadRoutine {
       upSpeedAccRef: Ref[Int]
   ): RIO[FileIO with DirectBufferPool with Logging, Unit] = {
 
-    val blocks = 1 + metaInfo.torrentSize / DownloadRoutine.requestSizeBytes
-
-    val correctBlockSize =
-      if (request.index < blocks - 1) DownloadRoutine.requestSizeBytes
-      else metaInfo.torrentSize % DownloadRoutine.requestSizeBytes
+    val requestOffset    = request.index.toLong * metaInfo.pieceSize + request.offset
+    val requestRemaining = metaInfo.torrentSize - requestOffset
+    val correctLength    = math.min(requestRemaining, 16 * 1024)
 
     for {
       localHave <- localHaveRef.get
@@ -99,17 +97,12 @@ object UploadRoutine {
       _    <- failWithLogging(
                 peerHandle,
                 new Exception(s"Remote peer requested invalid piece ${request.index}")
-              )
-                .unless(localHave.contains(request.index))
+              ).unless(localHave.contains(request.index))
 
       _    <- failWithLogging(
                 peerHandle,
-                new Exception(
-                  s"Remote peer requested invalid length ${request.length}. " +
-                    s"Correct length for block ${request.index} is $correctBlockSize"
-                )
-              )
-                .unless(request.length == correctBlockSize)
+                new Exception(s"Invalid request $request")
+              ).unless(requestRemaining > 0 && request.length == correctLength)
 
       data <- FileIO.fetch(request.index, request.offset, request.length)
       _    <- peerHandle.send(Message.Piece(request.index, request.offset, data.head))
