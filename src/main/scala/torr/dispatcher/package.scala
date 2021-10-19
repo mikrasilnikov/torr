@@ -3,6 +3,7 @@ package torr
 import torr.peerwire.{Message, TorrBitSet}
 import zio._
 import zio.macros.accessible
+import zio.nio.core.InetSocketAddress
 
 package object dispatcher {
 
@@ -43,7 +44,7 @@ package object dispatcher {
       def isDownloadCompleted: Task[DownloadCompletion]
       def isRemoteInteresting(peerId: PeerId): Task[Boolean]
 
-      def registerPeer(peerId: PeerId): Task[Unit]
+      def registerPeer(peerId: PeerId, address: InetSocketAddress): Task[Unit]
       def unregisterPeer(peerId: PeerId): Task[Unit]
 
       def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]
@@ -68,6 +69,8 @@ package object dispatcher {
           case AcquireJobResult.Success(job) => releaseJob(peerId, ReleaseJobStatus.Choked(job)).orDie
           case _                             => ZIO.unit
         }
+
+      def mapState[A](f: Actor.State => A): Task[A]
     }
   }
 }

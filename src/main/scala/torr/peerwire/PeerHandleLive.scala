@@ -120,7 +120,7 @@ object PeerHandleLive {
       _          <- nioChannel.connect(address).toManaged_
       channel     = AsyncSocketChannel(nioChannel)
 
-      res <- fromChannelWithHandshake(channel, address.toString(), infoHash, localPeerId)
+      res <- fromChannelWithHandshake(channel, address, address.toString(), infoHash, localPeerId)
       _   <- Logging.debug(
                s"${res.peerIdStr} connection established, peerId = ${new String(res.peerId.toArray, StandardCharsets.US_ASCII)}"
              ).toManaged_
@@ -129,6 +129,7 @@ object PeerHandleLive {
 
   def fromChannelWithHandshake(
       channel: ByteChannel,
+      address: InetSocketAddress,
       channelName: String,
       infoHash: Chunk[Byte],
       localPeerId: Chunk[Byte]
@@ -137,12 +138,13 @@ object PeerHandleLive {
       msgBuf    <- Buffer.byteDirect(1024).toManaged_
       _         <- Message.sendHandshake(infoHash, localPeerId, channel, msgBuf).toManaged_
       handshake <- Message.receiveHandshake(channel, msgBuf).toManaged_
-      res       <- fromChannel(channel, msgBuf, channelName, handshake.peerId)
+      res       <- fromChannel(channel, address, msgBuf, channelName, handshake.peerId)
     } yield res
   }
 
   def fromChannel(
       channel: ByteChannel,
+      address: InetSocketAddress,
       msgBuf: ByteBuffer,
       channelName: String,
       remotePeerId: Chunk[Byte],
@@ -152,7 +154,7 @@ object PeerHandleLive {
     val remotePeerIdStr = makePeerIdStr(remotePeerId)
 
     for {
-      _      <- Dispatcher.registerPeer(remotePeerId)
+      _      <- Dispatcher.registerPeer(remotePeerId, address)
                   .toManaged(_ =>
                     Logging.debug(s"$remotePeerIdStr unregistering peer") *>
                       Dispatcher.unregisterPeer(remotePeerId).orDie *>

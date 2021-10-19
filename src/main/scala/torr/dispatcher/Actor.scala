@@ -10,6 +10,8 @@ import scala.collection.immutable
 import torr.metainfo.MetaInfo
 import torr.peerwire.{PeerHandleLive, TorrBitSet}
 import zio.logging.Logging
+import zio.nio.core.{InetAddress, InetSocketAddress}
+
 import java.nio.charset.StandardCharsets
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
@@ -17,6 +19,7 @@ import scala.collection.mutable.ArrayBuffer
 object Actor {
 
   final case class RegisteredPeer(
+      address: InetSocketAddress,
       have: mutable.Set[PieceId] = mutable.HashSet[PieceId](),
       interesting: mutable.Set[PieceId] = mutable.HashSet[PieceId](),
       haveSubscriptions: ArrayBuffer[Queue[PieceId]] = ArrayBuffer[Queue[PieceId]](),
@@ -25,7 +28,7 @@ object Actor {
   )
 
   sealed trait Command[+_]
-  case class RegisterPeer(peerId: PeerId)                                extends Command[Unit]
+  case class RegisterPeer(peerId: PeerId, address: InetSocketAddress)    extends Command[Unit]
   case class UnregisterPeer(peerId: PeerId)                              extends Command[Unit]
   case class PeerIsSeeding(peerId: PeerId)                               extends Command[Boolean]
   case class ReportHave(peerId: PeerId, piece: PieceId)                  extends Command[Unit]
@@ -40,7 +43,7 @@ object Actor {
   case class ReportDownloadSpeed(peerId: PeerId, value: Int)             extends Command[Unit]
   case class ReportUploadSpeed(peerId: PeerId, value: Int)               extends Command[Unit]
   case object NumActivePeers                                             extends Command[Int]
-  private[dispatcher] case object DrawProgress                           extends Command[Unit]
+  case class MapState[A](f: State => A)                                  extends Command[A]
 
   type TimesRenewed = Int
 
@@ -70,7 +73,7 @@ object Actor {
     //noinspection WrapInsteadOfLiftInspection
     def receive[A](state: State, msg: Command[A], context: Context): RIO[ConsoleUI with Logging, (State, A)] =
       msg match {
-        case RegisterPeer(peerId)               => ZIO(registerPeer(state, peerId)).as((state, ()))
+        case RegisterPeer(peerId, address)      => ZIO(registerPeer(state, peerId, address)).as((state, ()))
         case UnregisterPeer(peerId)             => unregisterPeer(state, peerId).as((state, ()))
         case ReportHave(peerId, piece)          => ZIO(reportHave(state, peerId, piece)).as((state, ()))
         case ReportHaveMany(peerId, pieces)     => ZIO(reportHaveMany(state, peerId, pieces)).as((state, ()))
@@ -84,12 +87,12 @@ object Actor {
         case ReleaseUploadSlot(peerId)          => ZIO(releaseUploadSlot(state, peerId)).as((state, ()))
         case IsDownloadCompleted                => ZIO(isDownloadCompleted(state)).map(res => (state, res))
         case IsRemoteInteresting(peerId)        => ZIO(isRemoteInteresting(state, peerId)).map(res => (state, res))
-        case DrawProgress                       => drawProgress(state).as(state, ())
         case NumActivePeers                     => ZIO.succeed((state, state.activePeers.size))
+        case MapState(f)                        => ZIO(f(state)).map(res => (state, res))
       }
   }
 
-  private[dispatcher] def registerPeer(state: State, peerId: PeerId): Unit = {
+  private[dispatcher] def registerPeer(state: State, peerId: PeerId, address: InetSocketAddress): Unit = {
     if (state.registeredPeers.contains(peerId)) {
       val peerIdStr = PeerHandleLive.makePeerIdStr(peerId)
       throw new IllegalStateException(s"PeerId $peerIdStr is already registered")
@@ -97,6 +100,7 @@ object Actor {
       state.registeredPeers.put(
         peerId,
         RegisteredPeer(
+          address,
           have = mutable.HashSet[PieceId](),
           interesting = mutable.HashSet[PieceId]()
         )
@@ -410,12 +414,5 @@ object Actor {
 
   private[dispatcher] def isRemoteInteresting(state: State, peerId: PeerId): Boolean = {
     state.registeredPeers(peerId).interesting.nonEmpty
-  }
-
-  private def drawProgress(state: State): RIO[ConsoleUI, Unit] = {
-    for {
-      _ <- ConsoleUI.clear
-      _ <- ConsoleUI.draw(state)
-    } yield ()
   }
 }

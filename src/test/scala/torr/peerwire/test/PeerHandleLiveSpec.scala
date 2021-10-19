@@ -14,22 +14,26 @@ import zio._
 import zio.duration.durationInt
 import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
-import zio.nio.core.Buffer
+import zio.nio.core.{Buffer, InetAddress, InetSocketAddress}
 import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
 import zio.test.mock.Expectation._
 
 object PeerHandleLiveSpec extends DefaultRunnableSpec {
+  private def makeDefaultAddress =
+    InetAddress.localHost.flatMap(InetSocketAddress.inetAddress(_, 12345))
+
   override def spec =
     suite("PeerHandleLiveSpec")(
       //
       testM("Receives a message stored in mailbox") {
         val expected = Message.Have(12345)
         val effect   = for {
+          address <- makeDefaultAddress
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, address, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf           <- Buffer.byte(1024)
@@ -55,9 +59,10 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
       testM("Receives an expected message") {
         val expected = Message.Have(12345)
         val effect   = for {
+          address <- makeDefaultAddress
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, address, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          actualFib <- h.receive[Message.Have].fork
@@ -83,9 +88,10 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
       testM("Sends a message") {
         val expected = Message.Have(12345)
         val effect   = for {
+          address <- makeDefaultAddress
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, address, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          _      <- h.send(expected)
@@ -107,9 +113,10 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
       testM("Disconnects client on malformed message") {
         val rnd    = new java.util.Random(42)
         val effect = for {
+          address <- makeDefaultAddress
           channel <- TestSocketChannel.make
           msgBuf  <- Buffer.byte(64)
-          handle   = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+          handle   = PeerHandleLive.fromChannel(channel, address, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
           res     <- handle.use { h =>
                        for {
                          buf <- Buffer.byte(5)
@@ -138,9 +145,16 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         val rnd    = new java.util.Random(42)
         val effect =
           for {
+            address    <- makeDefaultAddress
             channel    <- TestSocketChannel.make
             msgBuf     <- Buffer.byte(64)
-            handle      = PeerHandleLive.fromChannel(channel, msgBuf, "Test", remotePeerId = Chunk.fill(20)(0.toByte))
+            handle      = PeerHandleLive.fromChannel(
+                            channel,
+                            address,
+                            msgBuf,
+                            "Test",
+                            remotePeerId = Chunk.fill(20)(0.toByte)
+                          )
             (e1, e2)   <- handle.use { h =>
                             for {
                               client1 <- h.receive[Message.Choke.type].fork
@@ -173,6 +187,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         val rnd    = new java.util.Random(42)
         val effect =
           for {
+            address    <- makeDefaultAddress
             channel    <- TestSocketChannel.make
             actorConfig = PeerActorConfig(
                             maxMailboxSize = 2,
@@ -181,6 +196,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
             msgBuf     <- Buffer.byte(64)
             handle      = PeerHandleLive.fromChannel(
                             channel,
+                            address,
                             msgBuf,
                             "Test",
                             remotePeerId = Chunk.fill(20)(0.toByte),
@@ -218,6 +234,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
         val rnd    = new java.util.Random(42)
         val effect =
           for {
+            address    <- makeDefaultAddress
             channel    <- TestSocketChannel.make
             actorConfig = PeerActorConfig(
                             maxMailboxSize = 2,
@@ -226,6 +243,7 @@ object PeerHandleLiveSpec extends DefaultRunnableSpec {
             msgBuf     <- Buffer.byte(64)
             handle      = PeerHandleLive.fromChannel(
                             channel,
+                            address,
                             msgBuf,
                             "Test",
                             remotePeerId = Chunk.fill(20)(0.toByte),

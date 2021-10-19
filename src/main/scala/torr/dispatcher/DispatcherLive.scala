@@ -13,6 +13,7 @@ import zio.clock.Clock
 import zio.console.{Console, putStr, putStrLn}
 import zio.duration.durationInt
 import zio.logging.Logging
+import zio.nio.core.InetSocketAddress
 
 case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatcher.Service {
 
@@ -28,8 +29,8 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
   def isDownloadCompleted: Task[DownloadCompletion]      = actor ? IsDownloadCompleted
   def isRemoteInteresting(peerId: PeerId): Task[Boolean] = actor ? IsRemoteInteresting(peerId)
 
-  def registerPeer(peerId: PeerId): Task[Unit]   = actor ? RegisterPeer(peerId)
-  def unregisterPeer(peerId: PeerId): Task[Unit] = actor ? UnregisterPeer(peerId)
+  def registerPeer(peerId: PeerId, address: InetSocketAddress): Task[Unit] = actor ? RegisterPeer(peerId, address)
+  def unregisterPeer(peerId: PeerId): Task[Unit]                           = actor ? UnregisterPeer(peerId)
 
   def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = actor ! ReportHave(peerId, piece)
   def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = actor ! ReportHaveMany(peerId, pieces)
@@ -45,6 +46,8 @@ case class DispatcherLive(private val actor: ActorRef[Command]) extends Dispatch
 
   def subscribeToHaveUpdates(peerId: PeerId): Task[(Set[PieceId], Dequeue[PieceId])] =
     actor ? SubscribeToHaveUpdates(peerId)
+
+  def mapState[A](f: State => A): Task[A] = actor ? MapState(f)
 }
 
 object DispatcherLive {
@@ -85,17 +88,9 @@ object DispatcherLive {
                          Logging.debug("dispatcher actor stopped")
                      )
 
-      _         <- drawConsoleUI(actor).interruptible.fork
-                     .toManaged(fib =>
-                       Logging.debug("DispatcherLive.drawConsoleUI interrupting") *>
-                         fib.interrupt.unit *>
-                         Logging.debug("DispatcherLive.drawConsoleUI interrupted")
-                     )
-
     } yield DispatcherLive(actor)
 
     effect.toLayer
-
   }
 
   private[dispatcher] def makeActor(state: Actor.State)
@@ -144,12 +139,4 @@ object DispatcherLive {
       _       <- (putStr("\b" * output.length) *> putStr(output)).uninterruptible
     } yield ()
   }
-
-  private def drawConsoleUI(actor: ActorRef[Command]): RIO[Clock, Unit] = {
-    for {
-      _ <- actor ! DrawProgress
-      _ <- drawConsoleUI(actor).delay(1.second)
-    } yield ()
-  }
-
 }

@@ -1,21 +1,18 @@
 package torr.consoleui
-
-import torr.dispatcher.Actor.{State => DispatcherState}
-
 import scala.annotation.tailrec
 
 object TorrentProgressBar {
 
-  def renderProgressBar(state: DispatcherState, label: String, numCells: Int): String = {
+  def renderProgressBar(localHave: Array[Boolean], label: String, numCells: Int): String = {
     val sb = new StringBuilder
 
     sb.append(label)
     sb.append(" [")
-    renderProgressCells(state, numCells, sb)
+    renderProgressCells(localHave, numCells, sb)
     sb.append("] ")
 
-    val numPieces    = state.metaInfo.pieceHashes.size
-    val numCompleted = state.metaInfo.pieceHashes.indices.count(state.localHave)
+    val numPieces    = localHave.length
+    val numCompleted = localHave.indices.count(localHave)
     val progress     = numCompleted * 100 / numPieces
     val progressStr  = f"$progress%3d"
     sb.append(" " * (progressStr.length - 3))
@@ -25,8 +22,8 @@ object TorrentProgressBar {
     sb.result()
   }
 
-  private def renderProgressCells(state: DispatcherState, numCells: Int, acc: StringBuilder): Unit = {
-    val numPieces = state.metaInfo.pieceHashes.size
+  private def renderProgressCells(localHave: Array[Boolean], numCells: Int, acc: StringBuilder): Unit = {
+    val numPieces = localHave.length
 
     @tailrec
     def loop(cell: Int): Unit = {
@@ -37,8 +34,8 @@ object TorrentProgressBar {
         val pieceFrom = math.floor(numPieces * rangeFrom).toInt
         val pieceTo   = math.ceil(numPieces * rangeTo).toInt
 
-        val cellIsCompleted = (pieceFrom until pieceTo).forall(i => state.localHave(i))
-        val cellIsPartial   = (pieceFrom until pieceTo).exists(i => state.localHave(i))
+        val cellIsCompleted = (pieceFrom until pieceTo).forall(i => localHave(i))
+        val cellIsPartial   = (pieceFrom until pieceTo).exists(i => localHave(i))
 
         if (cellIsCompleted) acc.append("=")
         else if (cellIsPartial) acc.append("-")

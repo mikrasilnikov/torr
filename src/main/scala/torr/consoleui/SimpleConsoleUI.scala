@@ -1,8 +1,13 @@
 package torr.consoleui
 
+import torr.consoleui.SimpleConsoleUI.ViewModel
 import torr.dispatcher.Actor.{State => DispatcherState}
+import torr.dispatcher.Dispatcher
+import torr.fileio.FileIO
 import zio._
 import zio.console._
+import torr.consoleui.StringExtensions._
+import scala.language.implicitConversions
 
 case class SimpleConsoleUI(private val console: Console.Service, private var lastRender: String = "")
     extends ConsoleUI.Service {
@@ -12,56 +17,75 @@ case class SimpleConsoleUI(private val console: Console.Service, private var las
 
   def clear: Task[Unit] = console.putStr("\b" * lastRender.length)
 
-  def draw(state: DispatcherState): Task[Unit] = {
+  def draw: RIO[Dispatcher with FileIO, Unit] = {
+    for {
+      viewModel <- Dispatcher.mapState(viewModelFromState)
+      result     = render(viewModel)
+      _         <- console.putStr(result)
+      _          = lastRender = result
+    } yield ()
+  }
 
-    val result = new StringBuilder
+  private def viewModelFromState(state: DispatcherState): ViewModel = {
+    ViewModel(
+      state.localHave,
+      state.registeredPeers.map { case (_, peer) => peer.downloadSpeed }.sum,
+      state.registeredPeers.map { case (_, peer) => peer.uploadSpeed }.sum
+    )
+  }
 
-    val progressBar = TorrentProgressBar.renderProgressBar(state, "Downloading     ", 50)
-    result.append(progressBar)
-    result.append(" ")
+  private def render(viewModel: ViewModel): String = {
+    val sb = new StringBuilder
 
-    val dlSpeed = state.registeredPeers.map { case (_, peer) => peer.downloadSpeed }.sum
-    val ulSpeed = state.registeredPeers.map { case (_, peer) => peer.uploadSpeed }.sum
-
-    if (dlSpeed > megabyte) {
-      val spd = dlSpeed.toDouble / megabyte
-      result.append("%.1f".format(spd))
-      result.append(" MB/s")
-    } else if (dlSpeed > kilobyte) {
-      val spd = dlSpeed.toDouble / kilobyte
-      result.append("%.0f".format(spd))
-      result.append(" KB/s")
-    } else {
-      val spd = dlSpeed.toDouble / kilobyte
-      result.append("%.0f".format(spd))
-      result.append(" B/s")
+    val message = viewModel.localHave.forall(identity) match {
+      case false => "Downloading".padRight(16)
+      case true  => "Seeding".padRight(16)
     }
 
-    result.append(" down ")
+    val progressBar = TorrentProgressBar.renderProgressBar(viewModel.localHave, message, 50)
+    sb.append(progressBar)
+    sb.append(" ")
 
-    if (ulSpeed > megabyte) {
-      val spd = ulSpeed.toDouble / megabyte
-      result.append("%.1f".format(spd))
-      result.append(" MB/s")
-    } else if (ulSpeed > kilobyte) {
-      val spd = ulSpeed.toDouble / kilobyte
-      result.append("%.0f".format(spd))
-      result.append(" KB/s")
+    if (viewModel.dlSpeed > megabyte) {
+      val spd = viewModel.dlSpeed.toDouble / megabyte
+      sb.append("%.1f".format(spd).padLeft(4))
+      sb.append(" MB/s")
+    } else if (viewModel.dlSpeed > kilobyte) {
+      val spd = viewModel.dlSpeed.toDouble / kilobyte
+      sb.append("%.0f".format(spd).padLeft(4))
+      sb.append(" KB/s")
     } else {
-      val spd = ulSpeed.toDouble / kilobyte
-      result.append("%.0f".format(spd))
-      result.append(" B/s")
+      val spd = viewModel.dlSpeed.toDouble
+      sb.append("%.0f".format(spd).padLeft(4))
+      sb.append("  B/s")
     }
 
-    result.append(" up")
+    sb.append(" down, ")
 
-    lastRender = result.result()
+    if (viewModel.ulSpeed > megabyte) {
+      val spd = viewModel.ulSpeed.toDouble / megabyte
+      sb.append("%.1f".format(spd).padLeft(4))
+      sb.append(" MB/s")
+    } else if (viewModel.ulSpeed > kilobyte) {
+      val spd = viewModel.ulSpeed.toDouble / kilobyte
+      sb.append("%.0f".format(spd).padLeft(4))
+      sb.append(" KB/s")
+    } else {
+      val spd = viewModel.ulSpeed.toDouble
+      sb.append("%.0f".format(spd).padLeft(4))
+      sb.append("  B/s")
+    }
 
-    console.putStr(lastRender)
+    sb.append(" up")
+
+    sb.result()
   }
 }
 
 object SimpleConsoleUI {
+
+  final case class ViewModel(localHave: Array[Boolean], dlSpeed: Int, ulSpeed: Int)
+
   def make: ZLayer[Console, Nothing, ConsoleUI] = {
 
     val effect = for {

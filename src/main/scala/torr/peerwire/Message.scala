@@ -14,10 +14,6 @@ sealed trait Message {
 
 object MessageTypes {
   type KeepAlive = Message.KeepAlive.type
-  //type Choke         = Message.Choke.type
-  //type Unchoke       = Message.Unchoke.type
-  //type Interested    = Message.Interested.type
-  //type NotInterested = Message.NotInterested.type
   type Have      = Message.Have
   type BitField  = Message.BitField
   type Port      = Message.Port

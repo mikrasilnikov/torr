@@ -1,7 +1,6 @@
 package torr.bencode
 
 import zio._
-import torr.channels.InMemoryChannel
 import java.nio.charset.StandardCharsets
 import torr.misc.Traverse
 import scala.language.implicitConversions

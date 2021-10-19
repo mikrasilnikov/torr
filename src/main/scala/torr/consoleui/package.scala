@@ -1,9 +1,9 @@
 package torr
 
+import torr.dispatcher._
+import torr.fileio._
 import zio._
 import zio.macros.accessible
-import torr.dispatcher.Actor.{State => DispatcherState}
-import zio.console.Console
 
 package object consoleui {
   type ConsoleUI = Has[ConsoleUI.Service]
@@ -12,7 +12,7 @@ package object consoleui {
   object ConsoleUI {
     trait Service {
       def clear: Task[Unit]
-      def draw(state: DispatcherState): Task[Unit]
+      def draw: RIO[Dispatcher with FileIO, Unit]
     }
   }
 }

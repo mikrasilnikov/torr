@@ -4,6 +4,7 @@ import torr.dispatcher
 import torr.dispatcher.{
   AcquireJobResult,
   AcquireUploadSlotResult,
+  Actor,
   Dispatcher,
   DownloadCompletion,
   PeerId,
@@ -12,7 +13,7 @@ import torr.dispatcher.{
 }
 import torr.peerwire.{Message, PeerHandle, TorrBitSet}
 import zio._
-import zio.nio.core.Buffer
+import zio.nio.core.{Buffer, InetSocketAddress}
 
 import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
@@ -70,8 +71,8 @@ object PeerHandleAndDispatcherMock {
         override def acquireUploadSlot(peerId: PeerId): Task[AcquireUploadSlotResult] = ???
         override def releaseUploadSlot(peerId: PeerId): Task[Unit]                    = ???
 
-        def registerPeer(peerId: PeerId): Task[Unit]   = ???
-        def unregisterPeer(peerId: PeerId): Task[Unit] = ???
+        def registerPeer(peerId: PeerId, address: InetSocketAddress): Task[Unit] = ???
+        def unregisterPeer(peerId: PeerId): Task[Unit]                           = ???
 
         def reportHave(peerId: PeerId, piece: PieceId): Task[Unit]           = ???
         def reportHaveMany(peerId: PeerId, pieces: Set[PieceId]): Task[Unit] = ???
@@ -84,6 +85,8 @@ object PeerHandleAndDispatcherMock {
         def numUploadingPeers: Task[PieceId] = ???
 
         def peerIsSeeding(peerId: PeerId): Task[Boolean] = ???
+
+        def mapState[A](f: Actor.State => A): Task[A] = ???
       }
 
       val peerHandle = new PeerHandle {

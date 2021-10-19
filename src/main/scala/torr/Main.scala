@@ -7,7 +7,7 @@ import torr.Cli.{TorrArgs, TorrOptions}
 import torr.actorsystem.{ActorSystem, ActorSystemLive}
 import torr.announce.{Announce, AnnounceLive, Peer, TrackerRequest}
 import torr.channels.{AsyncSocketChannel, ByteChannel}
-import torr.consoleui.SimpleConsoleUI
+import torr.consoleui.{ConsoleUI, RichConsoleUI, SimpleConsoleUI}
 import torr.directbuffers.{DirectBufferPool, GrowableBufferPool}
 import torr.dispatcher.{Dispatcher, DispatcherLive, DownloadCompletion, PeerId}
 import torr.fileio.{FileIO, FileIOLive}
@@ -44,6 +44,7 @@ object Main extends App {
     with Logging
     with Clock
     with ActorSystem
+    with ConsoleUI
     with Announce
     with Random
     with Blocking
@@ -91,7 +92,8 @@ object Main extends App {
                 options.maxSimultaneousDownloads,
                 options.maxSimultaneousUploads
               ),
-              SimpleConsoleUI.make
+              //SimpleConsoleUI.make
+              RichConsoleUI.make(options.maxConnections)
             )
       }
 
@@ -105,19 +107,19 @@ object Main extends App {
             ) *>
             putStrLn("Example:") *>
             putStrLn("" +
-              "java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 --maxUp 20" +
+              "java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 --maxUp 20 " +
               "ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265")
         ).exitCode
 
-      case args            => cliApp.run(args)
+      case args            =>
+        //cliApp.run(args)
+        cliApp.run(
+          //"--proxy" :: "127.0.0.1:8080" ::
+          "c:\\!temp\\kubuntu-21.04-desktop-amd64.iso.torrent" ::
+            // "127.0.0.1:56233" :: "127.0.0.1:57617" ::
+            Nil
+        )
     }
-
-    /*cliApp.run(
-      //"--proxy" :: "127.0.0.1:8080" ::
-      "c:\\!temp\\kubuntu-21.04-desktop-amd64.iso.torrent" ::
-        // "127.0.0.1:56233" :: "127.0.0.1:57617" ::
-        Nil
-    )*/
   }
 
   def main(options: TorrOptions, args: TorrArgs): RIO[TorrEnv, Unit] = {
@@ -135,6 +137,7 @@ object Main extends App {
              .raceFirst(connectToPeers(metaInfo, myPeerId, options.port, options.maxSimultaneousDownloads, connections))
              .raceFirst(acceptConnections(metaInfo, myPeerId, options.port, options.maxConnections, connections))
              .raceFirst(handleDisconnected(connections))
+             .raceFirst(drawConsoleUI)
              .foldCauseM(
                cause => saveError(cause, "MAIN", "main"),
                _ => Logging.error("MAIN exited unexpectedly")
@@ -261,15 +264,22 @@ object Main extends App {
     socketChannel.remoteAddress.flatMap {
       case None          => ZIO.unit
       case Some(address) =>
+        val socketAddress = address.asInstanceOf[InetSocketAddress]
         for {
-          host       <- address.asInstanceOf[InetSocketAddress].hostName
-          port        = address.asInstanceOf[InetSocketAddress].port
+          host       <- socketAddress.hostName
+          port        = socketAddress.port
           peer        = Peer(host, port)
           channelName = s"$host:$port"
           _          <- Logging.debug(s"UNKNOWN accepting connection from $channelName")
           byteChannel = AsyncSocketChannel(socketChannel)
           peerIdP    <- Promise.make[Throwable, PeerId]
-          fiber      <- PeerHandleLive.fromChannelWithHandshake(byteChannel, channelName, metaInfo.infoHash, myPeerId)
+          fiber      <- PeerHandleLive.fromChannelWithHandshake(
+                          byteChannel,
+                          socketAddress,
+                          channelName,
+                          metaInfo.infoHash,
+                          myPeerId
+                        )
                           .use { peerHandle =>
                             peerIdP.succeed(peerHandle.peerId) *>
                               PeerRoutine.run(peerHandle)
@@ -280,6 +290,14 @@ object Main extends App {
           _          <- fiber.await
         } yield ()
     }
+  }
+
+  private def drawConsoleUI: RIO[TorrEnv, Unit] = {
+    for {
+      _ <- ConsoleUI.clear
+      _ <- ConsoleUI.draw
+      _ <- drawConsoleUI.delay(1.second)
+    } yield ()
   }
 
   private def handleDisconnected(
