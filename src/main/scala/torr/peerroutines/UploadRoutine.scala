@@ -106,7 +106,7 @@ object UploadRoutine {
 
       data <- FileIO.fetch(request.index, request.offset, request.length)
       _    <- peerHandle.send(Message.Piece(request.index, request.offset, data.head))
-      _    <- upSpeedAccRef.getAndUpdate(_ + request.length)
+      _    <- upSpeedAccRef.update(_ + request.length)
     } yield ()
   }
 
