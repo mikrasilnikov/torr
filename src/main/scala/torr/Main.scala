@@ -112,12 +112,6 @@ object Main extends App {
         ).exitCode
 
       case args            => cliApp.run(args)
-      /*cliApp.run(
-          //"--proxy" :: "127.0.0.1:8080" ::
-          "c:\\!temp\\kubuntu-21.04-desktop-amd64.iso.torrent" ::
-            // "127.0.0.1:56233" :: "127.0.0.1:57617" ::
-            Nil
-        )*/
     }
   }
 
