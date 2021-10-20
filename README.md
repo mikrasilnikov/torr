@@ -16,8 +16,12 @@ Torr implements only basic features of Bittorrent protocol. It does not support 
 out of scope of this experimental hobby project. Therefore, it is not supposed to replace any of existing 
 clients that are able to find peers without a tracker and feature internal bandwidth management.  
 
-The project has been completed. The client works.
+The project has been completed. The client works. Here is how it looks in action:
+
+Building
+- zio-cli
 
 Architecture
-- use of actors
-- 
+- actors and mutable state
+- disk cache
+- peer routines
