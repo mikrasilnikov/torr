@@ -1,9 +1,7 @@
 package torr.peerwire
 
-import torr.channels.ByteChannel
-import zio.{Chunk, Promise}
-
-import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map, Set}
+import zio._
+import scala.collection.mutable._
 
 //noinspection ReferenceMustBePrefixed
 case class ReceiveActorState(
@@ -14,7 +12,6 @@ case class ReceiveActorState(
       HashMap[Class[_], Promise[Throwable, Message]](),
     givenPromises: Map[Promise[Throwable, Message], List[Class[_]]] =
       HashMap[Promise[Throwable, Message], List[Class[_]]](),
-    //
     ignoredMessages: Set[Class[_]] = HashSet[Class[_]](),
     //
     var peerInterested: Boolean = false,

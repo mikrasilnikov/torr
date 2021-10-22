@@ -23,6 +23,8 @@ The project has been completed. The client works. Here is how it looks in action
 Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line arguments. This library 
 has not been published to Maven yet, so it is necessary to clone the repository and `sbt publishLocal` it.
 
+## Usage
+
 ## Architecture
 
 ### Actors and mutable state
@@ -33,7 +35,15 @@ is no need to block until `release` is completed. Therefore, the `release` opera
 
 One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) and [wrapper](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) for it. If a client must 
 wait for the result of an operation, wrapper would send the corresponding message with `?` (ask operator). 
-If an operation may be executed asynchronously, wrapper uses `!` (tell).
+If an operation may be executed asynchronously, wrapper would use `!` (tell).
+
+Torr does exploit this pattern a lot. This led to two consequences that should be discussed:
+
+- Actors provide a convenient way to wrap mutable state. And [such state](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerwire/ReceiveActorState.scala) 
+does not look like a piece of a functional codebase. However, I decided not to use immutable data structures
+for such type of state because while it may make the code look a little nicer, it would also waste resources
+by putting more pressure on the GC.
+- 
 
 ### Disk cache
 
