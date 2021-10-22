@@ -8,10 +8,9 @@ import zio.nio.core.ByteBuffer
 import scala.collection.mutable
 
 case class GrowableBufferPool(private val actor: ActorRef[GrowablePoolActor.Command]) extends DirectBufferPool.Service {
-  def allocate: Task[ByteBuffer]                            = actor ? GrowablePoolActor.Allocate
-  def free(buf: ByteBuffer): Task[Unit]                     = actor ! GrowablePoolActor.Free(buf)
-  def allocateManaged: ZManaged[Any, Throwable, ByteBuffer] = ZManaged.make(allocate)(b => free(b).orDie)
-  def numAvailable: Task[Int]                               = actor ? GrowablePoolActor.GetNumAvailable
+  def allocate: Task[ByteBuffer]        = actor ? GrowablePoolActor.Allocate
+  def free(buf: ByteBuffer): Task[Unit] = actor ! GrowablePoolActor.Free(buf)
+  def numAvailable: Task[Int]           = actor ? GrowablePoolActor.GetNumAvailable
 }
 
 object GrowableBufferPool {

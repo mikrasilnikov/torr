@@ -27,6 +27,14 @@ has not been published to Maven yet, so it is necessary to clone the repository 
 
 ### Actors and mutable state
 
+Torr internally consists of a bunch of services that support asynchronous operations. For example, a resource
+pool may provide `acquire` and `release` methods. Client code must wait for the result of `acquire` but there
+is no need to block until `release` is completed. Therefore, the `release` operation should execute asynchronously.
+
+One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) and [wrapper](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) for it. If a client must 
+wait for the result of an operation, wrapper would send the corresponding message with `?` (ask operator). 
+If an operation may be executed asynchronously, wrapper uses `!` (tell).
+
 ### Disk cache
 
 ### Peer routines

@@ -21,9 +21,6 @@ case class FixedBufferPool(private val actor: ActorRef[Command], private val has
     } yield buf
   }
 
-  def allocateManaged: ZManaged[Any, Throwable, ByteBuffer] =
-    ZManaged.make(allocate)(b => free(b).orDie)
-
   def free(buf: ByteBuffer): Task[Unit] = actor ! Free(buf)
   def numAvailable: Task[Int]           = actor ? GetNumAvailable
 }

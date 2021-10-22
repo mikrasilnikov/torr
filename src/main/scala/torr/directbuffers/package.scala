@@ -13,7 +13,6 @@ package object directbuffers {
   object DirectBufferPool {
     trait Service {
       def allocate: Task[ByteBuffer]
-      def allocateManaged: ZManaged[Any, Throwable, ByteBuffer]
       def free(buf: ByteBuffer): Task[Unit]
       def numAvailable: Task[Int]
     }
