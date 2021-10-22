@@ -18,10 +18,14 @@ clients that are able to find peers without a tracker and feature internal bandw
 
 The project has been completed. The client works. Here is how it looks in action:
 
-Building
-- zio-cli
+###Building
+Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line arguments. This library 
+has not been published to Maven yet, so it is necessary to clone the repository and `sbt publishLocal` it.
 
 Architecture
 - actors and mutable state
 - disk cache
 - peer routines
+
+Benchmarks
+- 
