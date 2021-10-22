@@ -48,7 +48,7 @@ by putting more pressure on the GC.
 - Torr does not employ most of the features of the [zio-actors](https://zio.github.io/zio-actors/) library 
 like remoting and persistence. Thus depending on an actor framework in this case may seem like an overkill.
 However, the [actual implementation](https://github.com/zio/zio-actors/blob/master/actors/src/main/scala/zio/actors/Actor.scala) 
-of a local actors in zio-actors is very lightweight and looks like the thing that I would have been making anyway.
+of a local actor in zio-actors is very lightweight and looks like the thing that I would have been making anyway.
 
 
 ### Disk cache
