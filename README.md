@@ -12,9 +12,9 @@ application scalable across multiple CPU cores. As it turned out, this approach 
 of uTorrent.  
 
 Torr implements only basic features of Bittorrent protocol. It does not support [DHT](http://bittorrent.org/beps/bep_0005.html), 
-[PEX](http://bittorrent.org/beps/bep_0011.html) and other useful extensions. Implementing these goes 
-out of scope of this experimental hobby project. Therefore, it is not supposed to replace any of existing 
-clients that are able to find peers without a tracker and feature internal bandwidth management.  
+[PEX](http://bittorrent.org/beps/bep_0011.html), [uTP](https://www.bittorrent.org/beps/bep_0029.html) and other extensions. 
+Implementing these goes out of scope of this experimental hobby project. Therefore, it is not supposed to 
+replace any of existing clients that are able to find peers without a tracker and feature internal bandwidth management.  
 
 The project has been completed. The client works. Here is how it looks in action:
 
@@ -24,6 +24,7 @@ Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line 
 has not been published to Maven yet, so it is necessary to clone the repository and `sbt publishLocal` it.
 
 ## Usage
+- zio-cli drawbacks
 
 ## Architecture
 
@@ -33,9 +34,10 @@ Torr internally consists of a bunch of services that support asynchronous operat
 pool may provide `acquire` and `release` methods. Client code must wait for the result of `acquire` but there
 is no need to block until `release` is completed. Therefore, the `release` operation should execute asynchronously.
 
-One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) and [wrapper](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) for it. If a client must 
-wait for the result of an operation, wrapper would send the corresponding message with `?` (ask operator). 
-If an operation may be executed asynchronously, wrapper would use `!` (tell).
+One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) 
+and [wrapper](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) 
+for it. If a client must wait for the result of an operation, wrapper would send the corresponding message with 
+`?` (ask operator). If an operation may be executed asynchronously, wrapper would use `!` (tell).
 
 Torr does exploit this pattern a lot. This led to two consequences that should be discussed:
 
@@ -43,7 +45,11 @@ Torr does exploit this pattern a lot. This led to two consequences that should b
 does not look like a piece of a functional codebase. However, I decided not to use immutable data structures
 for such type of state because while it may make the code look a little nicer, it would also waste resources
 by putting more pressure on the GC.
-- 
+- Torr does not employ most of the features of the [zio-actors](https://zio.github.io/zio-actors/) library 
+like remoting and persistence. Thus depending on an actor framework in this case may seem like an overkill.
+However, the [actual implementation](https://github.com/zio/zio-actors/blob/master/actors/src/main/scala/zio/actors/Actor.scala) 
+of a local actors in zio-actors is very lightweight and looks like the thing that I would have been making anyway.
+
 
 ### Disk cache
 
