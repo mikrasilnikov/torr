@@ -23,12 +23,12 @@ The project has been completed. The client works. Here is how it looks in action
 Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line arguments. This library 
 has not been published to Maven yet, so it is necessary to clone the repository and `sbt publishLocal` it.
 
-##Architecture
-###Actors and mutable state
+## Architecture
 
+### Actors and mutable state
 
+### Disk cache
 
-###disk cache
-###peer routines
+### Peer routines
 
 Benchmarks
