@@ -73,7 +73,11 @@ if we are required to reply to KeepAlive messages, it is possible to spawn a sep
 peer handle to it:
 
 ```scala
-  private[peerroutines] def handleKeepAlive(peerHandle: PeerHandle): Task[Unit] = {
+...
+  aliveFib      <- handleKeepAlive(peerHandle).fork
+...
+
+  private def handleKeepAlive(peerHandle: PeerHandle): Task[Unit] = {
     for {
       _ <- peerHandle.receive[KeepAlive]
       _ <- peerHandle.send(Message.KeepAlive)
@@ -81,6 +85,8 @@ peer handle to it:
     } yield ()
   }
 ```
+If the example above seem too trivial, here is [the 100 lines of code that handle all upload requests](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/UploadRoutine.scala).
+And here is the [single function that handles whole BitTorrent protocol](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/PeerRoutine.scala).
 
 
 
