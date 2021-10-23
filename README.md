@@ -85,8 +85,8 @@ peer handle to it:
     } yield ()
   }
 ```
-If the example above seem too trivial, here is [the 100 lines of code that handle all upload requests](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/UploadRoutine.scala).  
+If the example above seems too trivial, here is [the 100 lines of code that handle all upload requests](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/UploadRoutine.scala).  
 
-And here is the [single function that handles whole BitTorrent protocol](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/PeerRoutine.scala).
+And here is the [single function that handles the whole Bittorrent protocol](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/PeerRoutine.scala).
 
 ### Benchmarks
