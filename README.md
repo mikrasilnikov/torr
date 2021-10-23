@@ -8,12 +8,12 @@ developing high performance applications with a lot of concurrency under the hoo
 However, making a fast and efficient client is quite tricky. The performance target was to be at least 
 comparable with uTorrent by download and upload speeds. Sure there is no way a ZIO application on top of 
 the JVM can compete with native binary in CPU efficiency. The way to solve this problem is to make 
-application scalable across multiple CPU cores. As it turned out, this approach lead to twice the throughput
-of uTorrent.  
+application scalable across multiple CPU cores. As it turned out, this approach lead to speeds that are not
+only comparable but surpassing uTorrent's performance in some cases.
 
 Torr implements only basic features of Bittorrent protocol. It does not support [DHT](http://bittorrent.org/beps/bep_0005.html), 
 [PEX](http://bittorrent.org/beps/bep_0011.html), [uTP](https://www.bittorrent.org/beps/bep_0029.html) and other extensions. 
-Implementing these goes out of scope of this experimental hobby project. Therefore, it is not supposed to 
+Implementing these goes out of scope of this project. Therefore, it is not supposed to 
 replace any of existing clients that are able to find peers without a tracker and feature internal bandwidth management.  
 
 The project has been completed. The client works. Here is how it looks in action:
@@ -36,8 +36,7 @@ java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 2
 ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265
 ```
 As it turned out, zio-cli does not support command line parameters with non-ascii characters on
-Windows. So keep this in mind while trying to test Torr with a torrent file from a popular 
-russian tracker.
+Windows.
 
 ## Implementation remarks
 
@@ -55,7 +54,7 @@ for it. If a client must wait for the result of an operation, wrapper would send
 Torr does exploit this pattern a lot. This led to two consequences that should be discussed:
 
 - Actors provide a convenient way to wrap mutable state. And [such state](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerwire/ReceiveActorState.scala) 
-does not look like a piece of a functional codebase. However, I decided not to use immutable data structures
+does not look like a part of a functional codebase. However, I decided not to use immutable data structures
 for such type of state because while it may make the code look a little nicer, it would also waste resources
 by putting more pressure on the GC.
 - Torr does not employ most of the features of the [zio-actors](https://zio.github.io/zio-actors/) library 
@@ -63,6 +62,26 @@ like remoting and persistence. Thus depending on an actor framework in this case
 However, the [actual implementation](https://github.com/zio/zio-actors/blob/master/actors/src/main/scala/zio/actors/Actor.scala) 
 of a local actor in zio-actors is very lightweight and looks like the thing that I would have been making anyway.
 
-### Peer routines
+### Peer handles
+
+When a connection to a remote peer is established, a peer handle is created. It is backed by a couple of actors
+for sending and receiving messages and provides a fiber-safe [methods](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerwire/PeerHandle.scala) 
+to exchange messages and query state.
+
+This approach allows to divide the protocol to a number of aspects and implement them independently. For example,
+if we are required to reply to KeepAlive messages, it is possible to spawn a separate fiber and pass a 
+peer handle to it:
+
+```scala
+  private[peerroutines] def handleKeepAlive(peerHandle: PeerHandle): Task[Unit] = {
+    for {
+      _ <- peerHandle.receive[KeepAlive]
+      _ <- peerHandle.send(Message.KeepAlive)
+      _ <- handleKeepAlive(peerHandle)
+    } yield ()
+  }
+```
+
+
 
 ### Benchmarks
