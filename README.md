@@ -2,7 +2,7 @@
 
 Torr is a Bittorrent client written in Scala using [ZIO](https://zio.dev/). The goal of this project for me 
 was to learn Scala and explore the possibilities that modern functional programming can offer for 
-developing high performance applications with a lot of concurrency under the hood.  
+developing high performance applications with a lot of concurrency under the hood.
 
 [Bittorrent protocol](https://wiki.theory.org/BitTorrentSpecification) is not a very hard thing to implement.
 However, making a fast and efficient client is quite tricky. The performance target was to be at least 
