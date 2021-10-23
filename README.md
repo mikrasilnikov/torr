@@ -9,7 +9,7 @@ However, making a fast and efficient client is quite tricky. The performance tar
 comparable with uTorrent by download and upload speeds. Sure there is no way a ZIO application on top of 
 the JVM can compete with native binary in CPU efficiency. The way to solve this problem is to make 
 application scalable across multiple CPU cores. As it turned out, this approach lead to speeds that are not
-only comparable but surpassing uTorrent's performance in some cases.
+only comparable but surpassing uTorrent's performance in some cases (see benchmarks).
 
 Torr implements only basic features of Bittorrent protocol. It does not support [DHT](http://bittorrent.org/beps/bep_0005.html), 
 [PEX](http://bittorrent.org/beps/bep_0011.html), [uTP](https://www.bittorrent.org/beps/bep_0029.html) and other extensions. 
@@ -90,3 +90,11 @@ If the example above seems too trivial, here is [the 100 lines of code that hand
 And here is the [single function that handles the whole Bittorrent protocol](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/peerroutines/PeerRoutine.scala).
 
 ### Benchmarks
+
+These are download speeds of clients running on the same machine. It would be fun to test Torr on a very fast 
+internet connection (1Gbps+) but I don't have access to it right now.
+
+Test                                     | Speed
+---                                     | ---
+uTorrent 3.2.3  -> Torr                 | 40MB/s
+qBitTorrent -> Torr                     | 60MB/s
