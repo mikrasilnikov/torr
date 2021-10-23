@@ -14,7 +14,7 @@ only comparable but surpassing uTorrent's performance in some cases (see benchma
 Torr implements only basic features of Bittorrent protocol. It does not support [DHT](http://bittorrent.org/beps/bep_0005.html), 
 [PEX](http://bittorrent.org/beps/bep_0011.html), [uTP](https://www.bittorrent.org/beps/bep_0029.html) and other extensions. 
 Implementing these goes out of scope of this project. Therefore, it is not supposed to 
-replace any of existing clients that are able to find peers without a tracker and feature internal bandwidth management.  
+replace any of the existing clients that are able to find peers without a tracker and feature internal bandwidth management.  
 
 The project has been completed. The client works. Here is how it looks in action:
 
@@ -94,11 +94,11 @@ And here is the [single function that handles the whole Bittorrent protocol](htt
 These are download speeds of clients running on the same machine. It would be fun to test Torr on a very fast 
 internet connection (1Gbps+) but I don't have access to it right now.
 
-Test                                    | Speed
----                                     | ---
-uTorrent 3.2.3  -> Torr                 | 40MB/s
-qBitTorrent -> Torr                     | 60MB/s
-qBitTorrent -> Torr                     | 60MB/s
-qBitTorrent -> Torr                     | 60MB/s
-qBitTorrent -> Torr                     | 60MB/s
+Source                                  | Destination                           | Speed
+---                                     | ---                                   | ---
+uTorrent 3.2.3                          | Torr                                  | 40 MB/s 
+qBitTorrent 4.3.8                       | Torr                                  | 60 MB/s
+Torr                                    | uTorrent 3.2.3                        | 20 MB/s
+qBitTorrent -> Torr                     | qBitTorrent 4.3.8                     | 60 MB/s
+qBitTorrent -> Torr                     | 60MB/s                                |
 ---                                     | ---
