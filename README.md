@@ -98,4 +98,7 @@ Test                                    | Speed
 ---                                     | ---
 uTorrent 3.2.3  -> Torr                 | 40MB/s
 qBitTorrent -> Torr                     | 60MB/s
+qBitTorrent -> Torr                     | 60MB/s
+qBitTorrent -> Torr                     | 60MB/s
+qBitTorrent -> Torr                     | 60MB/s
 ---                                     | ---
