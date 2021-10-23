@@ -24,9 +24,22 @@ Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line 
 has not been published to Maven yet, so it is necessary to clone the repository and `sbt publishLocal` it.
 
 ## Usage
-- zio-cli drawbacks
+```
+java -jar torr.jar [--port listenPort] [--maxConn maxConnections] [--proxy proxyAddr] 
+[--maxDown maxSimultaneousDownloads] [--maxUp maxSimultaneousUploads] 
+torrentFile additionalPeer ...
+```
+Example:
 
-## Architecture
+```
+java -jar torr.jar --port 55123 --maxConn 500 --proxy 127.0.0.1:8080 --maxDown 20 --maxUp 20 
+ubuntu-21.04-desktop-amd64.iso.torrent 217.111.45.01:54184 217.111.45.02:41265
+```
+As it turned out, zio-cli does not support command line parameters with non-ascii characters on
+Windows. So keep this in mind while trying to test Torr with a torrent file from a popular 
+russian tracker.
+
+## Implementation remarks
 
 ### Actors and mutable state
 
@@ -34,7 +47,7 @@ Torr internally consists of a bunch of services that support asynchronous operat
 pool may provide `acquire` and `release` methods. Client code must wait for the result of `acquire` but there
 is no need to block until `release` is completed. Therefore, the `release` operation should execute asynchronously.
 
-One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) 
+One possible implementation of this kind of [service](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/package.scala) would be an [actor](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowablePoolActor.scala) 
 and [wrapper](https://github.com/mikrasilnikov/torr/blob/main/src/main/scala/torr/directbuffers/GrowableBufferPool.scala) 
 for it. If a client must wait for the result of an operation, wrapper would send the corresponding message with 
 `?` (ask operator). If an operation may be executed asynchronously, wrapper would use `!` (tell).
@@ -50,9 +63,6 @@ like remoting and persistence. Thus depending on an actor framework in this case
 However, the [actual implementation](https://github.com/zio/zio-actors/blob/master/actors/src/main/scala/zio/actors/Actor.scala) 
 of a local actor in zio-actors is very lightweight and looks like the thing that I would have been making anyway.
 
-
-### Disk cache
-
 ### Peer routines
 
-Benchmarks
+### Benchmarks
