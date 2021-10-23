@@ -94,7 +94,8 @@ And here is the [single function that handles the whole Bittorrent protocol](htt
 These are download speeds of clients running on the same machine. It would be fun to test Torr on a very fast 
 internet connection (1Gbps+) but I don't have access to it right now.
 
-Test                                     | Speed
+Test                                    | Speed
 ---                                     | ---
 uTorrent 3.2.3  -> Torr                 | 40MB/s
 qBitTorrent -> Torr                     | 60MB/s
+---                                     | ---
