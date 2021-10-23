@@ -91,14 +91,12 @@ And here is the [single function that handles the whole Bittorrent protocol](htt
 
 ### Benchmarks
 
-These are download speeds of clients running on the same machine. It would be fun to test Torr on a very fast 
+These are speeds measured for clients running on the same machine. It would be fun to test Torr on a very fast 
 internet connection (1Gbps+) but I don't have access to it right now.
 
-Source                                  | Destination                           | Speed
+Client                                  | Max download speed                    | Max upload speed
 ---                                     | ---                                   | ---
-uTorrent 3.2.3                          | Torr                                  | 40 MB/s 
-qBitTorrent 4.3.8                       | Torr                                  | 60 MB/s
-Torr                                    | uTorrent 3.2.3                        | 20 MB/s
-qBitTorrent -> Torr                     | qBitTorrent 4.3.8                     | 60 MB/s
-qBitTorrent -> Torr                     | 60MB/s                                |
----                                     | ---
+uTorrent 3.2.3                          | 40MB/s                                | 40 MB/s 
+qBitTorrent 4.3.8                       | 60MB/s                                | 60 MB/s
+Vuse 5.7.6.0                            | 10MB/s                                | 10 MB/s 
+Torr                                    | 60MB/s                                | 60 MB/s
