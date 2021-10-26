@@ -18,6 +18,8 @@ replace any of the existing clients that are able to find peers without a tracke
 
 The project is now completed. The client works. Here is how it looks in action:
 
+![Torr in action](https://github.com/mikrasilnikov/torr/blob/main/img/in-action.gif "Torr in action")
+
 ## Building
 
 Torr depends on [zio-cli](https://github.com/zio/zio-cli) to parse command line arguments. This library 
