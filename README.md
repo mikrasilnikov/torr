@@ -98,7 +98,7 @@ And here is the [single function that handles the whole Bittorrent protocol](htt
 ### Benchmarks
 
 These results were measured for clients downloading a torrent (~20GB of size) that was seeded by qBittorrent 4.3.8
-on a local machine (i5-6500). The amount of CPU time spent was reported by Windows Task Manager.
+on local machine (i5-6500). The amount of CPU time spent was reported by Windows Task Manager.
 
 Client                                  | Sustained download speed          | CPU Time                    
 ---                                     | ---                               | ---  
