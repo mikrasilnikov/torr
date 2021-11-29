@@ -23,12 +23,14 @@ object Cli {
 
   val portOption: Options[Int] =
     Options.integer("port")
+      .map(_.toInt)
       .alias("p")
       .withDefault(55123, "")
       .asInstanceOf[Options[Int]]
 
   val maxConnectionsOption: Options[Int] =
     Options.integer("maxConn")
+      .map(_.toInt)
       .alias("c")
       .withDefault(500, "")
       .asInstanceOf[Options[Int]]
@@ -39,12 +41,14 @@ object Cli {
 
   val maxSimultaneousDownloadsOption: Options[Int] =
     Options.integer("maxDown")
+      .map(_.toInt)
       .alias("d")
       .withDefault(10, "")
       .asInstanceOf[Options[Int]]
 
   val maxSimultaneousUploadsOption: Options[Int] =
     Options.integer("maxUp")
+      .map(_.toInt)
       .alias("u")
       .withDefault(10, "")
       .asInstanceOf[Options[Int]]
