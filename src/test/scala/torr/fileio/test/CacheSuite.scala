@@ -6,9 +6,9 @@ import zio.nio.core.Buffer
 import zio.test._
 import zio.test.Assertion._
 
-object CacheSpec extends DefaultRunnableSpec {
+object CacheSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("CacheSpec")(
+    suite("CacheSuite")(
       //
       testM("entryIsValid - valid") {
         Buffer.byte(16).map { buf =>

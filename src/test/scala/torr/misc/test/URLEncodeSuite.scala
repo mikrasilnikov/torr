@@ -5,7 +5,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 
-object URLEncodeSpec extends DefaultRunnableSpec {
+object URLEncodeSuite extends DefaultRunnableSpec {
   def spec =
     suite("URLEncodeSuite")(
       //

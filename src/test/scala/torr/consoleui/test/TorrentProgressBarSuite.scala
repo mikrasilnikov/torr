@@ -7,13 +7,13 @@ import zio.test._
 import zio.test.Assertion._
 import torr.dispatcher.Actor.{State => DispatcherState}
 import torr.metainfo.{FileEntry, MetaInfo}
-import torr.metainfo.test.MetaInfoSpec.toBytes
+import torr.metainfo.test.MetaInfoSuite.toBytes
 
 import scala.collection.mutable
 
-object TorrentProgressBarSpec extends DefaultRunnableSpec {
+object TorrentProgressBarSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("DispatcherStateUiSpec")(
+    suite("DispatcherStateUiSuite")(
       //
       test("ProgressBar - empty (10 pcs)") {
         val expected = "Downloading [          ]   0%"

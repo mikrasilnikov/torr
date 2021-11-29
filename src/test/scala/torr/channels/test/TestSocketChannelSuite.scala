@@ -7,9 +7,9 @@ import torr.channels.ByteChannel
 import zio.nio.core.Buffer
 import java.nio.charset.StandardCharsets
 
-object TestSocketChannelSpec extends DefaultRunnableSpec {
+object TestSocketChannelSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("TestSocketChannelSpec")(
+    suite("TestSocketChannelSuite")(
       //
       testM("writing") {
         val expected = Chunk.fromArray("Hello привет".getBytes(StandardCharsets.UTF_8))

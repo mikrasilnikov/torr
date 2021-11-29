@@ -15,11 +15,11 @@ import zio.test.environment.TestClock
 
 import java.util.Random
 
-object ReadSpec extends DefaultRunnableSpec {
+object ReadSuite extends DefaultRunnableSpec {
   val env0 = ActorSystemLive.make("Test") ++ Logging.ignore
 
   override def spec =
-    suite("ReadSpec")(
+    suite("ReadSuite")(
       //
       testM("makeReadEntry") {
         val rnd = new Random(42)

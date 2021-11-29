@@ -7,7 +7,7 @@ import torr.directbuffers.FixedBufferPool
 import torr.dispatcher.DispatcherLive
 import torr.fileio.test.FileIOMock
 import torr.metainfo.{FileEntry, MetaInfo}
-import torr.metainfo.test.MetaInfoSpec.toBytes
+import torr.metainfo.test.MetaInfoSuite.toBytes
 import torr.peerwire.ReceiveActor.GetState
 import torr.peerwire.{Message, PeerActorConfig, PeerHandle, PeerHandleLive}
 import zio._
@@ -20,12 +20,12 @@ import zio.test._
 import zio.test.Assertion._
 import zio.test.mock.Expectation._
 
-object PeerHandleLiveSpec extends DefaultRunnableSpec {
+object PeerHandleLiveSuite extends DefaultRunnableSpec {
   private def makeDefaultAddress =
     InetAddress.localHost.flatMap(InetSocketAddress.inetAddress(_, 12345))
 
   override def spec =
-    suite("PeerHandleLiveSpec")(
+    suite("PeerHandleLiveSuite")(
       //
       testM("Receives a message stored in mailbox") {
         val expected = Message.Have(12345)

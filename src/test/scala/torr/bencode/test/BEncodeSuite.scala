@@ -6,7 +6,7 @@ import zio.test.Assertion._
 import torr.bencode._
 import java.nio.charset.StandardCharsets
 
-object BEncodeSpec extends DefaultRunnableSpec {
+object BEncodeSuite extends DefaultRunnableSpec {
   override def spec =
     suite("BEncodeSuite")(
       //

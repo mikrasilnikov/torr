@@ -6,9 +6,9 @@ import zio.logging.Logging
 import zio.test._
 import zio.test.Assertion._
 
-object ReceiveActorSpec extends DefaultRunnableSpec {
+object ReceiveActorSuite extends DefaultRunnableSpec {
   def spec =
-    suite("ReceiveActorSpec")(
+    suite("ReceiveActorSuite")(
       //
       testM("ignore fails waiting routine") {
         val state = ReceiveActorState()

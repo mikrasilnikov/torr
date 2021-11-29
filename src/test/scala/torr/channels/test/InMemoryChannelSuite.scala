@@ -8,7 +8,7 @@ import zio.test._
 
 import java.io.EOFException
 
-object InMemoryChannelSpec extends DefaultRunnableSpec {
+object InMemoryChannelSuite extends DefaultRunnableSpec {
   override def spec =
     suite("InMemoryChannelSuite")(
       //

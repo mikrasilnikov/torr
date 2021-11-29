@@ -10,9 +10,9 @@ import zio.nio.core.Buffer
 import torr.fileio.test.Helpers._
 import scala.util.Random
 
-object CacheLookupSpec extends DefaultRunnableSpec {
+object CacheLookupSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("CacheLookupSpec")(
+    suite("CacheLookupSuite")(
       //
       testM("1 file, 1 entry, 1 miss") {
         val rnd = new java.util.Random(42)

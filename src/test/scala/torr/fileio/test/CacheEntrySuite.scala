@@ -9,9 +9,9 @@ import zio.test.environment.TestClock
 
 import scala.util.Random
 
-object CacheEntrySpec extends DefaultRunnableSpec {
+object CacheEntrySuite extends DefaultRunnableSpec {
   override def spec =
-    suite("CacheEntrySpec")(
+    suite("CacheEntrySuite")(
       //
       testM("WriteEntry.freeRanges - empty entry") {
         val rnd = new java.util.Random(42)

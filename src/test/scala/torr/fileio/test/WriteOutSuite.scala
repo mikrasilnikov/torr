@@ -8,9 +8,9 @@ import torr.fileio.{EntryAddr, WriteEntry}
 import torr.fileio.test.Helpers._
 import zio.nio.core.Buffer
 
-object WriteOutSpec extends DefaultRunnableSpec {
+object WriteOutSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("WriteOutSpec")(
+    suite("WriteOutSuite")(
       //
       testM("Full entry, one write") {
         val rnd = new java.util.Random(42)

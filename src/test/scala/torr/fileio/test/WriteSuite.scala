@@ -8,7 +8,7 @@ import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.sequential
 import torr.fileio.Actor.{Fetch, GetState, Store}
-import torr.fileio.test.ReadSpec.channelToChunk
+import torr.fileio.test.ReadSuite.channelToChunk
 import torr.fileio.{Actor, EntryAddr, FileIOLive, ReadEntry}
 import zio.actors.ActorRef
 import zio.clock.Clock
@@ -19,9 +19,9 @@ import zio.test.environment.{Live, TestClock}
 
 import java.util.Random
 
-object WriteSpec extends DefaultRunnableSpec {
+object WriteSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("WriteSpec")(
+    suite("WriteSuite")(
       //
       testM("Single write - with write out") {
         val rnd = new Random(42)

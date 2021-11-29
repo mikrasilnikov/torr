@@ -5,7 +5,7 @@ import zio.test._
 import zio.test.Assertion._
 
 //noinspection Specs2Matchers
-object TraverseSpec extends DefaultRunnableSpec {
+object TraverseSuite extends DefaultRunnableSpec {
   def spec =
     suite("TraverseSuite")(
       //

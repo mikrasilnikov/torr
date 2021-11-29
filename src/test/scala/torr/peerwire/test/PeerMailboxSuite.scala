@@ -7,9 +7,9 @@ import zio.test.Assertion._
 
 import java.time.{OffsetDateTime, ZoneOffset}
 
-object PeerMailboxSpec extends DefaultRunnableSpec {
+object PeerMailboxSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("PeerMailboxSpec")(
+    suite("PeerMailboxSuite")(
       //
       test("Dequeue on empty mailbox") {
         val mailbox = new PeerMailbox

@@ -8,7 +8,7 @@ import zio.nio.core.file.Path
 import zio.test._
 import zio.test.Assertion._
 
-object MetaInfoSpec extends DefaultRunnableSpec {
+object MetaInfoSuite extends DefaultRunnableSpec {
   def spec =
     suite("MetaInfoSuite")(
       //

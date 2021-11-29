@@ -12,7 +12,7 @@ import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
 import zio.test.TestAspect.{flaky, sequential}
 
-object DirectBuffersSpec extends DefaultRunnableSpec {
+object DirectBuffersSuite extends DefaultRunnableSpec {
 
   def spec =
     suite("DirectBuffersSuite")(

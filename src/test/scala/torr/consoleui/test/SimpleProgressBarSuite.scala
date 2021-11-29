@@ -5,9 +5,9 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 
-object SimpleProgressBarSpec extends DefaultRunnableSpec {
+object SimpleProgressBarSuite extends DefaultRunnableSpec {
   override def spec =
-    suite("SimpleProgressBarSpec")(
+    suite("SimpleProgressBarSuite")(
       //
       test("empty progress bar") {
         val expected = "Test 123 [          ]   0%"

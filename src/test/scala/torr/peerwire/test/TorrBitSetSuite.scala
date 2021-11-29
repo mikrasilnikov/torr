@@ -5,7 +5,7 @@ import zio.Chunk
 import zio.test.Assertion._
 import zio.test._
 
-object TorrBitSetSpec extends DefaultRunnableSpec {
+object TorrBitSetSuite extends DefaultRunnableSpec {
   def spec =
     suite("BitFieldSuite")(
       //

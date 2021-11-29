@@ -3,7 +3,7 @@ package torr.dispatcher.test
 import torr.dispatcher.Actor.RegisteredPeer
 import torr.dispatcher.{AcquireJobResult, Actor, DownloadCompletion, DownloadJob, PeerId, PieceId, ReleaseJobStatus}
 import torr.metainfo.{FileEntry, MetaInfo}
-import torr.metainfo.test.MetaInfoSpec.toBytes
+import torr.metainfo.test.MetaInfoSuite.toBytes
 import zio._
 import zio.logging.Logging
 import zio.magic.ZioProvideMagicOps
@@ -18,13 +18,13 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
-object DispatcherSpec extends DefaultRunnableSpec {
+object DispatcherSuite extends DefaultRunnableSpec {
 
   private def makeDefaultAddress =
     InetAddress.localHost.flatMap(InetSocketAddress.inetAddress(_, 12345))
 
   def spec =
-    suite("DispatcherSpec")(
+    suite("DispatcherSuite")(
       //
       testM("registers peer") {
         val state  = Actor.State(metaInfo, new Array[Boolean](metaInfo.numPieces))
