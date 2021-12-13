@@ -24,6 +24,14 @@ pipeline {
         sh "sbt assembly"
       }
     }
+
+    stage("Deploy") {
+          steps {
+            echo "Deploying..."
+            sh "ansible -i ~/ansible/hosts all -m ping"
+          }
+        }
+
   }  
     
 }
