@@ -4,22 +4,24 @@ pipeline {
   
   stages {
     
-    stage("build") {
+    stage("Compile") {
       steps {
-        echo 'building the application...' 
-        echo 'building the application...' 
+        echo "Compiling..."
+        sh "/usr/local/bin/sbt compile"
       }
     }
     
-    stage("test") {
+    stage("Test") {
       steps {
-        echo 'testing the application' 
+        echo "Testing..."
+        sh "/usr/local/bin/sbt test"
       }
     }
     
-    stage("deploy") {
+    stage("Package") {
       steps {
-        echo 'deploying the application' 
+        echo "Packaging..."
+        sh "/usr/local/bin/sbt assembly"
       }
     }
   }  
