@@ -7,21 +7,21 @@ pipeline {
     stage("Compile") {
       steps {
         echo "Compiling..."
-        sh "/usr/local/bin/sbt compile"
+        sh "sbt compile"
       }
     }
     
     stage("Test") {
       steps {
         echo "Testing..."
-        sh "/usr/local/bin/sbt test"
+        sh "sbt test"
       }
     }
     
     stage("Package") {
       steps {
         echo "Packaging..."
-        sh "/usr/local/bin/sbt assembly"
+        sh "sbt assembly"
       }
     }
   }  
