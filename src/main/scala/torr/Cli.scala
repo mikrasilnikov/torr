@@ -65,9 +65,9 @@ object Cli {
   val default = Command(
     "torr.jar",
     (portOption ++ maxConnectionsOption ++ maxSimultaneousDownloadsOption ++ maxSimultaneousUploadsOption ++ proxyOption).map {
-      case ((((port, maxConn), maxDown), maxUp), proxy) => TorrOptions(port, maxConn, maxDown, maxUp, proxy)
+      case (port, maxConn, maxDown, maxUp, proxy) => TorrOptions(port, maxConn, maxDown, maxUp, proxy)
     },
-    (torrentFileArg ++ additionalPeersArg).map(TorrArgs.tupled),
-    HelpDoc.empty
+    (torrentFileArg ++ additionalPeersArg).map(TorrArgs.tupled)
+    //HelpDoc.empty
   )
 }
